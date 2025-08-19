@@ -1,21 +1,11 @@
 
 'use server';
 
-// ...existing code...
-import { db } from './firebase';
-import { collection, getDocs, query, where, orderBy, doc, getDoc, writeBatch, runTransaction, increment, addDoc, serverTimestamp } from 'firebase/firestore';
-import { FieldValue } from 'firebase-admin/firestore';
-import type { Course, Ladder, UserProgress, PromotionRequest } from './types';
-
-export async function checkAndPromoteUser(userId: string, currentLadder: string) {
-// ...existing code...
-import { getAdminDb } from '@/lib/firebase-admin';
+import { db } from './firebase-admin';
 import { collection, getDocs, query, where, orderBy, doc, getDoc, writeBatch, runTransaction, addDoc, serverTimestamp, deleteDoc, increment } from 'firebase/firestore';
 import type { Course, Ladder, UserProgress, PromotionRequest } from './types';
 
 export async function checkAndPromoteUser(userId: string, currentLadder: string) {
-  const db = await getAdminDb();
-// ...existing code...
   if (!currentLadder) {
     return { status: 'no-ladder', promoted: false };
   }
@@ -74,7 +64,6 @@ export async function checkAndPromoteUser(userId: string, currentLadder: string)
 }
 
 export async function requestPromotion(userId: string, userName: string, userEmail: string, currentLadder: Ladder, requestedLadder: Ladder): Promise<{ success: boolean; message: string }> {
-  const db = await getAdminDb();
     try {
         const requestRef = collection(db, 'promotionRequests');
 
@@ -112,7 +101,6 @@ export async function requestPromotion(userId: string, userName: string, userEma
 
 
 export async function unenrollUserFromCourse(userId: string, courseId: string): Promise<{ success: boolean; message: string }> {
-  const db = await getAdminDb();
   try {
     const enrollmentRef = doc(db, 'enrollments', `${userId}_${courseId}`);
     const enrollmentDoc = await getDoc(enrollmentRef);

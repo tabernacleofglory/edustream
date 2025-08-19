@@ -3,23 +3,14 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-<<<<<<< HEAD
-import { useState, useEffect } from "react";
-=======
 import { useState } from "react";
->>>>>>> 7a833b1 (Set up Firebase Admin and environment variables for Vercel)
 import { 
     createUserWithEmailAndPassword, 
     GoogleAuthProvider, 
     signInWithPopup, 
     updateProfile,
 } from "firebase/auth";
-<<<<<<< HEAD
-import { getFirebaseAuth, getFirebaseFirestore } from "@/lib/firebase";
-import { doc, setDoc, serverTimestamp, getDoc, collection, query, where, getDocs } from "firebase/firestore";
-=======
 import { getFirebaseAuth } from "@/lib/firebase";
->>>>>>> 7a833b1 (Set up Firebase Admin and environment variables for Vercel)
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -37,46 +28,6 @@ export default function SignupPage() {
     const [isLoading, setIsLoading] = useState(false);
     const [isGoogleLoading, setIsGoogleLoading] = useState(false);
     const auth = getFirebaseAuth();
-<<<<<<< HEAD
-    const db = getFirebaseFirestore();
-
-    const handleAuthSuccess = async (user: any) => {
-        const userDocRef = doc(db, "users", user.uid);
-        const userDocSnap = await getDoc(userDocRef);
-
-        if (!userDocSnap.exists()) {
-            let defaultLadderId: string | null = null;
-            try {
-                const laddersQuery = query(collection(db, "courseLevels"), where("name", "==", "New Member"));
-                const laddersSnapshot = await getDocs(laddersQuery);
-                if (!laddersSnapshot.empty) {
-                    defaultLadderId = laddersSnapshot.docs[0].id;
-                }
-            } catch(e) {
-                console.error("Could not fetch default ladder", e)
-            }
-
-            await setDoc(userDocRef, {
-                uid: user.uid,
-                displayName: user.displayName,
-                fullName: user.displayName,
-                email: user.email,
-                photoURL: user.photoURL,
-                role: 'user',
-                membershipStatus: 'Active',
-                createdAt: serverTimestamp(),
-                classLadderId: defaultLadderId,
-            }, { merge: true });
-
-            toast({
-                title: "Account Created!",
-                description: "Welcome!",
-            });
-        }
-        router.push('/dashboard');
-    };
-=======
->>>>>>> 7a833b1 (Set up Firebase Admin and environment variables for Vercel)
 
     const handleSignup = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -90,39 +41,11 @@ export default function SignupPage() {
                 displayName: fullName
             });
 
-<<<<<<< HEAD
-            let defaultLadderId: string | null = null;
-            try {
-                const laddersQuery = query(collection(db, "courseLevels"), where("name", "==", "New Member"));
-                const laddersSnapshot = await getDocs(laddersQuery);
-                if (!laddersSnapshot.empty) {
-                    defaultLadderId = laddersSnapshot.docs[0].id;
-                }
-            } catch(e) {
-                console.error("Could not fetch default ladder", e)
-            }
-
-            await setDoc(doc(db, "users", user.uid), {
-                uid: user.uid,
-                displayName: fullName,
-                fullName: fullName,
-                email: email,
-                role: 'user', 
-                membershipStatus: 'Active',
-                createdAt: serverTimestamp(),
-                classLadderId: defaultLadderId,
-            });
-
-            toast({
-                title: "Account Created!",
-                description: "Welcome!",
-=======
             // The Cloud Function 'createUserDocument' will handle creating the user doc in Firestore.
             
             toast({
                 title: "Account Created!",
                 description: "Welcome! Your profile is being set up.",
->>>>>>> 7a833b1 (Set up Firebase Admin and environment variables for Vercel)
             });
              router.push('/dashboard');
         } catch (error: any) {
@@ -141,10 +64,6 @@ export default function SignupPage() {
         setIsGoogleLoading(true);
         const provider = new GoogleAuthProvider();
         try {
-<<<<<<< HEAD
-            const result = await signInWithPopup(auth, provider);
-            await handleAuthSuccess(result.user);
-=======
             await signInWithPopup(auth, provider);
             // The Cloud Function 'createUserDocument' will handle creating the user doc in Firestore
             // for both new and returning Google users.
@@ -153,7 +72,6 @@ export default function SignupPage() {
                 description: "Welcome!",
             });
             router.push('/dashboard');
->>>>>>> 7a833b1 (Set up Firebase Admin and environment variables for Vercel)
         } catch (error: any) {
              toast({
                 variant: "destructive",

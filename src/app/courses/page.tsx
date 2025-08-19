@@ -6,48 +6,12 @@ import Link from "next/link";
 import { CourseCard } from "@/components/course-card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-<<<<<<< HEAD
-import { Search, Plus, Edit } from "lucide-react";
-import { useAuth } from "@/hooks/use-auth";
-import {
-  Sheet,
-  SheetContent,
-  SheetHeader,
-  SheetTitle,
-  SheetTrigger,
-} from "@/components/ui/sheet";
-import AddCourseForm from "@/components/add-course-form";
-import { ScrollArea } from "@/components/ui/scroll-area";
-=======
 import { Search, Plus, Edit, Filter } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
->>>>>>> 7a833b1 (Set up Firebase Admin and environment variables for Vercel)
 import type { Course } from "@/lib/types";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useProcessedCourses } from "@/hooks/useProcessedCourses";
 import { useRouter } from "next/navigation";
-<<<<<<< HEAD
-
-export default function AllCoursesPage() {
-  const { isCurrentUserAdmin } = useAuth();
-  const { processedCourses, loading, refresh } = useProcessedCourses(true); // Fetch all courses, not just for the user's ladder
-  const [searchTerm, setSearchTerm] = useState("");
-  const [isSheetOpen, setIsSheetOpen] = useState(false);
-  const router = useRouter();
-
-
-  const filteredCourses = useMemo(() => {
-    if (!searchTerm) {
-      return processedCourses;
-    }
-    return processedCourses.filter(course =>
-      course.title.toLowerCase().includes(searchTerm.toLowerCase())
-    );
-  }, [searchTerm, processedCourses]);
-
-  const onCourseUpdated = () => {
-    setIsSheetOpen(false);
-=======
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { useIsMobile } from "@/hooks/use-is-mobile";
@@ -159,7 +123,6 @@ export default function AllCoursesPage() {
 
 
   const onCourseUpdated = () => {
->>>>>>> 7a833b1 (Set up Firebase Admin and environment variables for Vercel)
     refresh();
   }
 
@@ -168,15 +131,9 @@ export default function AllCoursesPage() {
       <div className="flex flex-col gap-8 py-8">
         <div className="flex flex-col sm:flex-row justify-between items-start gap-4">
           <div>
-<<<<<<< HEAD
-            <h1 className="font-headline text-3xl font-bold md:text-4xl">
-              All Courses
-            </h1>
-=======
             <h4 className="font-headline text-3xl font-bold md:text-4xl">
               COURSES
             </h4>
->>>>>>> 7a833b1 (Set up Firebase Admin and environment variables for Vercel)
             <p className="text-muted-foreground">
               Expand your knowledge with our extensive library.
             </p>
@@ -189,55 +146,16 @@ export default function AllCoursesPage() {
           )}
         </div>
 
-<<<<<<< HEAD
-        <div className="md:sticky top-16 z-10 bg-background/95 backdrop-blur-sm -mx-6 px-6 py-4 border-b">
-          <div className="relative flex-1">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
-            <Input
-              placeholder="Search courses..."
-=======
         <div className="flex flex-col md:flex-row gap-4">
           <div className="relative flex-1">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground" />
             <Input
               placeholder="Search by course title..."
->>>>>>> 7a833b1 (Set up Firebase Admin and environment variables for Vercel)
               className="pl-10"
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
             />
           </div>
-<<<<<<< HEAD
-        </div>
-
-        <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-2 xl:grid-cols-3">
-          {loading ? (
-            Array.from({ length: 6 }).map((_, index) => (
-              <div key={index} className="space-y-4">
-                <Skeleton className="h-48 w-full" />
-                <div className="space-y-2 p-4">
-                  <Skeleton className="h-4 w-1/4" />
-                  <Skeleton className="h-6 w-3/4" />
-                  <Skeleton className="h-4 w-full" />
-                </div>
-              </div>
-            ))
-          ) : (
-            filteredCourses.map((course) => (
-              <div key={course.id} className="relative group">
-                <CourseCard course={course} onUnenroll={refresh} />
-                {isCurrentUserAdmin && (
-                  <Button asChild size="sm" className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity z-10 text-white bg-gradient-to-r from-pink-500 to-orange-400 hover:from-pink-600 hover:to-orange-500">
-                    <Link href={`/admin/courses?editCourseId=${course.id}`}>
-                      <Edit className="mr-2 h-4 w-4" />
-                      Edit
-                    </Link>
-                  </Button>
-                )}
-              </div>
-            ))
-          )}
-=======
           <Select
             value={selectedLadderId}
             onValueChange={setSelectedLadderId}
@@ -304,7 +222,6 @@ export default function AllCoursesPage() {
                     <p>No courses match your current filters.</p>
                 </div>
             )}
->>>>>>> 7a833b1 (Set up Firebase Admin and environment variables for Vercel)
         </div>
       </div>
     </div>

@@ -68,11 +68,7 @@ export default function VideoLibrary({ videos = [], isLoading = false, onStatusC
         if (!onSelectVideos) return;
         setSelectedVideos(prev => 
             prev.some(v => v.id === video.id)
-<<<<<<< HEAD
-                ? prev.filter(v => v.id !== video.id)
-=======
                 ? prev.filter(d => d.id !== video.id)
->>>>>>> 7a833b1 (Set up Firebase Admin and environment variables for Vercel)
                 : [...prev, video]
         );
     }
@@ -300,10 +296,7 @@ export default function VideoLibrary({ videos = [], isLoading = false, onStatusC
                 <DialogContent className="max-w-3xl">
                     <DialogHeader>
                         <DialogTitle>{previewingVideo?.title}</DialogTitle>
-<<<<<<< HEAD
-=======
                         <DialogDescription>Video preview</DialogDescription>
->>>>>>> 7a833b1 (Set up Firebase Admin and environment variables for Vercel)
                     </DialogHeader>
                     {previewingVideo && (
                         <AspectRatio ratio={16/9} className="bg-black">

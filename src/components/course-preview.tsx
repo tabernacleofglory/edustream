@@ -12,16 +12,11 @@ import { CheckCircle2, Lock, Printer } from 'lucide-react';
 import { getFirebaseFirestore } from '@/lib/firebase';
 import { collection, query, where, documentId, getDocs } from 'firebase/firestore';
 import { Skeleton } from './ui/skeleton';
-<<<<<<< HEAD
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from './ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogTrigger } from './ui/dialog';
 import Certificate from './certificate';
 import { useReactToPrint } from 'react-to-print';
 import { useAuth } from '@/hooks/use-auth';
 import CertificatePrint from './certificate-print';
-=======
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogTrigger } from './ui/dialog';
-import { useAuth } from '@/hooks/use-auth';
->>>>>>> 7a833b1 (Set up Firebase Admin and environment variables for Vercel)
 import { Tooltip, TooltipProvider, TooltipContent, TooltipTrigger } from './ui/tooltip';
 
 
@@ -83,7 +78,6 @@ export default function CoursePreview({ course, isEnrolled, isCompleted, onEnrol
     const PrimaryButton = () => {
         if (isCompleted) {
             return (
-<<<<<<< HEAD
                 <Dialog>
                     <DialogTrigger asChild>
                         <Button className="w-full" size="lg">View Certificate</Button>
@@ -91,15 +85,11 @@ export default function CoursePreview({ course, isEnrolled, isCompleted, onEnrol
                     <DialogContent className="max-w-4xl">
                        <DialogHeader>
                             <DialogTitle>Certificate of Completion</DialogTitle>
+                            <DialogDescription id="cert-desc">Your certificate for completing {course.title}.</DialogDescription>
                         </DialogHeader>
                         <CertificatePrint userName={user?.displayName || "Valued Student"} course={course} />
                     </DialogContent>
                 </Dialog>
-=======
-                <Button asChild className="w-full" size="lg">
-                    <Link href={`/certificate/${course.id}`} target="_blank">View Certificate</Link>
-                </Button>
->>>>>>> 7a833b1 (Set up Firebase Admin and environment variables for Vercel)
             );
         }
 
@@ -137,14 +127,9 @@ export default function CoursePreview({ course, isEnrolled, isCompleted, onEnrol
                  <Image
                     src={course["Image ID"] || "https://placehold.co/600x400.png"}
                     alt={course.title || "Course thumbnail"}
-<<<<<<< HEAD
-                    layout="fill"
-                    objectFit="cover"
-=======
                     fill
                     priority
                     style={{objectFit:"cover"}}
->>>>>>> 7a833b1 (Set up Firebase Admin and environment variables for Vercel)
                     className="rounded-l-lg"
                 />
             </div>

@@ -21,10 +21,7 @@ import CommunityStatsSidebar from '@/components/community-stats-sidebar';
 import UserProfileSidebar from '@/components/user-profile-sidebar';
 import ReactPlayer from 'react-player';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
-<<<<<<< HEAD
-=======
 import AnnouncementCard from '@/components/announcement-card';
->>>>>>> 7a833b1 (Set up Firebase Admin and environment variables for Vercel)
 
 
 const getInitials = (name?: string | null) => {
@@ -62,8 +59,6 @@ const EditFormComponent = ({ initialContent, onSave, onCancel, type = 'Post' }: 
     );
 };
 
-<<<<<<< HEAD
-=======
 const CommentComponent = ({ 
     comment, 
     onDelete, 
@@ -128,7 +123,6 @@ const CommentComponent = ({
     );
 };
 
->>>>>>> 7a833b1 (Set up Firebase Admin and environment variables for Vercel)
 
 const ReplyFormComponent = ({ parentComment, onReplyPosted, onCancel }: { parentComment: Post, onReplyPosted: () => void, onCancel: () => void }) => {
     const [replyText, setReplyText] = useState("");
@@ -248,8 +242,6 @@ const PostCard = ({ post, onRepost, onPin, onViewProfile }: { post: Post, onRepo
         toast({ title: "Post updated!" });
         setIsEditing(false);
     };
-<<<<<<< HEAD
-=======
     
      const handleDeleteReply = async (reply: Post) => {
         if (!hasPermission('manageCommunity') && user?.uid !== reply.authorId) {
@@ -268,7 +260,6 @@ const PostCard = ({ post, onRepost, onPin, onViewProfile }: { post: Post, onRepo
         await updateDoc(replyRef, { content: newContent });
         toast({ title: 'Reply updated!' });
     };
->>>>>>> 7a833b1 (Set up Firebase Admin and environment variables for Vercel)
 
     const handleShare = async () => {
         const shareData = {
@@ -389,23 +380,6 @@ const PostCard = ({ post, onRepost, onPin, onViewProfile }: { post: Post, onRepo
             {replies.length > 0 && (
                 <div className="p-4 border-t bg-muted/50">
                     {replies.map(reply => (
-<<<<<<< HEAD
-                        <div key={reply.id} className="flex items-start gap-3 mt-2">
-                             <Avatar className="h-8 w-8">
-                                <AvatarImage src={reply.authorPhotoURL || undefined} alt={reply.authorName} />
-                                <AvatarFallback>{getInitials(reply.authorName)}</AvatarFallback>
-                            </Avatar>
-                            <div className="flex-1 bg-background p-2 rounded-lg">
-                                <div className="flex items-center gap-2 text-xs">
-                                    <span className="font-semibold">{reply.authorName}</span>
-                                     <span className="text-muted-foreground">
-                                        {reply.createdAt ? formatDistanceToNow(new Date(reply.createdAt.seconds * 1000), { addSuffix: true }) : 'just now'}
-                                    </span>
-                                </div>
-                                <p className="text-sm mt-1">{reply.content}</p>
-                            </div>
-                        </div>
-=======
                         <CommentComponent 
                             key={reply.id} 
                             comment={reply} 
@@ -413,7 +387,6 @@ const PostCard = ({ post, onRepost, onPin, onViewProfile }: { post: Post, onRepo
                             onEdit={handleEditReply}
                             onViewProfile={onViewProfile} 
                         />
->>>>>>> 7a833b1 (Set up Firebase Admin and environment variables for Vercel)
                     ))}
                 </div>
             )}
@@ -717,38 +690,23 @@ export default function CommunityPage() {
 
     return (
         <div className="bg-muted/40 min-h-screen">
-<<<<<<< HEAD
-            <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 max-w-screen-2xl mx-auto">
-                <aside className="hidden lg:block lg:col-span-3">
-                   <div className="sticky top-20 space-y-4">
-                     <CommunityStatsSidebar />
-=======
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
                 <aside className="hidden lg:block lg:col-span-3">
                    <div className="sticky top-0 space-y-4">
                      <CommunityStatsSidebar />
                      <AnnouncementCard />
->>>>>>> 7a833b1 (Set up Firebase Admin and environment variables for Vercel)
                    </div>
                 </aside>
                 
                 <main className="col-span-12 lg:col-span-6 space-y-6 pb-20 lg:pb-6" ref={feedRef}>
                     {user && (
-<<<<<<< HEAD
-                        <div className="sticky top-[70px] z-10 hidden lg:block">
-=======
                         <div className="sticky top-0 z-10 hidden lg:block">
->>>>>>> 7a833b1 (Set up Firebase Admin and environment variables for Vercel)
                             <CreatePost onPostCreated={() => {}} repostContent={repostContent} />
                         </div>
                     )}
 
                     {newPostCount > 0 && (
-<<<<<<< HEAD
-                        <div className="sticky top-[150px] z-10 flex justify-center">
-=======
                         <div className="sticky top-20 z-10 flex justify-center">
->>>>>>> 7a833b1 (Set up Firebase Admin and environment variables for Vercel)
                             <Button onClick={scrollToTop} className="shadow-lg">
                                 Show {newPostCount} new post{newPostCount > 1 ? 's' : ''}
                             </Button>
@@ -774,11 +732,7 @@ export default function CommunityPage() {
                 </main>
 
                 <aside className="hidden lg:block lg:col-span-3">
-<<<<<<< HEAD
-                    <div className="sticky top-20 space-y-4">
-=======
                     <div className="sticky top-0 space-y-4">
->>>>>>> 7a833b1 (Set up Firebase Admin and environment variables for Vercel)
                       {user && <UserProfileSidebar user={user} />}
                     </div>
                 </aside>

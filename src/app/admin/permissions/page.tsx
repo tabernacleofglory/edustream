@@ -1,7 +1,3 @@
-<<<<<<< HEAD
-
-=======
->>>>>>> 7a833b1 (Set up Firebase Admin and environment variables for Vercel)
 "use client";
 
 import PermissionManager from "@/components/permission-manager";
@@ -13,17 +9,6 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Lock } from "lucide-react";
 
 export default function PermissionsPage() {
-<<<<<<< HEAD
-  const { user, loading, hasPermission } = useAuth();
-  const router = useRouter();
-
-  useEffect(() => {
-    if (!loading && !hasPermission('managePermissions')) {
-      router.push('/admin/analytics');
-    }
-  }, [user, loading, router, hasPermission]);
-  
-=======
   const { user, loading } = useAuth();
   const router = useRouter();
 
@@ -34,33 +19,10 @@ export default function PermissionsPage() {
     }
   }, [user, loading, router]);
 
->>>>>>> 7a833b1 (Set up Firebase Admin and environment variables for Vercel)
   if (loading) {
     return <div>Loading...</div>;
   }
 
-<<<<<<< HEAD
-  if (!hasPermission('managePermissions')) {
-     return (
-        <Card>
-            <CardHeader>
-                <CardTitle>Access Denied</CardTitle>
-                <CardDescription>
-                    You do not have the required permissions to view this page.
-                </CardDescription>
-            </CardHeader>
-            <CardContent>
-                <Alert variant="destructive">
-                    <Lock className="h-4 w-4" />
-                    <AlertTitle>Access Restricted</AlertTitle>
-                    <AlertDescription>
-                        Please contact a site administrator if you believe you should have access.
-                    </AlertDescription>
-                </Alert>
-            </CardContent>
-        </Card>
-    )
-=======
   if (!user || user.role !== "developer") {
     return (
       <Card>
@@ -81,7 +43,6 @@ export default function PermissionsPage() {
         </CardContent>
       </Card>
     );
->>>>>>> 7a833b1 (Set up Firebase Admin and environment variables for Vercel)
   }
 
   return (
@@ -91,11 +52,7 @@ export default function PermissionsPage() {
           Permission Management
         </h1>
         <p className="text-muted-foreground">
-<<<<<<< HEAD
-          Configure permissions for different user roles.
-=======
           Define which roles may use each permission. (Developer-only)
->>>>>>> 7a833b1 (Set up Firebase Admin and environment variables for Vercel)
         </p>
       </div>
       <PermissionManager />

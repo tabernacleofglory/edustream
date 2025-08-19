@@ -4,17 +4,11 @@
 import { useAudioPlayer } from "@/hooks/use-audio-player";
 import { Button } from "./ui/button";
 import { Slider } from "./ui/slider";
-<<<<<<< HEAD
-import { Play, Pause, X, Repeat, Shuffle, Repeat1, SkipForward, SkipBack, Volume2, VolumeX, Music } from "lucide-react";
-import Image from "next/image";
-import { cn } from "@/lib/utils";
-=======
 import { Play, Pause, X, Repeat, Shuffle, Repeat1, SkipForward, SkipBack, Volume2, VolumeX, Music, Download } from "lucide-react";
 import Image from "next/image";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/hooks/use-auth";
 import { Popover, PopoverContent, PopoverTrigger } from "./ui/popover";
->>>>>>> 7a833b1 (Set up Firebase Admin and environment variables for Vercel)
 
 export default function StickyAudioPlayer() {
     const { 
@@ -40,12 +34,9 @@ export default function StickyAudioPlayer() {
         toggleMute,
     } = useAudioPlayer();
     
-<<<<<<< HEAD
-=======
     const { hasPermission } = useAuth();
     const canDownload = hasPermission('downloadContent');
     
->>>>>>> 7a833b1 (Set up Firebase Admin and environment variables for Vercel)
     if (currentTrack === null) {
         return null;
     }
@@ -68,15 +59,9 @@ export default function StickyAudioPlayer() {
     return (
         <div className="fixed bottom-0 left-0 right-0 z-50 bg-background/95 border-t border-border backdrop-blur supports-[backdrop-filter]:bg-background/60">
             <div className="container mx-auto px-4">
-<<<<<<< HEAD
-                <div className="grid grid-cols-3 items-center h-20">
-                    <div className="flex items-center gap-3 overflow-hidden">
-                        <div className="relative h-12 w-12 flex-shrink-0 bg-muted rounded-md flex items-center justify-center">
-=======
                 <div className="grid grid-cols-3 items-center h-16">
                     <div className="flex items-center gap-3 overflow-hidden">
                         <div className="relative h-10 w-10 flex-shrink-0 bg-muted rounded-md flex items-center justify-center">
->>>>>>> 7a833b1 (Set up Firebase Admin and environment variables for Vercel)
                              {currentTrack.thumbnailUrl ? (
                                 <Image 
                                     src={currentTrack.thumbnailUrl}
@@ -86,42 +71,16 @@ export default function StickyAudioPlayer() {
                                     className="rounded-md"
                                 />
                             ) : (
-<<<<<<< HEAD
-                                <Music className="h-6 w-6 text-muted-foreground" />
-                            )}
-                        </div>
-                        <div className="hidden sm:block">
-                            <p className="font-semibold truncate">{currentTrack.title}</p>
-                            <p className="text-sm text-muted-foreground truncate">{currentTrack.artist || "Unknown Artist"}</p>
-=======
                                 <Music className="h-5 w-5 text-muted-foreground" />
                             )}
                         </div>
                         <div className="hidden sm:block">
                             <p className="font-semibold text-sm truncate">{currentTrack.title}</p>
                             <p className="text-xs text-muted-foreground truncate">{currentTrack.artist || "Unknown Artist"}</p>
->>>>>>> 7a833b1 (Set up Firebase Admin and environment variables for Vercel)
                         </div>
                     </div>
                     
                     <div className="flex-grow flex flex-col items-center gap-2 justify-center">
-<<<<<<< HEAD
-                         <div className="flex items-center gap-1 sm:gap-4">
-                            <Button variant="ghost" size="icon" onClick={toggleShuffle} className={cn("hidden sm:inline-flex text-muted-foreground", isShuffled && "text-primary")}>
-                                <Shuffle className="h-5 w-5" />
-                            </Button>
-                             <Button variant="ghost" size="icon" onClick={playPrevious} disabled={!hasPrevious}>
-                                <SkipBack className="h-5 w-5" />
-                            </Button>
-                            <Button size="icon" className="h-12 w-12" onClick={togglePlayPause}>
-                                {isPlaying ? <Pause className="h-6 w-6" /> : <Play className="h-6 w-6" />}
-                            </Button>
-                             <Button variant="ghost" size="icon" onClick={playNext} disabled={!hasNext}>
-                                <SkipForward className="h-5 w-5" />
-                            </Button>
-                            <Button variant="ghost" size="icon" onClick={toggleRepeat} className={cn("hidden sm:inline-flex text-muted-foreground", repeatMode !== 'off' && "text-primary")}>
-                                {repeatMode === 'one' ? <Repeat1 className="h-5 w-5" /> : <Repeat className="h-5 w-5" />}
-=======
                          <div className="flex items-center gap-1 sm:gap-2">
                             <Button variant="ghost" size="icon" onClick={toggleShuffle} className={cn("text-muted-foreground h-8 w-8", isShuffled && "text-primary bg-primary/10")}>
                                 <Shuffle className="h-4 w-4" />
@@ -137,7 +96,6 @@ export default function StickyAudioPlayer() {
                             </Button>
                             <Button variant="ghost" size="icon" onClick={toggleRepeat} className={cn("text-muted-foreground h-8 w-8", repeatMode !== 'off' && "text-primary bg-primary/10")}>
                                 {repeatMode === 'one' ? <Repeat1 className="h-4 w-4" /> : <Repeat className="h-4 w-4" />}
->>>>>>> 7a833b1 (Set up Firebase Admin and environment variables for Vercel)
                             </Button>
                          </div>
                          <div className="w-full flex items-center gap-2">
@@ -153,21 +111,6 @@ export default function StickyAudioPlayer() {
                          </div>
                     </div>
 
-<<<<<<< HEAD
-                     <div className="flex items-center justify-end gap-2">
-                        <Button variant="ghost" size="icon" onClick={toggleMute} className="hidden md:inline-flex">
-                            {isMuted || volume === 0 ? <VolumeX className="h-5 w-5 text-muted-foreground" /> : <Volume2 className="h-5 w-5 text-muted-foreground" />}
-                        </Button>
-                        <Slider 
-                            value={[isMuted ? 0 : volume]}
-                            onValueChange={handleVolumeChange}
-                            max={1}
-                            step={0.05}
-                            className="w-24 hidden md:block"
-                        />
-                        <Button variant="ghost" size="icon" onClick={closePlayer}>
-                            <X className="h-5 w-5" />
-=======
                      <div className="flex items-center justify-end gap-1">
                         <Popover>
                             <PopoverTrigger asChild>
@@ -193,7 +136,6 @@ export default function StickyAudioPlayer() {
                         )}
                         <Button variant="ghost" size="icon" onClick={closePlayer}>
                             <X className="h-4 w-4" />
->>>>>>> 7a833b1 (Set up Firebase Admin and environment variables for Vercel)
                         </Button>
                      </div>
                 </div>

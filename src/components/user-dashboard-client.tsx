@@ -23,10 +23,7 @@ import { ArrowRight, Loader2, Send, Trophy } from "lucide-react";
 import { Progress } from "./ui/progress";
 import { useToast } from "@/hooks/use-toast";
 import { requestPromotion } from "@/lib/user-actions";
-<<<<<<< HEAD
-=======
 import AnnouncementCard from "./announcement-card";
->>>>>>> 7a833b1 (Set up Firebase Admin and environment variables for Vercel)
 
 
 const progressChartConfig = {
@@ -155,10 +152,7 @@ export default function UserDashboardClient() {
             </CardHeader>
         </Card>
        )}
-<<<<<<< HEAD
-=======
        <AnnouncementCard />
->>>>>>> 7a833b1 (Set up Firebase Admin and environment variables for Vercel)
         {allCoursesInLadderCompleted && nextLadder && (
              <Card className="bg-blue-50 dark:bg-blue-900/30 border-blue-200 dark:border-blue-800">
                 <CardHeader className="text-center">
@@ -179,59 +173,6 @@ export default function UserDashboardClient() {
                 </CardContent>
             </Card>
         )}
-<<<<<<< HEAD
-       <section>
-            <h2 className="font-headline text-2xl font-semibold mb-4">
-                My Progress Overview
-            </h2>
-            {loading ? (
-                <Card>
-                    <CardHeader>
-                        <Skeleton className="h-6 w-1/2" />
-                        <Skeleton className="h-4 w-3/4" />
-                    </CardHeader>
-                    <CardContent>
-                        <Skeleton className="h-64 w-full" />
-                    </CardContent>
-                </Card>
-            ) : coursesForProgressOverview.length > 0 ? (
-                 <Card>
-                    <CardHeader>
-                        <CardTitle>My Course Progress</CardTitle>
-                        <CardDescription>Your completion percentage for each course you're currently taking.</CardDescription>
-                    </CardHeader>
-                    <CardContent className="space-y-4">
-                         {coursesForProgressOverview.map(course => (
-                           <div key={course.courseId} className="space-y-2">
-                             <Link href={`/courses/${course.courseId}/video/${course.lastWatchedVideoId}`}>
-                                <div className="flex justify-between items-center">
-                                  <p className="font-medium hover:underline">{course.name}</p>
-                                  <p className="text-sm text-muted-foreground">{course.progress}%</p>
-                                </div>
-                             </Link>
-                            {!isMobile && (
-                                <Progress value={course.progress} className="h-2" />
-                            )}
-                           </div>  
-                         ))}
-                    </CardContent>
-                </Card>
-            ) : (
-                <div className="space-y-6">
-                    <p className="text-muted-foreground">You have not made progress on any courses yet. <Link href="/courses" className="text-primary underline">Explore courses</Link> to get started!</p>
-                </div>
-            )}
-       </section>
-
-      {suggestedCourses.length > 0 && (
-          <section>
-              <h2 className="font-headline text-2xl font-semibold mb-4">Your Next Steps</h2>
-              <p className="text-muted-foreground mb-4">
-                  Here are some courses in your learning path to get you started.
-              </p>
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                  {suggestedCourses.map(course => (
-=======
        <Card>
             <CardHeader>
                 <CardTitle>My Progress Overview</CardTitle>
@@ -315,84 +256,12 @@ export default function UserDashboardClient() {
                 </p>
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                   {suggestedCourses.slice(0, 3).map(course => (
->>>>>>> 7a833b1 (Set up Firebase Admin and environment variables for Vercel)
                       <CourseCard key={course.id} course={course} onUnenroll={() => handleUnenrollment()} />
                   ))}
               </div>
           </section>
       )}
 
-<<<<<<< HEAD
-      <section>
-        <h2 className="font-headline text-2xl font-semibold mb-4">
-          Courses in Progress
-        </h2>
-        {loading ? (
-            <Carousel opts={{ align: "start" }} className="w-full">
-                <RecommendationsLoading />
-            </Carousel>
-        ) : coursesInProgress.length > 0 ? (
-          isMobile ? (
-             <div className="grid grid-cols-1 gap-4">
-              {coursesInProgress.map(course => (
-                  <CourseCard key={course.id} course={course} onUnenroll={() => handleUnenrollment()} />
-              ))}
-            </div>
-          ) : (
-            <Carousel opts={{ align: "start" }} className="w-full">
-              <CarouselContent>
-                  {coursesInProgress.map(course => (
-                      <CarouselItem key={course.id} className="basis-full md:basis-1/2 lg:basis-1/3">
-                        <div className="p-1">
-                           <CourseCard course={course} onUnenroll={() => handleUnenrollment()} />
-                        </div>
-                      </CarouselItem>
-                  ))}
-              </CarouselContent>
-              <CarouselPrevious className="hidden sm:flex" />
-              <CarouselNext className="hidden sm:flex"/>
-            </Carousel>
-          )
-        ) : (
-            <p className="text-muted-foreground">You have no courses in progress. <Link href="/courses" className="text-primary underline">Explore courses</Link> to get started!</p>
-        )}
-      </section>
-
-      <section>
-        <h2 className="font-headline text-2xl font-semibold mb-4">
-          Completed Courses
-        </h2>
-         {loading ? (
-            <Carousel opts={{ align: "start" }} className="w-full">
-                <RecommendationsLoading />
-            </Carousel>
-        ) : completedCourses.length > 0 ? (
-           isMobile ? (
-              <div className="grid grid-cols-1 gap-4">
-                {completedCourses.map(course => (
-                  <CourseCard key={course.id} course={course} onUnenroll={() => handleUnenrollment()} />
-                ))}
-              </div>
-            ) : (
-              <Carousel opts={{ align: "start" }} className="w-full">
-                <CarouselContent>
-                  {completedCourses.map(course => (
-                     <CarouselItem key={course.id} className="basis-full md:basis-1/2 lg:basis-1/3">
-                       <div className="p-1">
-                         <CourseCard course={course} onUnenroll={() => handleUnenrollment()} />
-                       </div>
-                     </CarouselItem>
-                  ))}
-                </CarouselContent>
-                <CarouselPrevious className="hidden sm:flex" />
-                <CarouselNext className="hidden sm:flex"/>
-              </Carousel>
-            )
-        ) : (
-             <p className="text-muted-foreground">You haven't completed any courses yet.</p>
-        )}
-      </section>
-=======
       {completedCourses.length > 0 && (
           <section>
             <h2 className="font-headline text-2xl font-semibold mb-4">
@@ -427,7 +296,6 @@ export default function UserDashboardClient() {
             )}
           </section>
       )}
->>>>>>> 7a833b1 (Set up Firebase Admin and environment variables for Vercel)
     </div>
   );
 }

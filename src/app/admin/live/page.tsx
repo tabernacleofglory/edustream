@@ -341,10 +341,7 @@ const LivePage = () => {
         <DialogContent className="max-w-4xl">
           <DialogHeader>
             <DialogTitle>Select an Image</DialogTitle>
-<<<<<<< HEAD
-=======
              <DialogDescription>Choose an image from the library for your event thumbnail.</DialogDescription>
->>>>>>> 7a833b1 (Set up Firebase Admin and environment variables for Vercel)
           </DialogHeader>
           <ImageLibrary onSelectImage={handleImageSelect} selectedImageUrl={imageUrl} />
         </DialogContent>

@@ -5,12 +5,8 @@ import { doc, getDoc, collection, getDocs, query, where, documentId, Timestamp, 
 import { notFound, redirect } from "next/navigation";
 import VideoPlayer from "@/components/video-player";
 import { getFirebaseAuth } from "@/lib/firebase";
-<<<<<<< HEAD
-import { auth } from "firebase-admin";
-=======
 import type { User as FirebaseUser } from "firebase/auth";
 
->>>>>>> 7a833b1 (Set up Firebase Admin and environment variables for Vercel)
 
 // Disable caching for this page to ensure fresh data
 export const revalidate = 0;
@@ -37,11 +33,7 @@ const convertTimestamps = (data: any) => {
   return data;
 }
 
-<<<<<<< HEAD
-async function getCourseAndVideos(courseId: string, user: auth.DecodedIdToken | null) {
-=======
 async function getCourseAndVideos(courseId: string, user: FirebaseUser | null) {
->>>>>>> 7a833b1 (Set up Firebase Admin and environment variables for Vercel)
     const db = getFirebaseFirestore();
     const courseRef = doc(db, 'courses', courseId);
     const courseSnap = await getDoc(courseRef);
@@ -94,15 +86,9 @@ export default async function VideoPage({ params }: VideoPageProps) {
   // This part is a placeholder for getting the current user on the server.
   // In a real app with proper auth, you'd get this from the session or token.
   const auth = getFirebaseAuth();
-<<<<<<< HEAD
-  const user = auth.currentUser ? { uid: auth.currentUser.uid } : null; // Simplified user object
-
-  const { course, videos, speaker } = await getCourseAndVideos(courseId, user as any);
-=======
   const user = auth.currentUser;
 
   const { course, videos, speaker } = await getCourseAndVideos(courseId, user);
->>>>>>> 7a833b1 (Set up Firebase Admin and environment variables for Vercel)
 
   if (!course) {
     notFound();

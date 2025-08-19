@@ -12,11 +12,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Loader2, Link as LinkIcon, Trash, Edit, Plus, Minus } from "lucide-react";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
-<<<<<<< HEAD
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-=======
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogDescription } from "@/components/ui/dialog";
->>>>>>> 7a833b1 (Set up Firebase Admin and environment variables for Vercel)
 import { Skeleton } from "./ui/skeleton";
 
 
@@ -228,12 +224,9 @@ export default function LinkManager() {
                 <DialogContent>
                     <DialogHeader>
                         <DialogTitle>Edit Link</DialogTitle>
-<<<<<<< HEAD
-=======
                         <DialogDescription id="edit-link-desc">
                             Update the title or URL for this navigation link.
                         </DialogDescription>
->>>>>>> 7a833b1 (Set up Firebase Admin and environment variables for Vercel)
                     </DialogHeader>
                     {editingLink && (
                         <EditLinkForm 

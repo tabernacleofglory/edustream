@@ -117,8 +117,6 @@ export default function EditUserForm({ userToEdit, onUserUpdated }: EditUserForm
     reset,
   } = useForm<ProfileFormValues>({
     resolver: zodResolver(profileSchema),
-<<<<<<< HEAD
-=======
     defaultValues: {
         displayName: userToEdit.displayName || "",
         email: userToEdit.email || "",
@@ -132,7 +130,6 @@ export default function EditUserForm({ userToEdit, onUserUpdated }: EditUserForm
         ministry: userToEdit.ministry || "",
         charge: userToEdit.charge || "",
     }
->>>>>>> 7a833b1 (Set up Firebase Admin and environment variables for Vercel)
   });
   
   const fetchItems = useCallback(async (collectionName: string, setter: React.Dispatch<React.SetStateAction<any[]>>, orderByField = "name") => {
@@ -159,11 +156,7 @@ export default function EditUserForm({ userToEdit, onUserUpdated }: EditUserForm
           const newItem = { id: docRef.id, name: itemName.trim() };
           const sortedItems = [...(await getDocs(query(collection(db, collectionName), orderBy("name")))).docs.map(doc => ({ id: doc.id, name: doc.data().name }))];
           setter(sortedItems);
-<<<<<<< HEAD
-          setValue(formField, newItem.name, { shouldValidate: true, shouldDirty: true });
-=======
           setValue(formField, newItem.name as any, { shouldValidate: true, shouldDirty: true });
->>>>>>> 7a833b1 (Set up Firebase Admin and environment variables for Vercel)
           setNewItemName("");
           toast({ title: `${String(formField)} Added` });
       } catch (error) {
@@ -185,11 +178,7 @@ export default function EditUserForm({ userToEdit, onUserUpdated }: EditUserForm
           const updatedItems = (await getDocs(query(collection(db, collectionName), orderBy("name")))).docs.map(doc => ({ id: doc.id, name: doc.data().name }));
           setter(updatedItems);
           if (currentValue === itemName) {
-<<<<<<< HEAD
-               setValue(formField, updatedItems.length > 0 ? updatedItems[0].name : "", { shouldDirty: true });
-=======
                setValue(formField, (updatedItems.length > 0 ? updatedItems[0].name : "") as any, { shouldDirty: true });
->>>>>>> 7a833b1 (Set up Firebase Admin and environment variables for Vercel)
           }
           toast({ title: `${String(formField)} Removed` });
       } catch (error) {
@@ -421,13 +410,7 @@ export default function EditUserForm({ userToEdit, onUserUpdated }: EditUserForm
                                         {items.map(item => (
                                             <div key={item.id} className="flex items-center justify-between">
                                                 <span>{item.name}</span>
-<<<<<<< HEAD
-                                                <Button type="button" variant="ghost" size="icon" onClick={() => onRemove(item.id)}>
-                                                    <Trash className="h-4 w-4" />
-                                                </Button>
-=======
                                                 <Button type="button" variant="ghost" size="icon" onClick={() => onRemove(item.id)}><Trash className="h-4 w-4" /></Button>
->>>>>>> 7a833b1 (Set up Firebase Admin and environment variables for Vercel)
                                             </div>
                                         ))}
                                     </div>

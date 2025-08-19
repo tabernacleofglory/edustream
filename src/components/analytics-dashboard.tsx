@@ -1,11 +1,7 @@
 
 "use client";
 
-<<<<<<< HEAD
-import { useState, useEffect, useRef, useMemo } from "react";
-=======
 import { useState, useEffect, useRef, useMemo, useCallback } from "react";
->>>>>>> 7a833b1 (Set up Firebase Admin and environment variables for Vercel)
 import {
   Card,
   CardContent,
@@ -40,10 +36,7 @@ import { Skeleton } from "./ui/skeleton";
 import { Eye, Download, ArrowUpDown, MessageSquare, ThumbsUp, Share2, ChevronLeft, ChevronRight, Repeat2 } from "lucide-react";
 import jsPDF from "jspdf";
 import html2canvas from "html2canvas";
-<<<<<<< HEAD
-=======
 import Papa from 'papaparse';
->>>>>>> 7a833b1 (Set up Firebase Admin and environment variables for Vercel)
 
 interface Campus {
   id: string;
@@ -114,110 +107,12 @@ export default function AnalyticsDashboard() {
   const [sortConfig, setSortConfig] = useState<{ key: SortKey; direction: SortDirection } | null>(null);
   const [socialDataPage, setSocialDataPage] = useState(1);
   const [socialDataPageSize, setSocialDataPageSize] = useState(10);
-<<<<<<< HEAD
-=======
   const [detailedReportPage, setDetailedReportPage] = useState(1);
   const [detailedReportPageSize, setDetailedReportPageSize] = useState(10);
->>>>>>> 7a833b1 (Set up Firebase Admin and environment variables for Vercel)
   const db = getFirebaseFirestore();
 
   useEffect(() => {
     setIsClient(true);
-<<<<<<< HEAD
-    const fetchAllData = async () => {
-        setLoading(true);
-        
-        try {
-            const usersCollection = collection(db, 'users');
-            const coursesCollection = query(collection(db, 'courses'), where('status', '==', 'published'));
-            const videosCollection = query(collection(db, 'Contents'), where("Type", "==", "video"));
-            const progressCollection = collection(db, 'userVideoProgress');
-            const campusesCollection = collection(db, 'Campus');
-            const enrollmentsCollection = collection(db, 'enrollments');
-            const communityPostsCollection = collection(db, 'communityPosts');
-
-            const [usersSnapshot, coursesSnapshot, videosSnapshot, progressSnapshot, campusesSnapshot, enrollmentsSnapshot, communityPostsSnapshot] = await Promise.all([
-                getDocs(usersCollection),
-                getDocs(coursesCollection),
-                getDocs(videosCollection),
-                getDocs(progressCollection),
-                getDocs(campusesCollection),
-                getDocs(enrollmentsCollection),
-                getDocs(communityPostsCollection),
-            ]);
-            
-            const usersList = usersSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as User));
-            const coursesList = coursesSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Course));
-            const videosList = videosSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Video));
-            const progressList = progressSnapshot.docs.map(doc => doc.data() as UserProgressType);
-            const campusesList = campusesSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Campus));
-            const enrollmentsList = enrollmentsSnapshot.docs.map(doc => doc.data() as Enrollment);
-            const communityPostsList = communityPostsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Post));
-
-
-            setAllUsers(usersList);
-            setAllCourses(coursesList);
-            setAllVideos(videosList);
-            setAllCampuses(campusesList);
-
-            const socialInteractionPromises = communityPostsList.map(async (post) => {
-                const commentsQuery = query(collection(db, 'communityPosts', post.id, 'replies'));
-                const commentsSnapshot = await getCountFromServer(commentsQuery);
-                return {
-                    postId: post.id,
-                    postContent: post.content,
-                    authorName: post.authorName,
-                    likes: post.likeCount || 0,
-                    shares: post.shareCount || 0,
-                    reposts: post.repostCount || 0,
-                    comments: commentsSnapshot.data().count,
-                };
-            });
-
-            const socialInteractionData = await Promise.all(socialInteractionPromises);
-            setSocialData(socialInteractionData);
-            
-            const progressMap = new Map<string, UserProgressType>();
-            progressList.forEach(p => {
-              const key = `${p.userId}-${p.courseId}`;
-              progressMap.set(key, p);
-            });
-            
-            const allProgressData: UserProgressType[] = enrollmentsList.map(enrollment => {
-                const course = coursesList.find(c => c.id === enrollment.courseId);
-                if (!course) return null;
-
-                const progressDoc = progressMap.get(`${enrollment.userId}-${enrollment.courseId}`);
-                const videoProgress = progressDoc?.videoProgress || [];
-                
-                const publishedVideoIds = new Set(course.videos?.filter(videoId => videosList.some(v => v.id === videoId && v.status === 'published')).map(id => id) || []);
-
-                const completedVideosCount = videoProgress.filter(vp => vp.completed && publishedVideoIds.has(vp.videoId)).length;
-                const totalPublishedVideos = publishedVideoIds.size;
-                
-                const totalProgress = totalPublishedVideos > 0 ? Math.round((completedVideosCount / totalPublishedVideos) * 100) : 0;
-                
-                return {
-                    userId: enrollment.userId,
-                    courseId: enrollment.courseId,
-                    videoProgress,
-                    totalProgress,
-                };
-            }).filter((p): p is UserProgressType => p !== null);
-            
-            setUserProgressData(allProgressData);
-
-        } catch(error) {
-            console.error("Failed to fetch analytics data:", error);
-        } finally {
-            setLoading(false);
-        }
-    };
-
-    fetchAllData();
-  }, [db]);
-  
-=======
   }, []);
 
   const fetchAllStaticData = useCallback(async () => {
@@ -315,7 +210,6 @@ export default function AnalyticsDashboard() {
   }, [loading, selectedUser, selectedCourse, selectedCampus, fetchProgressData]);
 
 
->>>>>>> 7a833b1 (Set up Firebase Admin and environment variables for Vercel)
   const campusesWithProgress = useMemo(() => {
     const userIdsWithProgress = new Set(userProgressData.filter(p => (p.videoProgress || []).some(vp => vp.timeSpent > 0 || vp.completed)).map(p => p.userId));
     const relevantUsers = allUsers.filter(u => userIdsWithProgress.has(u.id));
@@ -323,25 +217,8 @@ export default function AnalyticsDashboard() {
     return allCampuses.filter(c => campusNames.has(c["Campus Name"]));
   }, [userProgressData, allUsers, allCampuses]);
 
-<<<<<<< HEAD
-  const usersInSelectedCampus = useMemo(() => {
-    if (selectedCampus === 'all') return new Set(allUsers.map(u => u.id));
-    const campus = allCampuses.find(c => c.id === selectedCampus);
-    if (!campus) return new Set();
-    return new Set(allUsers.filter(u => u.campus === campus["Campus Name"]).map(u => u.id));
-  }, [selectedCampus, allUsers, allCampuses]);
-
-
-  const sortedAndFilteredProgress = useMemo(() => {
-    let filtered = userProgressData.filter(progress => 
-      (selectedUser === "all" || progress.userId === selectedUser) &&
-      (selectedCourse === "all" || progress.courseId === selectedCourse) &&
-      (selectedCampus === 'all' || usersInSelectedCampus.has(progress.userId))
-    );
-=======
   const sortedAndFilteredProgress = useMemo(() => {
     let filtered = [...userProgressData];
->>>>>>> 7a833b1 (Set up Firebase Admin and environment variables for Vercel)
 
     if (sortConfig !== null) {
         filtered.sort((a, b) => {
@@ -374,11 +251,7 @@ export default function AnalyticsDashboard() {
     }
 
     return filtered;
-<<<<<<< HEAD
-}, [userProgressData, selectedUser, selectedCourse, selectedCampus, usersInSelectedCampus, sortConfig, allUsers, allCourses]);
-=======
 }, [userProgressData, sortConfig, allUsers, allCourses]);
->>>>>>> 7a833b1 (Set up Firebase Admin and environment variables for Vercel)
 
   const engagementChartData = useMemo(() => {
     return allCourses.map(course => {
@@ -504,15 +377,12 @@ export default function AnalyticsDashboard() {
       socialDataPage * socialDataPageSize
   );
 
-<<<<<<< HEAD
-=======
   const detailedReportTotalPages = Math.ceil(sortedAndFilteredProgress.length / detailedReportPageSize);
   const currentDetailedReportData = sortedAndFilteredProgress.slice(
       (detailedReportPage - 1) * detailedReportPageSize,
       detailedReportPage * detailedReportPageSize
   );
 
->>>>>>> 7a833b1 (Set up Firebase Admin and environment variables for Vercel)
 
   if (!isClient) {
     return (
@@ -568,22 +438,13 @@ export default function AnalyticsDashboard() {
                     <Skeleton className="h-[300px] w-full" />
                 ) : (
                     <ChartContainer config={engagementChartConfig} className="min-h-[200px] w-full">
-<<<<<<< HEAD
-                    <ResponsiveContainer width="100%" height={300}>
-                        <BarChart data={engagementChartData}>
-=======
                         <BarChart data={engagementChartData} height={300}>
->>>>>>> 7a833b1 (Set up Firebase Admin and environment variables for Vercel)
                         <CartesianGrid vertical={false} />
                         <XAxis dataKey="course" tickLine={false} tickMargin={10} axisLine={false} />
                         <YAxis />
                         <Tooltip content={<ChartTooltipContent />} />
                         <Bar dataKey="timeSpent" fill="var(--color-timeSpent)" radius={4} />
                         </BarChart>
-<<<<<<< HEAD
-                    </ResponsiveContainer>
-=======
->>>>>>> 7a833b1 (Set up Firebase Admin and environment variables for Vercel)
                     </ChartContainer>
                 )}
             </div>
@@ -599,17 +460,6 @@ export default function AnalyticsDashboard() {
                     <Skeleton className="h-[348px] w-full" />
                  ) : (
                     <ChartContainer config={progressChartConfig} className="min-h-[200px] w-full">
-<<<<<<< HEAD
-                        <ResponsiveContainer width="100%" height={348}>
-                            <BarChart data={campusProgressChartData}>
-                                <CartesianGrid vertical={false} />
-                                <XAxis dataKey="campus" tickLine={false} tickMargin={10} axisLine={false} />
-                                <YAxis domain={[0, 100]} />
-                                <Tooltip content={<ChartTooltipContent />} />
-                                <Bar dataKey="averageProgress" fill="var(--color-averageProgress)" radius={4} />
-                            </BarChart>
-                        </ResponsiveContainer>
-=======
                         <BarChart data={campusProgressChartData} height={348}>
                             <CartesianGrid vertical={false} />
                             <XAxis dataKey="campus" tickLine={false} tickMargin={10} axisLine={false} />
@@ -617,7 +467,6 @@ export default function AnalyticsDashboard() {
                             <Tooltip content={<ChartTooltipContent />} />
                             <Bar dataKey="averageProgress" fill="var(--color-averageProgress)" radius={4} />
                         </BarChart>
->>>>>>> 7a833b1 (Set up Firebase Admin and environment variables for Vercel)
                     </ChartContainer>
                  )}
             </CardContent>
@@ -686,11 +535,7 @@ export default function AnalyticsDashboard() {
                             }}
                         >
                             <SelectTrigger className="w-[70px]">
-<<<<<<< HEAD
-                                <SelectValue placeholder={socialDataPageSize} />
-=======
                                 <SelectValue placeholder={`${socialDataPageSize}`} />
->>>>>>> 7a833b1 (Set up Firebase Admin and environment variables for Vercel)
                             </SelectTrigger>
                             <SelectContent>
                                 {[10, 25, 50, 100].map(size => (
@@ -818,11 +663,7 @@ export default function AnalyticsDashboard() {
                         </TableRow>
                     ))
                 ) : (
-<<<<<<< HEAD
-                    sortedAndFilteredProgress.map((progress) => {
-=======
                     currentDetailedReportData.map((progress) => {
->>>>>>> 7a833b1 (Set up Firebase Admin and environment variables for Vercel)
                     const user = allUsers.find(u => u.id === progress.userId);
                     const course = allCourses.find(c => c.id === progress.courseId);
                     const totalTimeSpent = (progress.videoProgress || []).reduce((acc, vp) => acc + vp.timeSpent, 0);
@@ -860,8 +701,6 @@ export default function AnalyticsDashboard() {
             </div>
            )}
         </CardContent>
-<<<<<<< HEAD
-=======
         {detailedReportTotalPages > 1 && (
             <CardFooter className="flex justify-end items-center gap-4">
                 <div className="flex items-center gap-2 text-sm text-muted-foreground">
@@ -908,21 +747,10 @@ export default function AnalyticsDashboard() {
                 </div>
             </CardFooter>
         )}
->>>>>>> 7a833b1 (Set up Firebase Admin and environment variables for Vercel)
       </Card>
 
       <Dialog open={!!selectedProgressDetail} onOpenChange={() => setSelectedProgressDetail(null)}>
         <DialogContent className="max-w-2xl">
-<<<<<<< HEAD
-          {selectedProgressDetail && (
-            <>
-              <DialogHeader>
-                <DialogTitle>Progress Details</DialogTitle>
-                <DialogDescription>
-                  Detailed video progress for {selectedProgressDetail.user.displayName} in {selectedProgressDetail.course.title}.
-                </DialogDescription>
-              </DialogHeader>
-=======
           <DialogHeader>
             <DialogTitle>Progress Details</DialogTitle>
             <DialogDescription>
@@ -931,7 +759,6 @@ export default function AnalyticsDashboard() {
           </DialogHeader>
           {selectedProgressDetail && (
             <>
->>>>>>> 7a833b1 (Set up Firebase Admin and environment variables for Vercel)
               <div className="max-h-[60vh] overflow-y-auto">
                 <Table>
                   <TableHeader>

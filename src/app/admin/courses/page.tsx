@@ -48,10 +48,7 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { useRouter, useSearchParams } from "next/navigation";
-<<<<<<< HEAD
-=======
 import { useIsMobile } from "@/hooks/use-is-mobile";
->>>>>>> 7a833b1 (Set up Firebase Admin and environment variables for Vercel)
 
 
 interface CourseWithStatus extends Course {
@@ -74,10 +71,7 @@ function AdminCoursesPageContent() {
   const db = getFirebaseFirestore();
   const router = useRouter();
   const searchParams = useSearchParams();
-<<<<<<< HEAD
-=======
   const isMobile = useIsMobile();
->>>>>>> 7a833b1 (Set up Firebase Admin and environment variables for Vercel)
 
   const editCourseId = searchParams.get('editCourseId');
 
@@ -190,13 +184,10 @@ function AdminCoursesPageContent() {
     }
   }
 
-<<<<<<< HEAD
-=======
   const MAX_DESKTOP_BUTTONS = 4;
   const visibleLadders = isMobile ? [] : ladders.slice(0, MAX_DESKTOP_BUTTONS);
   const hiddenLadders = isMobile ? ladders : ladders.slice(MAX_DESKTOP_BUTTONS);
 
->>>>>>> 7a833b1 (Set up Firebase Admin and environment variables for Vercel)
   return (
     <div className="flex flex-col gap-8">
       <div className="flex flex-col sm:flex-row justify-between items-start gap-4">
@@ -216,23 +207,6 @@ function AdminCoursesPageContent() {
         )}
       </div>
 
-<<<<<<< HEAD
-      <header className="sticky top-0 z-10 bg-background/95 backdrop-blur-sm -mx-6 px-6 py-4 border-b">
-        <div className="relative flex-1">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
-          <Input 
-            placeholder="Search courses..." 
-            className="pl-10" 
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-          />
-        </div>
-      </header>
-
-      <div className="flex flex-col gap-4">
-        <div className="flex flex-col md:flex-row gap-2">
-          <div className="flex items-center gap-2 overflow-x-auto pb-2 no-scrollbar">
-=======
       <div className="flex flex-col gap-4">
         <div className="flex flex-col md:flex-row gap-2">
             {isMobile ? (
@@ -289,7 +263,6 @@ function AdminCoursesPageContent() {
                 </div>
             )}
             <div className="flex items-center gap-2 overflow-x-auto pb-2 no-scrollbar">
->>>>>>> 7a833b1 (Set up Firebase Admin and environment variables for Vercel)
               <Button
                   variant={selectedCategory === null ? 'default' : 'outline'}
                   onClick={() => handleCategoryClick(null)}
@@ -328,23 +301,6 @@ function AdminCoursesPageContent() {
                   </DropdownMenu>
               )}
           </div>
-<<<<<<< HEAD
-          <Select
-              value={selectedLadderId || "all"}
-              onValueChange={(value) => setSelectedLadderId(value === "all" ? null : value)}
-            >
-              <SelectTrigger className="w-full md:w-[200px] flex-shrink-0">
-                  <SelectValue placeholder="Filter by Class Ladder" />
-              </SelectTrigger>
-              <SelectContent>
-                  <SelectItem value="all">All Ladders</SelectItem>
-                  {ladders.map(ladder => (
-                      <SelectItem key={ladder.id} value={ladder.id}>{ladder.name} {ladder.side !== 'none' && `(${ladder.side})`}</SelectItem>
-                  ))}
-              </SelectContent>
-          </Select>
-=======
->>>>>>> 7a833b1 (Set up Firebase Admin and environment variables for Vercel)
         </div>
       </div>
 

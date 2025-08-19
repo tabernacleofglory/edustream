@@ -1,20 +1,12 @@
 
 "use client";
 
-<<<<<<< HEAD
-import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
-import {
-  SidebarProvider,
-=======
 import React, { useState, useEffect } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useAuth } from "@/hooks/use-auth";
 import { useAudioPlayer } from "@/hooks/use-audio-player";
 import {
->>>>>>> 7a833b1 (Set up Firebase Admin and environment variables for Vercel)
   Sidebar,
   SidebarHeader,
   SidebarContent,
@@ -24,10 +16,7 @@ import {
   SidebarMenuButton,
   SidebarFooter,
   useSidebar,
-<<<<<<< HEAD
-=======
   SidebarProvider,
->>>>>>> 7a833b1 (Set up Firebase Admin and environment variables for Vercel)
 } from "@/components/ui/sidebar";
 import { Logo } from "@/components/logo";
 import {
@@ -41,13 +30,7 @@ import {
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { LayoutDashboard, BookOpen, UserCog, Settings, LogOut, Tv, Music, MessageSquare, BookCopy, Shield, Menu } from "lucide-react";
-<<<<<<< HEAD
-import { ThemeProvider } from "@/components/theme-provider";
 import { ThemeToggle } from "@/components/theme-toggle";
-import { useAuth } from "@/hooks/use-auth";
-=======
-import { ThemeToggle } from "@/components/theme-toggle";
->>>>>>> 7a833b1 (Set up Firebase Admin and environment variables for Vercel)
 import { getFirebaseAuth, getFirebaseFirestore } from "@/lib/firebase";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
@@ -57,12 +40,6 @@ import { useIsMobile } from "@/hooks/use-is-mobile";
 import type { Ladder } from '@/lib/types';
 import { onSnapshot, doc } from "firebase/firestore";
 import DynamicIcon from "@/components/dynamic-icon";
-<<<<<<< HEAD
-import { Progress } from "@/components/ui/progress";
-import useRealTimeProgress from "@/hooks/use-real-time-progress";
-import { Toaster } from "@/components/ui/toaster";
-=======
->>>>>>> 7a833b1 (Set up Firebase Admin and environment variables for Vercel)
 
 
 const navItems = [
@@ -85,10 +62,6 @@ const getInitials = (name?: string | null) => {
 const UserProfile = () => {
     const { user, hasPermission } = useAuth();
     const router = useRouter();
-<<<<<<< HEAD
-    const isMobile = useIsMobile();
-=======
->>>>>>> 7a833b1 (Set up Firebase Admin and environment variables for Vercel)
     const [userLadder, setUserLadder] = useState<Ladder | null>(null);
     const auth = getFirebaseAuth();
     const db = getFirebaseFirestore();
@@ -169,13 +142,6 @@ const UserProfile = () => {
 const HeaderContent = () => {
   const { open: isSidebarOpen, setOpen } = useSidebar();
   const isMobile = useIsMobile();
-<<<<<<< HEAD
-  
-  if (usePathname().startsWith('/admin')) {
-      return null;
-  }
-
-=======
   const pathname = usePathname();
   
   if (pathname.startsWith('/admin')) {
@@ -184,7 +150,6 @@ const HeaderContent = () => {
 
   const isVideoPage = pathname.includes('/courses/') && pathname.includes('/video/');
 
->>>>>>> 7a833b1 (Set up Firebase Admin and environment variables for Vercel)
   return (
      <header className="sticky top-0 z-40 flex h-16 w-full items-center gap-4 border-b bg-background/95 px-4 backdrop-blur supports-[backdrop-filter]:bg-background/60 md:px-6">
         <div className="flex items-center gap-2">
@@ -204,15 +169,6 @@ const HeaderContent = () => {
                 </div>
             )}
         </div>
-<<<<<<< HEAD
-        <div className="hidden md:flex flex-1 justify-center px-4">
-            {/* Global Search Removed */}
-        </div>
-         <div className="ml-auto flex items-center gap-2">
-            {!isMobile && <ThemeToggle />}
-            <UserProfile />
-        </div>
-=======
         {!isVideoPage && (
             <>
                 <div className="hidden md:flex flex-1 justify-center px-4">
@@ -231,7 +187,6 @@ const HeaderContent = () => {
                 <UserProfile />
             </div>
         )}
->>>>>>> 7a833b1 (Set up Firebase Admin and environment variables for Vercel)
     </header>
   )
 }
@@ -240,10 +195,7 @@ export default function AppContent({ children }: { children: React.ReactNode }) 
   const pathname = usePathname();
   const { user, loading, hasPermission } = useAuth();
   const router = useRouter();
-<<<<<<< HEAD
-=======
   const { currentTrack } = useAudioPlayer();
->>>>>>> 7a833b1 (Set up Firebase Admin and environment variables for Vercel)
 
   const isMobile = useIsMobile();
   const [isSidebarOpen, setIsSidebarOpen] = useState(isMobile === undefined ? false : !isMobile);
@@ -255,11 +207,6 @@ export default function AppContent({ children }: { children: React.ReactNode }) 
   const showAppLayout = !isAuthPage && !isLandingPage;
 
   const isVideoPage = pathname.includes('/courses/') && pathname.includes('/video/');
-<<<<<<< HEAD
-    const courseId = isVideoPage ? pathname.split('/courses/')[1].split('/')[0] : '';
-    const { percentage: progressPercentage } = useRealTimeProgress(user?.uid || '', courseId);
-=======
->>>>>>> 7a833b1 (Set up Firebase Admin and environment variables for Vercel)
 
 
    useEffect(() => {
@@ -280,43 +227,16 @@ export default function AppContent({ children }: { children: React.ReactNode }) 
   }, [user, loading, router, showAppLayout]);
   
   if (isAuthPage || isLandingPage) {
-<<<<<<< HEAD
-    return <>{children}<Toaster /></>;
-=======
     return <>{children}</>;
->>>>>>> 7a833b1 (Set up Firebase Admin and environment variables for Vercel)
   }
 
   const isAdminPage = pathname.startsWith('/admin');
   if (isAdminPage) {
-<<<<<<< HEAD
-      return (
-        <ThemeProvider
-            attribute="class"
-            defaultTheme="system"
-            enableSystem
-            disableTransitionOnChange
-        >
-            {children}
-            <Toaster />
-        </ThemeProvider>
-      )
-=======
       return <>{children}</>;
->>>>>>> 7a833b1 (Set up Firebase Admin and environment variables for Vercel)
   }
 
   if (loading || !user) {
     return (
-<<<<<<< HEAD
-      <ThemeProvider
-        attribute="class"
-        defaultTheme="system"
-        enableSystem
-        disableTransitionOnChange
-      >
-=======
->>>>>>> 7a833b1 (Set up Firebase Admin and environment variables for Vercel)
         <div className="flex min-h-screen">
              <div className="hidden md:flex flex-col gap-4 border-r bg-background p-2 w-64">
                 <Skeleton className="h-10 w-full" />
@@ -332,89 +252,10 @@ export default function AppContent({ children }: { children: React.ReactNode }) 
                 <Skeleton className="h-64 w-full" />
             </div>
         </div>
-<<<<<<< HEAD
-      </ThemeProvider>
-=======
->>>>>>> 7a833b1 (Set up Firebase Admin and environment variables for Vercel)
     )
   }
 
   return (
-<<<<<<< HEAD
-    <ThemeProvider
-        attribute="class"
-        defaultTheme="system"
-        enableSystem
-        disableTransitionOnChange
-    >
-        <SidebarProvider open={isSidebarOpen} onOpenChange={setIsSidebarOpen}>
-        <PanelGroup direction="horizontal" className="min-h-screen w-full relative">
-            <Sidebar>
-            <SidebarHeader>
-                <div className="flex items-center gap-2">
-                    {isSidebarOpen && <Logo />}
-                </div>
-            </SidebarHeader>
-            <SidebarContent>
-                <SidebarMenu>
-                {navItems.filter(item => hasPermission(item.permission)).map((item) => (
-                    <SidebarMenuItem key={item.href}>
-                    <Link href={item.href}>
-                        <SidebarMenuButton
-                        isActive={pathname.startsWith(item.href) && (item.href !== '/courses' || pathname === '/courses')}
-                        tooltip={{ children: item.label }}
-                        >
-                        <item.icon />
-                        {isSidebarOpen && <span>{item.label}</span>}
-                        </SidebarMenuButton>
-                    </Link>
-                    </SidebarMenuItem>
-                ))}
-                    {isVideoPage && isSidebarOpen && (
-                        <div className="px-4 mt-4">
-                            <div className="flex justify-between items-center mb-2">
-                                <span className="text-sm text-muted-foreground">Progress</span>
-                                <span className="text-sm font-bold">{progressPercentage}%</span>
-                            </div>
-                            <Progress value={progressPercentage} className="w-full h-2 [&>div]:bg-gradient-to-r from-pink-500 to-orange-400" />
-                        </div>
-                    )}
-                {hasPermission('viewAdminDashboard') && (
-                    <SidebarMenuItem>
-                        <Link href="/admin/analytics">
-                            <SidebarMenuButton
-                                isActive={pathname.startsWith('/admin')}
-                                tooltip={{ children: 'Admin Panel' }}
-                            >
-                                <Shield />
-                                {isSidebarOpen && <span>Admin Panel</span>}
-                            </SidebarMenuButton>
-                        </Link>
-                    </SidebarMenuItem>
-                )}
-                </SidebarMenu>
-            </SidebarContent>
-                <SidebarFooter className="sticky bottom-0 bg-background border-t border-border">
-                {/* User profile and theme toggle moved to header */}
-                </SidebarFooter>
-            </Sidebar>
-            <div className={cn("absolute inset-0 bg-black/50 z-40 md:hidden", isSidebarOpen ? 'block' : 'hidden')} onClick={() => setIsSidebarOpen(false)} />
-            <PanelResizeHandle className={cn("w-px items-center justify-center bg-border", isMobile ? 'hidden' : 'flex')} />
-            <Panel className={cn(isMobile && isSidebarOpen && "pointer-events-none")}>
-                <div className="flex flex-col h-screen">
-                    <HeaderContent />
-                    <ScrollArea className="flex-1">
-                        <main className={cn("flex-1", isVideoPage ? "p-0" : "p-4 md:p-8")}>
-                            {children}
-                        </main>
-                    </ScrollArea>
-                </div>
-            </Panel>
-        </PanelGroup>
-        </SidebarProvider>
-        <Toaster />
-    </ThemeProvider>
-=======
         <SidebarProvider open={isSidebarOpen} onOpenChange={setIsSidebarOpen}>
             <PanelGroup direction="horizontal" className="min-h-screen w-full relative">
                 <Sidebar>
@@ -471,6 +312,5 @@ export default function AppContent({ children }: { children: React.ReactNode }) 
                 </Panel>
             </PanelGroup>
         </SidebarProvider>
->>>>>>> 7a833b1 (Set up Firebase Admin and environment variables for Vercel)
   );
 }

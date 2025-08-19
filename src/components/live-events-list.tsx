@@ -261,20 +261,13 @@ Join us live here: ${link}
                 <>
                 <DialogHeader>
                     <DialogTitle>Share "{sharingEvent.title}"</DialogTitle>
-<<<<<<< HEAD
-                    <DialogDescription>
-=======
                     <DialogDescription id="share-desc">
->>>>>>> 7a833b1 (Set up Firebase Admin and environment variables for Vercel)
                         Copy the message below to share it with your audience.
                     </DialogDescription>
                 </DialogHeader>
                 <div className="space-y-4">
                     <Textarea
-<<<<<<< HEAD
-=======
                         aria-describedby="share-desc"
->>>>>>> 7a833b1 (Set up Firebase Admin and environment variables for Vercel)
                         readOnly
                         value={generateShareMessage(sharingEvent)}
                         rows={8}

@@ -19,11 +19,8 @@ import type { GlobalSearchOutput } from "@/ai/flows/global-search";
 import { getFirebaseFirestore } from "@/lib/firebase";
 import { collection, getDocs, query as firestoreQuery, where, documentId, Timestamp } from "firebase/firestore";
 import type { Course, Video as VideoType, Documentation as DocType, User } from "@/lib/types";
-<<<<<<< HEAD
-=======
 import { useIsMobile } from "@/hooks/use-is-mobile";
 import { useAuth } from "@/hooks/use-auth";
->>>>>>> 7a833b1 (Set up Firebase Admin and environment variables for Vercel)
 
 // Helper to convert Firestore Timestamps to a serializable format
 const convertTimestamps = (data: any) => {
@@ -49,11 +46,8 @@ export default function GlobalSearch() {
   const [isLoading, setIsLoading] = useState(false);
   const router = useRouter();
   const db = getFirebaseFirestore();
-<<<<<<< HEAD
-=======
   const isMobile = useIsMobile();
   const { hasPermission } = useAuth();
->>>>>>> 7a833b1 (Set up Firebase Admin and environment variables for Vercel)
 
   // Pre-fetch all searchable data once
   const [searchableData, setSearchableData] = useState<{
@@ -102,12 +96,6 @@ export default function GlobalSearch() {
             const docsQuery = firestoreQuery(collection(db, 'documentation'));
             const docsSnapshot = await getDocs(docsQuery);
             const documentation = docsSnapshot.docs.map(doc => convertTimestamps({ id: doc.id, ...doc.data() }));
-<<<<<<< HEAD
-
-            const usersQuery = firestoreQuery(collection(db, 'users'));
-            const usersSnapshot = await getDocs(usersQuery);
-            const users = usersSnapshot.docs.map(doc => convertTimestamps({ id: doc.id, ...doc.data() as User }));
-=======
             
             let users: User[] = [];
             // This is the crucial change: only fetch users if the user has permission.
@@ -117,7 +105,6 @@ export default function GlobalSearch() {
                 users = usersSnapshot.docs.map(doc => convertTimestamps({ id: doc.id, ...doc.data() as User }));
             }
             
->>>>>>> 7a833b1 (Set up Firebase Admin and environment variables for Vercel)
 
             setSearchableData({ courses, videos: videos as any[], documentation, users });
         } catch (error) {
@@ -125,11 +112,7 @@ export default function GlobalSearch() {
         }
     }
     fetchAllData();
-<<<<<<< HEAD
-  }, [db]);
-=======
   }, [db, hasPermission]);
->>>>>>> 7a833b1 (Set up Firebase Admin and environment variables for Vercel)
 
   useEffect(() => {
     if (debouncedQuery.length > 2 && searchableData) {
@@ -175,19 +158,6 @@ export default function GlobalSearch() {
 
   return (
     <>
-<<<<<<< HEAD
-      <Button
-        variant="outline"
-        className="relative w-full justify-start text-muted-foreground hidden md:flex"
-        onClick={() => setIsOpen(true)}
-      >
-        <Search className="h-4 w-4 mr-2" />
-        Search...
-        <kbd className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 hidden h-5 select-none items-center gap-1 rounded border bg-muted px-1.5 font-mono text-[10px] font-medium opacity-100 sm:flex">
-          <span className="text-xs">⌘</span>K
-        </kbd>
-      </Button>
-=======
       {isMobile ? (
         <Button variant="ghost" size="icon" onClick={() => setIsOpen(true)}>
           <Search className="h-5 w-5" />
@@ -205,7 +175,6 @@ export default function GlobalSearch() {
             </kbd>
         </Button>
       )}
->>>>>>> 7a833b1 (Set up Firebase Admin and environment variables for Vercel)
       <Dialog open={isOpen} onOpenChange={setIsOpen}>
         <DialogContent className="sm:max-w-2xl p-0">
           <DialogHeader className="sr-only">
