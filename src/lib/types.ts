@@ -55,10 +55,6 @@ export interface Course {
     id: string;
     title: string;
   };
-  prerequisiteCourse?: {
-    id: string;
-    title: string;
-  };
 }
 
 export interface Video {
