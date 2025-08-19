@@ -2,10 +2,17 @@
 'use client';
 
 import { useParams, useRouter } from 'next/navigation';
+<<<<<<< HEAD
 import { FC, Suspense, useState, useEffect } from 'react';
 import { Logo } from '@/components/logo';
 import { Button } from '@/components/ui/button';
 import { ArrowLeft, CirclePlay, MicVocal, Tv } from 'lucide-react';
+=======
+import { FC, Suspense, useState, useEffect, useRef } from 'react';
+import { Logo } from '@/components/logo';
+import { Button } from '@/components/ui/button';
+import { ArrowLeft, CirclePlay, MicVocal, Tv, Maximize, Minimize } from 'lucide-react';
+>>>>>>> 7a833b1 (Set up Firebase Admin and environment variables for Vercel)
 import { useAuth } from '@/hooks/use-auth';
 import { db } from '@/lib/firebase';
 import { collection, query, where, getDocs } from 'firebase/firestore';
@@ -21,6 +28,12 @@ const GloryLiveUserViewContent: FC = () => {
   const [event, setEvent] = useState<LiveEvent | null>(null);
   const [loading, setLoading] = useState(true);
   const [mode, setMode] = useState<'join' | 'watch' | 'participate' | null>(null);
+<<<<<<< HEAD
+=======
+  const [isFullScreen, setIsFullScreen] = useState(false);
+  const playerContainerRef = useRef<HTMLDivElement>(null);
+
+>>>>>>> 7a833b1 (Set up Firebase Admin and environment variables for Vercel)
 
   useEffect(() => {
     const fetchEvent = async () => {
@@ -46,6 +59,39 @@ const GloryLiveUserViewContent: FC = () => {
     };
     fetchEvent();
   }, [roomId]);
+<<<<<<< HEAD
+=======
+  
+  useEffect(() => {
+    const handleFullScreenChange = () => {
+      setIsFullScreen(!!document.fullscreenElement);
+    };
+    document.addEventListener('fullscreenchange', handleFullScreenChange);
+    return () => document.removeEventListener('fullscreenchange', handleFullScreenChange);
+  }, []);
+
+  const handleFullScreen = () => {
+    const playerContainer = playerContainerRef.current;
+    if (!playerContainer) return;
+
+    if (!document.fullscreenElement) {
+      playerContainer.requestFullscreen().catch(err => {
+        alert(`Error attempting to enable full-screen mode: ${err.message} (${err.name})`);
+      });
+    } else {
+      document.exitFullscreen();
+    }
+  };
+
+  const handleBackClick = () => {
+    if (mode === 'watch' || mode === 'participate') {
+        setMode('join');
+    } else {
+        router.back();
+    }
+  };
+
+>>>>>>> 7a833b1 (Set up Firebase Admin and environment variables for Vercel)
 
   if (loading) {
     return (
@@ -82,7 +128,11 @@ const GloryLiveUserViewContent: FC = () => {
     <div className="flex flex-col h-screen bg-background text-foreground">
       <header className="flex items-center justify-between p-4 border-b flex-shrink-0">
         <div className="flex items-center gap-2">
+<<<<<<< HEAD
             <Button variant="outline" onClick={() => router.back()}>
+=======
+            <Button variant="outline" onClick={handleBackClick}>
+>>>>>>> 7a833b1 (Set up Firebase Admin and environment variables for Vercel)
                 <ArrowLeft className="mr-2 h-4 w-4" />
                 Back
             </Button>
@@ -94,11 +144,24 @@ const GloryLiveUserViewContent: FC = () => {
                 <Tv className="mr-2 h-4 w-4" />
                 LIVE
             </Badge>
+<<<<<<< HEAD
         </div>
       </header>
       <main className="flex-1 bg-muted/40">
         {mode === 'join' && (
           <div className="flex flex-col items-center justify-center p-4 text-center gap-6 h-full">
+=======
+            {(mode === 'watch' || mode === 'participate') && (
+                 <Button variant="ghost" size="icon" onClick={handleFullScreen}>
+                    {isFullScreen ? <Minimize className="h-5 w-5" /> : <Maximize className="h-5 w-5" />}
+                </Button>
+            )}
+        </div>
+      </header>
+      <main className="flex-1 bg-black" ref={playerContainerRef}>
+        {mode === 'join' && (
+          <div className="flex flex-col items-center justify-center p-4 text-center gap-6 h-full bg-background">
+>>>>>>> 7a833b1 (Set up Firebase Admin and environment variables for Vercel)
             <h2 className="text-4xl font-bold font-headline">Join the Event</h2>
             <p className="text-muted-foreground max-w-xl">
               You can join the session as a viewer or participate with your camera and microphone if you have permission.

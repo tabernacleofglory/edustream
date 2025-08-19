@@ -1,7 +1,7 @@
 
 'use server';
 
-import { db } from './firebase-admin'; 
+import { getAdminDb } from '@/lib/firebase-admin';
 import type { LiveEvent } from './types';
 import { v4 as uuidv4 } from 'uuid';
 
@@ -9,10 +9,12 @@ export const createLiveEvent = async (
   eventData: Omit<LiveEvent, 'id' | 'status' | 'streamKey' | 'playbackId' | 'muxLiveStreamId'>
 ): Promise<LiveEvent> => {
   try {
+    const db = await getAdminDb();
     const docRef = await db.collection('liveEvents').add({
       ...eventData,
       status: 'upcoming',
       startTime: eventData.startTime, 
+      vdoNinjaRoomId: eventData.vdoNinjaRoomId || null,
     });
 
     return {
@@ -33,6 +35,7 @@ const generatePassword = () => {
 
 export const goLiveWithGloryLive = async (eventId: string, vdoNinjaRoomId?: string): Promise<{ success: boolean; message: string; roomId?: string, password?: string }> => {
     try {
+        const db = await getAdminDb();
         const eventRef = db.collection('liveEvents').doc(eventId);
         const eventDoc = await eventRef.get();
 
@@ -62,6 +65,7 @@ export const updateLiveEvent = async (
   eventData: Partial<Omit<LiveEvent, 'id'>>
 ): Promise<LiveEvent> => {
   try {
+    const db = await getAdminDb();
     const eventRef = db.collection('liveEvents').doc(eventId);
     await eventRef.update(eventData);
     
@@ -83,6 +87,7 @@ export const updateLiveEvent = async (
 
 export const deleteLiveEvent = async (eventId: string): Promise<void> => {
   try {
+    const db = await getAdminDb();
     const eventRef = db.collection('liveEvents').doc(eventId);
     await eventRef.delete();
   } catch (error) {

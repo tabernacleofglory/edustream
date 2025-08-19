@@ -13,7 +13,11 @@ import {
     signInWithEmailAndPassword,
     sendPasswordResetEmail,
 } from "firebase/auth";
+<<<<<<< HEAD
 import { getFirebaseAuth, getFirebaseFirestore } from "@/lib/firebase";
+=======
+import { getFirebaseAuth } from "@/lib/firebase";
+>>>>>>> 7a833b1 (Set up Firebase Admin and environment variables for Vercel)
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -24,7 +28,10 @@ import { Loader2 } from "lucide-react";
 import React from "react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogTrigger } from "@/components/ui/dialog";
+<<<<<<< HEAD
 import { doc, getDoc, setDoc, serverTimestamp, collection, query, where, getDocs } from "firebase/firestore";
+=======
+>>>>>>> 7a833b1 (Set up Firebase Admin and environment variables for Vercel)
 
 export default function LoginPage() {
     const router = useRouter();
@@ -41,6 +48,7 @@ export default function LoginPage() {
     const [isResetDialogOpen, setIsResetDialogOpen] = useState(false);
 
     const auth = getFirebaseAuth();
+<<<<<<< HEAD
     const db = getFirebaseFirestore();
     
     const handleAuthSuccess = async (user: any) => {
@@ -80,6 +88,9 @@ export default function LoginPage() {
         router.refresh();
     };
 
+=======
+    
+>>>>>>> 7a833b1 (Set up Firebase Admin and environment variables for Vercel)
     useEffect(() => {
         const handleSignInWithLink = async () => {
             if (isSignInWithEmailLink(auth, window.location.href)) {
@@ -90,9 +101,16 @@ export default function LoginPage() {
                 if (emailFromStorage) {
                     setIsLoading(true);
                     try {
+<<<<<<< HEAD
                         const result = await signInWithEmailLink(auth, emailFromStorage, window.location.href);
                         window.localStorage.removeItem('emailForSignIn');
                         await handleAuthSuccess(result.user);
+=======
+                        await signInWithEmailLink(auth, emailFromStorage, window.location.href);
+                        window.localStorage.removeItem('emailForSignIn');
+                        router.push('/dashboard');
+                        router.refresh();
+>>>>>>> 7a833b1 (Set up Firebase Admin and environment variables for Vercel)
                     } catch (error) {
                         setError("The sign-in link is invalid or has expired.");
                     } finally {
@@ -102,7 +120,11 @@ export default function LoginPage() {
             }
         };
         handleSignInWithLink();
+<<<<<<< HEAD
     }, [auth, db, toast, router]);
+=======
+    }, [auth, router]);
+>>>>>>> 7a833b1 (Set up Firebase Admin and environment variables for Vercel)
 
 
     const handleLogin = async (e: React.FormEvent) => {
@@ -163,8 +185,14 @@ export default function LoginPage() {
         setError(null);
         const provider = new GoogleAuthProvider();
         try {
+<<<<<<< HEAD
             const result = await signInWithPopup(auth, provider);
             await handleAuthSuccess(result.user);
+=======
+            await signInWithPopup(auth, provider);
+            router.push('/dashboard');
+            router.refresh();
+>>>>>>> 7a833b1 (Set up Firebase Admin and environment variables for Vercel)
         } catch (error: any) {
             setError(error.message);
             toast({

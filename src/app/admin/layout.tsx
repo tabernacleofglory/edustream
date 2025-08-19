@@ -29,6 +29,10 @@ import {
   Shield,
   UserRound,
   UserCheck,
+<<<<<<< HEAD
+=======
+  Megaphone,
+>>>>>>> 7a833b1 (Set up Firebase Admin and environment variables for Vercel)
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
@@ -46,6 +50,10 @@ import DynamicIcon from "@/components/dynamic-icon";
 import { Logo } from "@/components/logo";
 import { Alert, AlertTitle, AlertDescription } from "@/components/ui/alert";
 import { Lock } from 'lucide-react';
+<<<<<<< HEAD
+=======
+import GlobalSearch from "@/components/global-search";
+>>>>>>> 7a833b1 (Set up Firebase Admin and environment variables for Vercel)
 
 
 const NavItem = ({ href, label, icon: Icon, subItems, permission }: { href?: string; label:string; icon: React.ElementType; subItems?: any[]; permission?: string }) => {
@@ -97,9 +105,23 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   const isMobile = useIsMobile();
   const { user, loading, hasPermission, refreshUser } = useAuth();
   const router = useRouter();
+<<<<<<< HEAD
   const [userLadder, setUserLadder] = useState<Ladder | null>(null);
   const db = getFirebaseFirestore();
 
+=======
+  const pathname = usePathname();
+  const [userLadder, setUserLadder] = useState<Ladder | null>(null);
+  const db = getFirebaseFirestore();
+
+  const isFullscreenPage = pathname.startsWith('/admin/glory-live') || pathname.startsWith('/admin/live/');
+
+  if (isFullscreenPage) {
+    return <>{children}</>;
+  }
+
+
+>>>>>>> 7a833b1 (Set up Firebase Admin and environment variables for Vercel)
   const navLinks = [
     {
       group: "Main",
@@ -134,6 +156,10 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
             { href: "/admin/content/logos", label: "Logos", icon: Award },
             { href: "/admin/content/certificates", label: "Certificates", icon: Award },
             { href: "/admin/content/documentation", label: "Documentation", icon: BookCopy },
+<<<<<<< HEAD
+=======
+            { href: "/admin/content/announcements", label: "Announcements", icon: Megaphone },
+>>>>>>> 7a833b1 (Set up Firebase Admin and environment variables for Vercel)
           ],
         },
       ],
@@ -301,8 +327,13 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
                 )}
                  {isMobile && <Logo />}
             </div>
+<<<<<<< HEAD
             <div className="flex-1">
                {/* Global Search Removed */}
+=======
+            <div className="flex-1 px-4">
+               
+>>>>>>> 7a833b1 (Set up Firebase Admin and environment variables for Vercel)
             </div>
             <div className="ml-auto flex items-center gap-2">
                 <ThemeToggle />

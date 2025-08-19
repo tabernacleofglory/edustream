@@ -33,9 +33,13 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import CoursePreview from "./course-preview";
+<<<<<<< HEAD
 import useRealTimeProgress from "@/hooks/use-real-time-progress";
 import { Progress } from "./ui/progress";
 import CertificatePrint from "./certificate-print";
+=======
+import { Progress } from "./ui/progress";
+>>>>>>> 7a833b1 (Set up Firebase Admin and environment variables for Vercel)
 import { unenrollUserFromCourse } from "@/lib/user-actions";
 import { Avatar, AvatarFallback, AvatarImage } from "./ui/avatar";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "./ui/tooltip";
@@ -48,9 +52,16 @@ interface CourseCardProps {
   onDuplicate?: () => void;
   onUnenroll?: (courseId: string) => void;
   isAdminView?: boolean;
+<<<<<<< HEAD
 }
 
 export function CourseCard({ course, onEdit, onDelete, onDuplicate, onUnenroll, isAdminView = false }: CourseCardProps) {
+=======
+  showEnroll?: boolean;
+}
+
+export function CourseCard({ course, onEdit, onDelete, onDuplicate, onUnenroll, isAdminView = false, showEnroll = false }: CourseCardProps) {
+>>>>>>> 7a833b1 (Set up Firebase Admin and environment variables for Vercel)
     const { user, loading: authLoading, refreshUser } = useAuth();
     const router = useRouter();
     const { toast } = useToast();
@@ -61,12 +72,19 @@ export function CourseCard({ course, onEdit, onDelete, onDuplicate, onUnenroll, 
     const [firstVideoId, setFirstVideoId] = useState<string | null>(null);
     const [publishedVideoCount, setPublishedVideoCount] = useState<number>(0);
     const db = getFirebaseFirestore();
+<<<<<<< HEAD
     const { percentage: progressPercentage } = useRealTimeProgress(user?.uid || '', course.id);
+=======
+>>>>>>> 7a833b1 (Set up Firebase Admin and environment variables for Vercel)
     
     const isEnrolled = course.isEnrolled || false;
     const isCompleted = course.isCompleted || false;
     const isInProgress = isEnrolled && !isCompleted;
     const isLocked = course.isLocked && !isEnrolled && !isAdminView;
+<<<<<<< HEAD
+=======
+    const progressPercentage = course.totalProgress || 0;
+>>>>>>> 7a833b1 (Set up Firebase Admin and environment variables for Vercel)
 
 
      useEffect(() => {
@@ -126,9 +144,12 @@ export function CourseCard({ course, onEdit, onDelete, onDuplicate, onUnenroll, 
                 enrolledAt: serverTimestamp(),
             });
             
+<<<<<<< HEAD
             const courseRef = doc(db, 'courses', course.id);
             await updateDoc(courseRef, { enrollmentCount: increment(1) });
             
+=======
+>>>>>>> 7a833b1 (Set up Firebase Admin and environment variables for Vercel)
             // Post-enrollment check for immediate completion
             const progressQuery = query(collection(db, 'userVideoProgress'), where('userId', '==', user.uid));
             const progressSnapshot = await getDocs(progressQuery);
@@ -218,6 +239,17 @@ export function CourseCard({ course, onEdit, onDelete, onDuplicate, onUnenroll, 
     }
     
     const EnrollButton = () => {
+<<<<<<< HEAD
+=======
+      if(showEnroll) {
+        return (
+          <Button onClick={handleEnroll} disabled={authLoading || isEnrolling || !firstVideoId} className="w-full">
+            {isEnrolling ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+            Enroll Now
+          </Button>
+        );
+      }
+>>>>>>> 7a833b1 (Set up Firebase Admin and environment variables for Vercel)
       if (isLocked) {
         return (
           <TooltipProvider>
@@ -374,13 +406,20 @@ export function CourseCard({ course, onEdit, onDelete, onDuplicate, onUnenroll, 
                                 </AlertDialog>
                             </div>
                         )}
+<<<<<<< HEAD
                         {authLoading ? (
                             <div className="w-full"><div className="h-10 w-full bg-muted rounded-md animate-pulse" /></div>
                         ) : !isEnrolled ? (
+=======
+                        {authLoading && !showEnroll ? (
+                            <div className="w-full"><div className="h-10 w-full bg-muted rounded-md animate-pulse" /></div>
+                        ) : !isEnrolled || showEnroll ? (
+>>>>>>> 7a833b1 (Set up Firebase Admin and environment variables for Vercel)
                             <div className="flex w-full gap-2">
                                 <EnrollButton />
                             </div>
                         ) : isCompleted ? (
+<<<<<<< HEAD
                              <Dialog>
                                 <DialogTrigger asChild>
                                     <Button className="w-full" variant="outline" onClick={(e) => e.stopPropagation()}>View Certificate</Button>
@@ -392,6 +431,13 @@ export function CourseCard({ course, onEdit, onDelete, onDuplicate, onUnenroll, 
                                     <CertificatePrint userName={user?.displayName || "Valued Student"} course={course} />
                                 </DialogContent>
                             </Dialog>
+=======
+                            <Button asChild className="w-full" variant="outline">
+                                <Link href={`/certificate/${course.id}`} target="_blank">
+                                    View Certificate
+                                </Link>
+                            </Button>
+>>>>>>> 7a833b1 (Set up Firebase Admin and environment variables for Vercel)
                         ) : isInProgress ? (
                            <div className="w-full">
                                 <div className="flex justify-between items-center mb-2">

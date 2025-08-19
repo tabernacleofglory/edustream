@@ -4,7 +4,11 @@
 import { format } from "date-fns";
 import Image from "next/image";
 import { cn } from "@/lib/utils";
+<<<<<<< HEAD
 import { SiteSettings, getSiteSettings } from "@/lib/data";
+=======
+import { type SiteSettings } from "@/lib/types";
+>>>>>>> 7a833b1 (Set up Firebase Admin and environment variables for Vercel)
 import { useEffect, useState, useRef } from "react";
 import { Skeleton } from "./ui/skeleton";
 import DynamicIcon from "./dynamic-icon";
@@ -34,6 +38,7 @@ export default function Certificate({ userName, courseName, completionDate, temp
     if (settingsOverride) {
       setSettings(settingsOverride);
       setLoading(false);
+<<<<<<< HEAD
     } else {
         const fetchSettings = async () => {
         setLoading(true);
@@ -42,6 +47,8 @@ export default function Certificate({ userName, courseName, completionDate, temp
         setLoading(false);
         };
         fetchSettings();
+=======
+>>>>>>> 7a833b1 (Set up Firebase Admin and environment variables for Vercel)
     }
   }, [settingsOverride]);
 

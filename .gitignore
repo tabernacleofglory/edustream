@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 # See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
 
 # dependencies
@@ -47,3 +48,6 @@ firestore-debug.log
 
 # glory-live - this is a submodule
 public/glory-live
+=======
+node_modules
+>>>>>>> 7a833b1 (Set up Firebase Admin and environment variables for Vercel)

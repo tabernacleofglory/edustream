@@ -1,3 +1,7 @@
+<<<<<<< HEAD
+=======
+
+>>>>>>> 7a833b1 (Set up Firebase Admin and environment variables for Vercel)
 {
   "name": "nextn",
   "version": "0.1.0",
@@ -52,7 +56,11 @@
     "html2canvas": "^1.4.1",
     "jspdf": "^3.0.1",
     "lucide-react": "^0.475.0",
+<<<<<<< HEAD
     "next": "15.3.3",
+=======
+    "next": "^15.4.6",
+>>>>>>> 7a833b1 (Set up Firebase Admin and environment variables for Vercel)
     "next-themes": "^0.3.0",
     "papaparse": "^5.4.1",
     "patch-package": "^8.0.0",
@@ -87,4 +95,8 @@
     "tailwindcss": "^3.4.1",
     "typescript": "^5"
   }
+<<<<<<< HEAD
 }
+=======
+}
+>>>>>>> 7a833b1 (Set up Firebase Admin and environment variables for Vercel)

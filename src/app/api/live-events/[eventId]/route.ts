@@ -1,7 +1,11 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { doc, updateDoc, deleteDoc, getDoc } from 'firebase/firestore';
+<<<<<<< HEAD
 import { db } from '@/lib/firebase-admin';
+=======
+import { getAdminDb } from '@/lib/firebase-admin';
+>>>>>>> 7a833b1 (Set up Firebase Admin and environment variables for Vercel)
 import type { LiveEvent } from '@/lib/types';
 
 interface RouteParams {
@@ -12,6 +16,10 @@ interface RouteParams {
 
 export async function PUT(req: NextRequest, { params }: RouteParams) {
   try {
+<<<<<<< HEAD
+=======
+    const db = await getAdminDb();
+>>>>>>> 7a833b1 (Set up Firebase Admin and environment variables for Vercel)
     const { eventId } = params;
     const eventData = await req.json() as Partial<LiveEvent>;
     
@@ -34,6 +42,10 @@ export async function PUT(req: NextRequest, { params }: RouteParams) {
 
 export async function DELETE(req: NextRequest, { params }: RouteParams) {
   try {
+<<<<<<< HEAD
+=======
+    const db = await getAdminDb();
+>>>>>>> 7a833b1 (Set up Firebase Admin and environment variables for Vercel)
     const { eventId } = params;
 
     if (!eventId) {

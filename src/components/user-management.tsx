@@ -1,4 +1,8 @@
 
+<<<<<<< HEAD
+=======
+
+>>>>>>> 7a833b1 (Set up Firebase Admin and environment variables for Vercel)
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
@@ -194,6 +198,7 @@ export default function UserManagement() {
       const usersCollection = collection(db, "users");
       const usersSnapshot = await getDocs(usersCollection);
       const usersList = usersSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as User));
+<<<<<<< HEAD
       setUsers(usersList);
 
       const laddersQuery = query(collection(db, "courseLevels"), orderBy("order"));
@@ -203,6 +208,20 @@ export default function UserManagement() {
       
       const coursesSnapshot = await getDocs(collection(db, 'courses'));
       const coursesList = coursesSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Course));
+=======
+      
+      const laddersQuery = query(collection(db, "courseLevels"), orderBy("order"));
+      const laddersSnapshot = await getDocs(laddersQuery);
+      const laddersList = laddersSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Ladder));
+      
+      const coursesSnapshot = await getDocs(collection(db, 'courses'));
+      const coursesList = coursesSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Course));
+      
+      // Sort users by name before setting state
+      usersList.sort((a, b) => (a.displayName || "").localeCompare(b.displayName || ""));
+      setUsers(usersList);
+      setLadders(laddersList);
+>>>>>>> 7a833b1 (Set up Firebase Admin and environment variables for Vercel)
       setCourses(coursesList);
 
     } catch (error) {
@@ -217,6 +236,10 @@ export default function UserManagement() {
     }
   }, [toast, db]);
 
+<<<<<<< HEAD
+=======
+
+>>>>>>> 7a833b1 (Set up Firebase Admin and environment variables for Vercel)
   useEffect(() => {
     fetchAllData();
   }, [fetchAllData]);

@@ -51,6 +51,14 @@ export interface Course {
   updatedAt?: any;
   completedAt?: any;
   order?: number;
+  prerequisiteCourse?: {
+    id: string;
+    title: string;
+  };
+  prerequisiteCourse?: {
+    id: string;
+    title: string;
+  };
 }
 
 export interface Video {

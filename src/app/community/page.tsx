@@ -21,6 +21,10 @@ import CommunityStatsSidebar from '@/components/community-stats-sidebar';
 import UserProfileSidebar from '@/components/user-profile-sidebar';
 import ReactPlayer from 'react-player';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+<<<<<<< HEAD
+=======
+import AnnouncementCard from '@/components/announcement-card';
+>>>>>>> 7a833b1 (Set up Firebase Admin and environment variables for Vercel)
 
 
 const getInitials = (name?: string | null) => {
@@ -58,6 +62,73 @@ const EditFormComponent = ({ initialContent, onSave, onCancel, type = 'Post' }: 
     );
 };
 
+<<<<<<< HEAD
+=======
+const CommentComponent = ({ 
+    comment, 
+    onDelete, 
+    onEdit,
+    onViewProfile
+}: { 
+    comment: Post, 
+    onDelete: (comment: Post) => void,
+    onEdit: (comment: Post, newContent: string) => void,
+    onViewProfile: (userId: string) => void,
+}) => {
+    const { user, hasPermission } = useAuth();
+    const [isEditing, setIsEditing] = useState(false);
+
+    const canEdit = user?.uid === comment.authorId;
+    const canDelete = hasPermission('manageCommunity') || user?.uid === comment.authorId;
+
+    const handleSaveEdit = async (newContent: string) => {
+        await onEdit(comment, newContent);
+        setIsEditing(false);
+    };
+
+    return (
+        <div className="flex items-start gap-3 mt-2 group relative">
+            <button onClick={() => onViewProfile(comment.authorId)}>
+                <Avatar className="h-8 w-8">
+                    <AvatarImage src={comment.authorPhotoURL || undefined} alt={comment.authorName} />
+                    <AvatarFallback>{getInitials(comment.authorName)}</AvatarFallback>
+                </Avatar>
+            </button>
+            <div className="flex-1 bg-background p-2 rounded-lg">
+                <div className="flex items-center gap-2 text-xs">
+                    <button onClick={() => onViewProfile(comment.authorId)} className="font-semibold hover:underline">{comment.authorName}</button>
+                    <span className="text-muted-foreground">
+                        {comment.createdAt ? formatDistanceToNow(new Date(comment.createdAt.seconds * 1000), { addSuffix: true }) : 'just now'}
+                    </span>
+                </div>
+                <p className="text-sm mt-1">{comment.content}</p>
+            </div>
+            <div className="absolute top-1 right-1 flex opacity-0 group-hover:opacity-100 transition-opacity">
+                {canEdit && (
+                    <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => setIsEditing(true)}>
+                        <Edit className="h-3 w-3" />
+                    </Button>
+                )}
+                {canDelete && (
+                    <Button variant="ghost" size="icon" className="h-6 w-6 text-destructive" onClick={() => onDelete(comment)}>
+                        <Trash2 className="h-3 w-3" />
+                    </Button>
+                )}
+            </div>
+
+             <Dialog open={isEditing} onOpenChange={setIsEditing}>
+                <EditFormComponent
+                    initialContent={comment.content}
+                    onSave={handleSaveEdit}
+                    onCancel={() => setIsEditing(false)}
+                    type="Comment"
+                />
+            </Dialog>
+        </div>
+    );
+};
+
+>>>>>>> 7a833b1 (Set up Firebase Admin and environment variables for Vercel)
 
 const ReplyFormComponent = ({ parentComment, onReplyPosted, onCancel }: { parentComment: Post, onReplyPosted: () => void, onCancel: () => void }) => {
     const [replyText, setReplyText] = useState("");
@@ -177,6 +248,27 @@ const PostCard = ({ post, onRepost, onPin, onViewProfile }: { post: Post, onRepo
         toast({ title: "Post updated!" });
         setIsEditing(false);
     };
+<<<<<<< HEAD
+=======
+    
+     const handleDeleteReply = async (reply: Post) => {
+        if (!hasPermission('manageCommunity') && user?.uid !== reply.authorId) {
+            toast({ variant: 'destructive', title: 'You do not have permission to delete this reply.' });
+            return;
+        }
+        if (window.confirm("Are you sure you want to delete this reply?")) {
+            await deleteDoc(doc(db, 'communityPosts', post.id, 'replies', reply.id));
+            toast({ title: 'Reply deleted.' });
+        }
+    };
+    
+    const handleEditReply = async (reply: Post, newContent: string) => {
+        if (user?.uid !== reply.authorId) return;
+        const replyRef = doc(db, 'communityPosts', post.id, 'replies', reply.id);
+        await updateDoc(replyRef, { content: newContent });
+        toast({ title: 'Reply updated!' });
+    };
+>>>>>>> 7a833b1 (Set up Firebase Admin and environment variables for Vercel)
 
     const handleShare = async () => {
         const shareData = {
@@ -297,6 +389,7 @@ const PostCard = ({ post, onRepost, onPin, onViewProfile }: { post: Post, onRepo
             {replies.length > 0 && (
                 <div className="p-4 border-t bg-muted/50">
                     {replies.map(reply => (
+<<<<<<< HEAD
                         <div key={reply.id} className="flex items-start gap-3 mt-2">
                              <Avatar className="h-8 w-8">
                                 <AvatarImage src={reply.authorPhotoURL || undefined} alt={reply.authorName} />
@@ -312,6 +405,15 @@ const PostCard = ({ post, onRepost, onPin, onViewProfile }: { post: Post, onRepo
                                 <p className="text-sm mt-1">{reply.content}</p>
                             </div>
                         </div>
+=======
+                        <CommentComponent 
+                            key={reply.id} 
+                            comment={reply} 
+                            onDelete={handleDeleteReply} 
+                            onEdit={handleEditReply}
+                            onViewProfile={onViewProfile} 
+                        />
+>>>>>>> 7a833b1 (Set up Firebase Admin and environment variables for Vercel)
                     ))}
                 </div>
             )}
@@ -615,22 +717,38 @@ export default function CommunityPage() {
 
     return (
         <div className="bg-muted/40 min-h-screen">
+<<<<<<< HEAD
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 max-w-screen-2xl mx-auto">
                 <aside className="hidden lg:block lg:col-span-3">
                    <div className="sticky top-20 space-y-4">
                      <CommunityStatsSidebar />
+=======
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
+                <aside className="hidden lg:block lg:col-span-3">
+                   <div className="sticky top-0 space-y-4">
+                     <CommunityStatsSidebar />
+                     <AnnouncementCard />
+>>>>>>> 7a833b1 (Set up Firebase Admin and environment variables for Vercel)
                    </div>
                 </aside>
                 
                 <main className="col-span-12 lg:col-span-6 space-y-6 pb-20 lg:pb-6" ref={feedRef}>
                     {user && (
+<<<<<<< HEAD
                         <div className="sticky top-[70px] z-10 hidden lg:block">
+=======
+                        <div className="sticky top-0 z-10 hidden lg:block">
+>>>>>>> 7a833b1 (Set up Firebase Admin and environment variables for Vercel)
                             <CreatePost onPostCreated={() => {}} repostContent={repostContent} />
                         </div>
                     )}
 
                     {newPostCount > 0 && (
+<<<<<<< HEAD
                         <div className="sticky top-[150px] z-10 flex justify-center">
+=======
+                        <div className="sticky top-20 z-10 flex justify-center">
+>>>>>>> 7a833b1 (Set up Firebase Admin and environment variables for Vercel)
                             <Button onClick={scrollToTop} className="shadow-lg">
                                 Show {newPostCount} new post{newPostCount > 1 ? 's' : ''}
                             </Button>
@@ -656,7 +774,11 @@ export default function CommunityPage() {
                 </main>
 
                 <aside className="hidden lg:block lg:col-span-3">
+<<<<<<< HEAD
                     <div className="sticky top-20 space-y-4">
+=======
+                    <div className="sticky top-0 space-y-4">
+>>>>>>> 7a833b1 (Set up Firebase Admin and environment variables for Vercel)
                       {user && <UserProfileSidebar user={user} />}
                     </div>
                 </aside>

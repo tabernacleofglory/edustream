@@ -1,3 +1,7 @@
+<<<<<<< HEAD
+=======
+
+>>>>>>> 7a833b1 (Set up Firebase Admin and environment variables for Vercel)
 // src/components/video-player.tsx
 "use client";
 
@@ -7,17 +11,27 @@ import { useRouter } from "next/navigation";
 import Hls from "hls.js";
 import {
   Play, Pause, SkipBack, SkipForward, Lock, CheckCircle2, FileText, Award,
+<<<<<<< HEAD
   Link as LinkIcon, FileType, FileImage, File as FileIcon, Maximize, MessageCircle,
   Repeat, Printer, Minimize, Smile, Send, Edit, Trash2, Reply, X, ChevronDown,
   PlusCircle, Settings, Check, PictureInPicture, ToggleLeft, ToggleRight, Share2,
   Heart, UserPlus, Volume2, VolumeX, Pin, Download, Camera, ThumbsUp, UserMinus, BookCopy
 } from "lucide-react";
 import type { Course, Video, Comment, Enrollment, UserProgress as UserProgressType, VideoProgress, Speaker } from "@/lib/types";
+=======
+  Link as LinkIcon, Maximize,
+  Repeat, Printer, Minimize, Share2,
+  Heart, Volume2, VolumeX, Download,
+  ToggleLeft, ToggleRight, PictureInPicture, UserMinus
+} from "lucide-react";
+import type { Course, Video, Enrollment, UserProgress as UserProgressType, VideoProgress, Speaker } from "@/lib/types";
+>>>>>>> 7a833b1 (Set up Firebase Admin and environment variables for Vercel)
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/hooks/use-auth";
 import { Slider } from "@/components/ui/slider";
+<<<<<<< HEAD
 import { Alert, AlertDescription, AlertTitle } from "./ui/alert";
 import { getFirebaseFirestore, getFirebaseApp } from "@/lib/firebase";
 import {
@@ -33,6 +47,16 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, Di
 import CertificatePrint from "@/components/certificate-print";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import EmojiPicker, { EmojiClickData } from "emoji-picker-react";
+=======
+import { getFirebaseFirestore, getFirebaseApp } from "@/lib/firebase";
+import {
+  collection, addDoc, query, onSnapshot, orderBy, serverTimestamp, Timestamp,
+  doc, getDoc, runTransaction, getDocs, where, setDoc, writeBatch, documentId
+} from "firebase/firestore";
+import { getFunctions, httpsCallable } from "firebase/functions";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogTrigger } from "@/components/ui/dialog";
+import CertificatePrint from "@/components/certificate-print";
+>>>>>>> 7a833b1 (Set up Firebase Admin and environment variables for Vercel)
 import {
     Accordion, AccordionContent, AccordionItem, AccordionTrigger,
 } from "@/components/ui/accordion";
@@ -54,6 +78,11 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
+<<<<<<< HEAD
+=======
+import CommentSection, { CommentForm } from "./video/comment-section";
+import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
+>>>>>>> 7a833b1 (Set up Firebase Admin and environment variables for Vercel)
 
 
 interface VideoPlayerProps {
@@ -69,6 +98,7 @@ interface CourseWithStatus extends Course {
     isCompleted?: boolean;
 }
 
+<<<<<<< HEAD
 const ReplyFormComponent = ({ parentComment, videoId, onReplyPosted }: { parentComment: Comment, videoId: string, onReplyPosted: () => void }) => {
     const [replyText, setReplyText] = useState("");
     const [isSubmitting, setIsSubmitting] = useState(false);
@@ -251,6 +281,8 @@ const CommentComponent = ({
     );
 };
 
+=======
+>>>>>>> 7a833b1 (Set up Firebase Admin and environment variables for Vercel)
 const PlaylistAndResources = ({ course, courseVideos, currentVideo, watchedVideos, relatedCourses }: { course: Course, courseVideos: Video[], currentVideo: Video, watchedVideos: Set<string>, relatedCourses: CourseWithStatus[] }) => {
     
     let lastUnlockedIndex = -1;
@@ -316,10 +348,13 @@ const PlaylistAndResources = ({ course, courseVideos, currentVideo, watchedVideo
                             <span>{link.title}</span>
                         </a>
                     ))}
+<<<<<<< HEAD
                     <Link href={`/documentation`} className="flex items-center gap-2 p-2 rounded-md hover:bg-muted">
                         <BookCopy className="h-5 w-5" />
                         <span>Platform Documentation</span>
                     </Link>
+=======
+>>>>>>> 7a833b1 (Set up Firebase Admin and environment variables for Vercel)
                 </AccordionContent>
             </AccordionItem>
             {relatedCourses.length > 0 && (
@@ -346,7 +381,11 @@ export default function VideoPlayer({
   videoIndex,
   speaker
 }: VideoPlayerProps) {
+<<<<<<< HEAD
   const { user, refreshUser } = useAuth();
+=======
+  const { user, refreshUser, hasPermission } = useAuth();
+>>>>>>> 7a833b1 (Set up Firebase Admin and environment variables for Vercel)
   const router = useRouter();
   const { toast } = useToast();
   const playerRef = useRef<HTMLVideoElement>(null);
@@ -360,7 +399,11 @@ export default function VideoPlayer({
   const farthestTimeWatchedRef = useRef<number>(0);
 
 
+<<<<<<< HEAD
   const [isPlaying, setIsPlaying] = useState(true);
+=======
+  const [isPlaying, setIsPlaying] = useState(false);
+>>>>>>> 7a833b1 (Set up Firebase Admin and environment variables for Vercel)
   const [isLooping, setIsLooping] = useState(false);
   const [isAutoNextEnabled, setIsAutoNextEnabled] = useState(true);
   const [progress, setProgress] = useState(0);
@@ -377,6 +420,7 @@ export default function VideoPlayer({
   const [isLiked, setIsLiked] = useState(false);
   const [likeCount, setLikeCount] = useState(currentVideo.likeCount || 0);
   const [shareCount, setShareCount] = useState(currentVideo.shareCount || 0);
+<<<<<<< HEAD
   const [comments, setComments] = useState<Comment[]>([]);
   const [pinnedComment, setPinnedComment] = useState<Comment | null>(null);
   const [newComment, setNewComment] = useState('');
@@ -386,6 +430,13 @@ export default function VideoPlayer({
   
   const isModerator = user?.role === 'admin' || user?.role === 'developer' || user?.charge === 'moderator';
   const isAdmin = user?.role === 'admin' || user?.role === 'developer';
+=======
+  const [relatedCourses, setRelatedCourses] = useState<CourseWithStatus[]>([]);
+  const [isUnenrolling, setIsUnenrolling] = useState(false);
+  
+  const canDownload = hasPermission('downloadContent');
+  const canRightClick = hasPermission('allowRightClick');
+>>>>>>> 7a833b1 (Set up Firebase Admin and environment variables for Vercel)
 
   const togglePlayPause = useCallback(() => {
     const video = playerRef.current;
@@ -403,8 +454,13 @@ export default function VideoPlayer({
       setVolume(1);
       setIsMuted(false);
     } else {
+<<<<<<< HEAD
       setVolume(0.5);
       setIsMuted(false);
+=======
+      setVolume(0.5); 
+      setIsMuted(false); 
+>>>>>>> 7a833b1 (Set up Firebase Admin and environment variables for Vercel)
     }
   }, [isMobile]);
 
@@ -418,6 +474,7 @@ export default function VideoPlayer({
     videoElement.addEventListener('play', handlePlay);
     videoElement.addEventListener('pause', handlePause);
     
+<<<<<<< HEAD
     videoElement.muted = false;
 
     if (isPlaying) {
@@ -431,24 +488,48 @@ export default function VideoPlayer({
     } else {
         videoElement.pause();
     }
+=======
+    const startPlayback = async () => {
+        try {
+            await videoElement.play();
+        } catch (error) {
+            console.warn("Autoplay was prevented:", error);
+            setIsPlaying(false);
+        }
+    };
+    
+    startPlayback();
+>>>>>>> 7a833b1 (Set up Firebase Admin and environment variables for Vercel)
 
     return () => {
       videoElement.removeEventListener('play', handlePlay);
       videoElement.removeEventListener('pause', handlePause);
     }
+<<<<<<< HEAD
   }, [isEnrolled, currentVideo.id, isPlaying]);
+=======
+  }, [isEnrolled, currentVideo.id]);
+>>>>>>> 7a833b1 (Set up Firebase Admin and environment variables for Vercel)
 
   useEffect(() => {
     const videoElement = playerRef.current;
     if (!videoElement) return;
     videoElement.volume = volume;
+<<<<<<< HEAD
   }, [volume]);
+=======
+    videoElement.muted = isMuted;
+  }, [volume, isMuted]);
+>>>>>>> 7a833b1 (Set up Firebase Admin and environment variables for Vercel)
   
   useEffect(() => {
     const videoElement = playerRef.current;
     if (!videoElement) return;
     
+<<<<<<< HEAD
     // Always load the video source regardless of enrollment for direct link access
+=======
+>>>>>>> 7a833b1 (Set up Firebase Admin and environment variables for Vercel)
     const videoUrl = currentVideo.url;
     if (videoUrl) {
         if (Hls.isSupported() && videoUrl.includes('.m3u8')) {
@@ -466,7 +547,11 @@ export default function VideoPlayer({
     }
 
     const fetchLastPosition = async () => {
+<<<<<<< HEAD
         if (!user || !isEnrolled) return; // Only fetch position if enrolled
+=======
+        if (!user || !isEnrolled) return;
+>>>>>>> 7a833b1 (Set up Firebase Admin and environment variables for Vercel)
         const progressRef = doc(db, 'userVideoProgress', `${user.uid}_${course.id}`);
         const progressSnap = await getDoc(progressRef);
         if (progressSnap.exists()) {
@@ -483,6 +568,7 @@ export default function VideoPlayer({
 
 
   useEffect(() => {
+<<<<<<< HEAD
     if (!user) return;
     const likeRef = doc(db, 'Contents', currentVideo.id, 'likes', user.uid);
     const unsubscribe = onSnapshot(likeRef, (doc) => {
@@ -503,6 +589,26 @@ export default function VideoPlayer({
         unsubscribeVideo();
     }
   }, [user, currentVideo.id, db]);
+=======
+    if (!user) { setIsLiked(false); return; }
+    const likeRef = doc(db, 'Contents', currentVideo.id, 'likes', user.uid);
+    const unsub = onSnapshot(likeRef, (d) => setIsLiked(d.exists()));
+    return () => unsub();
+  }, [user, currentVideo.id, db]);
+
+  useEffect(() => {
+    const likesCol = collection(db, 'Contents', currentVideo.id, 'likes');
+    const sharesCol = collection(db, 'Contents', currentVideo.id, 'shares');
+
+    const unsubLikes = onSnapshot(likesCol, (qs) => setLikeCount(qs.size));
+    const unsubShares = onSnapshot(sharesCol, (qs) => setShareCount(qs.size));
+
+    return () => {
+      unsubLikes();
+      unsubShares();
+    };
+  }, [currentVideo.id, db]);
+>>>>>>> 7a833b1 (Set up Firebase Admin and environment variables for Vercel)
 
    useEffect(() => {
     const fetchRelatedCourses = async () => {
@@ -518,9 +624,14 @@ export default function VideoPlayer({
         const querySnapshot = await getDocs(q);
         const coursesFromDB = querySnapshot.docs
             .map(doc => ({ id: doc.id, ...doc.data() } as Course))
+<<<<<<< HEAD
             .filter(c => c.id !== course.id); // Exclude current course
 
         // Fetch enrollment status for related courses
+=======
+            .filter(c => c.id !== course.id);
+
+>>>>>>> 7a833b1 (Set up Firebase Admin and environment variables for Vercel)
         const enrollmentQuery = query(collection(db, 'enrollments'), where('userId', '==', user.uid));
         const enrollmentSnapshot = await getDocs(enrollmentQuery);
         const enrolledCourseIds = new Set(enrollmentSnapshot.docs.map(doc => doc.data().courseId));
@@ -545,15 +656,24 @@ export default function VideoPlayer({
         debounceTimeoutRef.current = setTimeout(async () => {
             const batch = writeBatch(db);
 
+<<<<<<< HEAD
             // Fetch all enrollments for the user to find other courses with this video
+=======
+>>>>>>> 7a833b1 (Set up Firebase Admin and environment variables for Vercel)
             const enrollmentsQuery = query(collection(db, 'enrollments'), where('userId', '==', user.uid));
             const enrollmentsSnapshot = await getDocs(enrollmentsQuery);
             const enrolledCourseIds = enrollmentsSnapshot.docs.map(doc => doc.data().courseId);
 
+<<<<<<< HEAD
             // Fetch course data for all enrolled courses
             const coursesWithVideoQuery = query(collection(db, 'courses'), 
                 where('videos', 'array-contains', currentVideo.id),
                 where(documentId(), 'in', enrolledCourseIds.length > 0 ? enrolledCourseIds : ['dummy-id']) // Avoid empty 'in' query
+=======
+            const coursesWithVideoQuery = query(collection(db, 'courses'), 
+                where('videos', 'array-contains', currentVideo.id),
+                where(documentId(), 'in', enrolledCourseIds.length > 0 ? enrolledCourseIds : ['dummy-id'])
+>>>>>>> 7a833b1 (Set up Firebase Admin and environment variables for Vercel)
             );
             const coursesWithVideoSnapshot = await getDocs(coursesWithVideoQuery);
 
@@ -599,7 +719,11 @@ export default function VideoPlayer({
                     batch.set(progressRef, dataToSave, { merge: true });
 
                     if (completed) {
+<<<<<<< HEAD
                         const publishedVideoIds = courseToUpdate.videos; // Assume all videos in array are published
+=======
+                        const publishedVideoIds = courseToUpdate.videos;
+>>>>>>> 7a833b1 (Set up Firebase Admin and environment variables for Vercel)
                         const completedCount = currentProgress.filter(p => p.completed && publishedVideoIds.includes(p.videoId)).length;
                         
                         if (publishedVideoIds.length > 0 && completedCount === publishedVideoIds.length) {
@@ -626,7 +750,10 @@ export default function VideoPlayer({
     }
     setIsLoadingEnrollment(true);
     
+<<<<<<< HEAD
     // Subscribe to enrollment status
+=======
+>>>>>>> 7a833b1 (Set up Firebase Admin and environment variables for Vercel)
     const enrollmentRef = doc(db, 'enrollments', `${user.uid}_${course.id}`);
     const unsubscribeEnrollment = onSnapshot(enrollmentRef, (doc) => {
         const enrolled = doc.exists();
@@ -635,7 +762,10 @@ export default function VideoPlayer({
         setIsLoadingEnrollment(false);
     });
     
+<<<<<<< HEAD
     // Subscribe to video progress
+=======
+>>>>>>> 7a833b1 (Set up Firebase Admin and environment variables for Vercel)
     const progressRef = doc(db, 'userVideoProgress', `${user.uid}_${course.id}`);
     const unsubscribeProgress = onSnapshot(progressRef, (doc) => {
         if (doc.exists()) {
@@ -655,6 +785,7 @@ export default function VideoPlayer({
     };
   }, [user, course.id, db]);
 
+<<<<<<< HEAD
   useEffect(() => {
     if (!currentVideo.id) return;
 
@@ -694,6 +825,8 @@ export default function VideoPlayer({
     }
   }
 
+=======
+>>>>>>> 7a833b1 (Set up Firebase Admin and environment variables for Vercel)
   const nextVideo = courseVideos[videoIndex + 1];
 
   const handleEnded = async () => {
@@ -714,15 +847,19 @@ export default function VideoPlayer({
   const handleVolumeChange = (value: number[]) => {
       const newVolume = value[0];
       setVolume(newVolume);
+<<<<<<< HEAD
       if (playerRef.current) {
           playerRef.current.volume = newVolume;
       }
+=======
+>>>>>>> 7a833b1 (Set up Firebase Admin and environment variables for Vercel)
       setIsMuted(newVolume === 0);
   }
 
   const toggleMute = () => {
       const player = playerRef.current;
       if (!player) return;
+<<<<<<< HEAD
       if (isMuted || volume === 0) {
           const newVolume = volume > 0 ? volume : 0.5;
           setVolume(newVolume);
@@ -730,6 +867,16 @@ export default function VideoPlayer({
           setIsMuted(false);
       } else {
           player.volume = 0;
+=======
+      
+      const currentIsMuted = isMuted || volume === 0;
+
+      if (currentIsMuted) {
+          const newVolume = volume > 0 ? volume : 0.5;
+          setVolume(newVolume);
+          setIsMuted(false);
+      } else {
+>>>>>>> 7a833b1 (Set up Firebase Admin and environment variables for Vercel)
           setIsMuted(true);
       }
   }
@@ -741,14 +888,25 @@ export default function VideoPlayer({
         url: window.location.href,
     };
     
+<<<<<<< HEAD
     const updateShareCount = async () => {
         const videoRef = doc(db, 'Contents', currentVideo.id);
         await updateDoc(videoRef, { shareCount: increment(1) });
+=======
+    const recordShare = async () => {
+        if (!user) return;
+        const sharesCol = collection(db, "Contents", currentVideo.id, "shares");
+        await addDoc(sharesCol, {
+          uid: user.uid,
+          createdAt: serverTimestamp(),
+        });
+>>>>>>> 7a833b1 (Set up Firebase Admin and environment variables for Vercel)
     };
 
     if (navigator.share) {
         try {
             await navigator.share(shareData);
+<<<<<<< HEAD
             await updateShareCount();
         } catch (error: any) {
             // Silently fall back to clipboard if permission is denied
@@ -770,16 +928,41 @@ export default function VideoPlayer({
   const handleLike = async () => {
     if (!user) return;
     const videoRef = doc(db, 'Contents', currentVideo.id);
+=======
+            await recordShare();
+        } catch (error: any) {
+            if (error.name !== 'NotAllowedError' && error.name !== 'AbortError') {
+                 console.error('Error sharing:', error);
+            }
+            await navigator.clipboard.writeText(shareData.url);
+            await recordShare();
+            toast({ title: 'Link copied to clipboard!' });
+        }
+    } else {
+        await navigator.clipboard.writeText(shareData.url);
+        await recordShare();
+        toast({ title: 'Link copied to clipboard!' });
+    }
+  };
+
+  const handleLike = async () => {
+    if (!user) return;
+>>>>>>> 7a833b1 (Set up Firebase Admin and environment variables for Vercel)
     const likeRef = doc(db, 'Contents', currentVideo.id, 'likes', user.uid);
     
     await runTransaction(db, async (transaction) => {
         const likeDoc = await transaction.get(likeRef);
         if (likeDoc.exists()) {
             transaction.delete(likeRef);
+<<<<<<< HEAD
             transaction.update(videoRef, { likeCount: increment(-1) });
         } else {
             transaction.set(likeRef, { userId: user.uid });
             transaction.update(videoRef, { likeCount: increment(1) });
+=======
+        } else {
+            transaction.set(likeRef, { uid: user.uid, createdAt: serverTimestamp() });
+>>>>>>> 7a833b1 (Set up Firebase Admin and environment variables for Vercel)
         }
     });
   };
@@ -832,6 +1015,7 @@ export default function VideoPlayer({
         }
     };
   }, []);
+<<<<<<< HEAD
 
   const handleCommentSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -858,6 +1042,9 @@ export default function VideoPlayer({
     }
   };
   
+=======
+    
+>>>>>>> 7a833b1 (Set up Firebase Admin and environment variables for Vercel)
     const handleDownloadCertificate = async () => {
         const certificateElement = certificateRef.current;
         if (!certificateElement) return;
@@ -924,6 +1111,7 @@ export default function VideoPlayer({
     return names.map(n => n[0]).join("").toUpperCase();
   };
 
+<<<<<<< HEAD
   const commentTree = useMemo(() => {
     const commentMap: { [id: string]: Comment & { replies: Comment[] } } = {};
     const topLevelComments: (Comment & { replies: Comment[] })[] = [];
@@ -959,6 +1147,10 @@ export default function VideoPlayer({
 
   return (
     <div className="flex flex-col lg:flex-row flex-1">
+=======
+  return (
+    <div className="flex flex-col lg:flex-row flex-1" onContextMenu={!canRightClick ? (e) => e.preventDefault() : undefined}>
+>>>>>>> 7a833b1 (Set up Firebase Admin and environment variables for Vercel)
         <div className="flex-1 flex flex-col lg:h-screen">
              <div className="lg:px-8 lg:pt-8 flex-shrink-0">
                 <div 
@@ -983,7 +1175,10 @@ export default function VideoPlayer({
                         onLoadedData={(e) => setDuration((e.target as HTMLVideoElement).duration)}
                         onEnded={handleEnded}
                         loop={isLooping}
+<<<<<<< HEAD
                         autoPlay
+=======
+>>>>>>> 7a833b1 (Set up Firebase Admin and environment variables for Vercel)
                         playsInline
                     />
                     
@@ -1069,6 +1264,7 @@ export default function VideoPlayer({
                 </div>
             </div>
 
+<<<<<<< HEAD
             <ScrollArea className="flex-1 p-4 md:p-6 lg:p-8 lg:pb-0">
                 <h1 className="text-2xl md:text-3xl font-bold font-headline">{currentVideo.title}</h1>
                  {isCompleted && (
@@ -1210,12 +1406,111 @@ export default function VideoPlayer({
                     {isSubmittingComment ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4"/>}
                 </Button>
             </form>
+=======
+            <div className="flex flex-col flex-1 lg:h-screen">
+                <ScrollArea className="flex-1 p-4 md:p-6 lg:p-8 lg:pb-0">
+                    <div className={cn(isMobile && "pb-20")}>
+                        <h1 className="text-2xl md:text-3xl font-bold font-headline">{currentVideo.title}</h1>
+                        {isCompleted && (
+                            <div className="mt-4 p-4 bg-green-100 dark:bg-green-900/50 border border-green-200 dark:border-green-800 rounded-lg flex flex-col sm:flex-row items-center justify-between gap-4">
+                                <div className='flex items-center gap-3'>
+                                    <CheckCircle2 className="h-8 w-8 text-green-600 dark:text-green-400" />
+                                    <div>
+                                        <h3 className="font-bold text-green-800 dark:text-green-300">Congratulations! You've completed the course.</h3>
+                                        <p className="text-sm text-green-700 dark:text-green-400">You can now view and download your certificate.</p>
+                                    </div>
+                                </div>
+                                <Dialog>
+                                    <DialogTrigger asChild>
+                                        <Button variant="default" className='bg-green-600 hover:bg-green-700 text-white flex-shrink-0'>
+                                            <Award className="mr-2 h-4 w-4" />
+                                            View Certificate
+                                        </Button>
+                                    </DialogTrigger>
+                                    <DialogContent className="max-w-4xl">
+                                        <DialogHeader>
+                                            <DialogTitle>Certificate of Completion</DialogTitle>
+                                        </DialogHeader>
+                                        <CertificatePrint 
+                                            userName={user?.displayName || "Valued Student"} 
+                                            course={course}
+                                        />
+                                    </DialogContent>
+                                </Dialog>
+                            </div>
+                        )}
+                        <div className="flex flex-wrap items-center justify-between gap-4 mt-4">
+                            <div className="flex items-center gap-2">
+                                <Avatar>
+                                    <AvatarImage src={speaker?.photoURL || undefined} />
+                                    <AvatarFallback>{getInitials(speaker?.name)}</AvatarFallback>
+                                </Avatar>
+                                <div>
+                                    <p className="font-semibold">{speaker?.name || 'Glory Training Hub'}</p>
+                                    <p className="text-sm text-muted-foreground">{course.enrollmentCount || 0} Learners</p>
+                                </div>
+                            </div>
+                            <div className="flex items-center gap-2">
+                                <Button onClick={handleLike} variant="outline" size="sm" disabled={!user}>
+                                    <Heart className={cn("mr-2 h-4 w-4", isLiked && "fill-destructive text-destructive")} />
+                                    {likeCount}
+                                </Button>
+                                <Button onClick={handleShare} variant="outline" size="sm">
+                                    <Share2 className="mr-2 h-4 w-4" />
+                                    {shareCount}
+                                </Button>
+                                {canDownload && (
+                                    <a href={currentVideo.url} download target="_blank" rel="noopener noreferrer">
+                                        <Button variant="outline" size="sm">
+                                            <Download className="mr-2 h-4 w-4" />
+                                            Download
+                                        </Button>
+                                    </a>
+                                )}
+                                {isEnrolled && (
+                                <AlertDialog>
+                                    <AlertDialogTrigger asChild>
+                                    <Button variant="outline" size="sm" disabled={isUnenrolling}>
+                                        {isUnenrolling ? <Loader2 className="h-4 w-4 animate-spin" /> : <UserMinus className="h-4 w-4" />}
+                                    </Button>
+                                    </AlertDialogTrigger>
+                                    <AlertDialogContent>
+                                    <AlertDialogHeader>
+                                        <AlertDialogTitle>Are you sure you want to un-enroll?</AlertDialogTitle>
+                                        <AlertDialogDescription>
+                                        Your progress in this course will be saved if you choose to re-enroll later.
+                                        </AlertDialogDescription>
+                                    </AlertDialogHeader>
+                                    <AlertDialogFooter>
+                                        <AlertDialogCancel>Cancel</AlertDialogCancel>
+                                        <AlertDialogAction onClick={handleUnenroll}>Un-enroll</AlertDialogAction>
+                                    </AlertDialogFooter>
+                                    </AlertDialogContent>
+                                </AlertDialog>
+                                )}
+                            </div>
+                        </div>
+
+                        <div className="lg:hidden mt-6">
+                            <PlaylistAndResources course={course} courseVideos={courseVideos} currentVideo={currentVideo} watchedVideos={watchedVideos} relatedCourses={relatedCourses} />
+                        </div>
+                        
+                        <CommentSection videoId={currentVideo.id} />
+                    </div>
+                </ScrollArea>
+                {!isMobile && <CommentForm videoId={currentVideo.id} />}
+            </div>
+>>>>>>> 7a833b1 (Set up Firebase Admin and environment variables for Vercel)
         </div>
         <div className="w-full lg:w-[420px] lg:flex-shrink-0 lg:border-l flex-col lg:h-screen lg:sticky lg:top-0 bg-background hidden lg:flex">
             <ScrollArea className="flex-1">
                 <PlaylistAndResources course={course} courseVideos={courseVideos} currentVideo={currentVideo} watchedVideos={watchedVideos} relatedCourses={relatedCourses} />
             </ScrollArea>
         </div>
+<<<<<<< HEAD
+=======
+        {isMobile && <CommentForm videoId={currentVideo.id} />}
+>>>>>>> 7a833b1 (Set up Firebase Admin and environment variables for Vercel)
     </div>
   );
 }

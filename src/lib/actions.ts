@@ -1,6 +1,13 @@
+// ...existing code...
 'use server';
 
 import * as nodemailer from 'nodemailer';
+// ...existing code...
+
+'use server';
+
+import nodemailer from 'nodemailer';
+// ...existing code...
 
 export async function sendCertificateEmailAction(email: string, certificateUrl: string) {
     const gmailEmail = process.env.GMAIL_EMAIL;

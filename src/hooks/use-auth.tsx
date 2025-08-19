@@ -6,7 +6,7 @@ import { onAuthStateChanged, User as FirebaseUser } from 'firebase/auth';
 import { getFirebaseAuth, getFirebaseFirestore } from '@/lib/firebase';
 import { doc, getDoc, onSnapshot, collection, query, where } from 'firebase/firestore';
 import type { User as AppUser, RolePermission } from '@/lib/types';
-import { usePathname, useRouter } from 'next/navigation'; // Import useRouter
+import { usePathname, useRouter } from 'next/navigation';
 
 interface AuthContextType {
   user: AppUser | null;
@@ -34,64 +34,77 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   const pathname = usePathname();
   const isCurrentUserAdmin = user?.role === 'admin' || user?.role === 'developer';
 
-  const fetchUserDocument = useCallback(async (firebaseUser: FirebaseUser) => {
+  const fetchUserDocument = useCallback(async (firebaseUser: FirebaseUser | null) => {
+    if (!firebaseUser) {
+        setUser(null);
+        setUserPermissions([]);
+        setLoading(false);
+        return;
+    }
+
     const userDocRef = doc(db, "users", firebaseUser.uid);
-    try {
-      const docSnapshot = await getDoc(userDocRef);
+    const unsubscribeUser = onSnapshot(userDocRef, async (docSnapshot) => {
       if (docSnapshot.exists()) {
         const userData = docSnapshot.data() as Omit<AppUser, 'uid'>;
-        
         const authUser: AppUser = {
           uid: firebaseUser.uid,
           id: firebaseUser.uid,
           ...userData,
           displayName: userData.fullName || firebaseUser.displayName,
           photoURL: firebaseUser.photoURL,
-          classLadderId: userData.classLadderId,
         };
         setUser(authUser);
 
         if (authUser.role) {
-          const permissionsSnapshot = await getDoc(doc(db, "rolePermissions", authUser.role));
-          setUserPermissions(permissionsSnapshot.exists() ? permissionsSnapshot.data()?.permissions || [] : []);
+          const permissionsDocRef = doc(db, "rolePermissions", authUser.role);
+          const permissionsSnapshot = await getDoc(permissionsDocRef);
+          if (permissionsSnapshot.exists()) {
+              setUserPermissions(permissionsSnapshot.data()?.permissions || []);
+          } else {
+              setUserPermissions([]);
+          }
         } else {
           setUserPermissions([]);
         }
       } else {
-         const defaultUser: AppUser = { 
-            uid: firebaseUser.uid, 
-            id: firebaseUser.uid,
-            displayName: firebaseUser.displayName,
-            email: firebaseUser.email,
-            role: 'user', 
-            membershipStatus: 'free',
-            fullName: firebaseUser.displayName || 'New User'
-         };
-         setUser(defaultUser);
-         setUserPermissions([]);
+        // The user doc might not exist yet if the Cloud Function is still running.
+        // We set a temporary user object and permissions will be updated when the doc is created.
+        const tempUser: AppUser = { 
+          uid: firebaseUser.uid, 
+          id: firebaseUser.uid,
+          displayName: firebaseUser.displayName,
+          email: firebaseUser.email,
+          role: 'user', 
+          membershipStatus: 'Active',
+        };
+        setUser(tempUser);
+        setUserPermissions([]);
       }
-    } catch (error) {
-      console.error("Error fetching user document:", error);
-      setUser(null);
-    } finally {
-        setLoading(false); // Set loading to false only after all user data is fetched
-    }
+      setLoading(false);
+    }, (error) => {
+        console.error("Error fetching user document:", error);
+        setUser(null);
+        setLoading(false);
+    });
+
+    return unsubscribeUser;
+
   }, [db]);
 
 
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (firebaseUser) => {
-        setLoading(true); // Start loading when auth state changes
-        if (firebaseUser) {
-            fetchUserDocument(firebaseUser);
-        } else {
-            setUser(null);
-            setUserPermissions([]);
-            setLoading(false); // Stop loading if no user
-        }
+    const unsubscribeAuth = onAuthStateChanged(auth, (firebaseUser) => {
+        setLoading(true);
+        const unsubscribeFirestore = fetchUserDocument(firebaseUser);
+        
+        return () => {
+            if(unsubscribeFirestore) {
+                unsubscribeFirestore.then(unsub => unsub()).catch(console.error);
+            }
+        };
     });
 
-    return () => unsubscribe();
+    return () => unsubscribeAuth();
   }, [auth, fetchUserDocument]);
 
   const refreshUser = useCallback(async () => {
@@ -114,6 +127,21 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     if(user?.role === 'developer') return true;
     return userPermissions.includes(permission);
   }, [user, userPermissions]);
+
+  useEffect(() => {
+    const handleContextMenu = (event: MouseEvent) => {
+      if (!hasPermission('allowRightClick')) {
+        event.preventDefault();
+      }
+    };
+    if (!loading) {
+      document.addEventListener('contextmenu', handleContextMenu);
+    }
+    return () => {
+      document.removeEventListener('contextmenu', handleContextMenu);
+    };
+  }, [loading, hasPermission]);
+
 
   return (
     <AuthContext.Provider value={{ user, loading, refreshUser, isCurrentUserAdmin, hasPermission }}>

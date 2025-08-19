@@ -1,11 +1,19 @@
 
 import { NextRequest, NextResponse } from 'next/server';
+<<<<<<< HEAD
 import { db } from '@/lib/firebase-admin';
+=======
+import { getAdminDb } from '@/lib/firebase-admin';
+>>>>>>> 7a833b1 (Set up Firebase Admin and environment variables for Vercel)
 import type { LiveEvent } from '@/lib/types';
 import { FieldValue } from 'firebase-admin/firestore';
 
 export async function POST(req: NextRequest) {
   try {
+<<<<<<< HEAD
+=======
+    const db = await getAdminDb();
+>>>>>>> 7a833b1 (Set up Firebase Admin and environment variables for Vercel)
     const { title, description } = await req.json();
 
     if (!title || !description) {
