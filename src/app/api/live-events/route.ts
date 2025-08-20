@@ -15,7 +15,7 @@ export async function POST(req: NextRequest) {
     const newEventData = {
       title,
       description,
-      status: 'upcoming' as 'upcoming',
+      status: 'upcoming' as const,
       startTime: FieldValue.serverTimestamp(),
     };
 

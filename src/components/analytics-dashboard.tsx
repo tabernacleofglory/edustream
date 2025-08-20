@@ -218,7 +218,7 @@ export default function AnalyticsDashboard() {
   }, [userProgressData, allUsers, allCampuses]);
 
   const sortedAndFilteredProgress = useMemo(() => {
-    let filtered = [...userProgressData];
+    const filtered = [...userProgressData];
 
     if (sortConfig !== null) {
         filtered.sort((a, b) => {
@@ -326,7 +326,7 @@ export default function AnalyticsDashboard() {
     
     let csvContent = "data:text/csv;charset=utf-8,";
     rows.forEach(rowArray => {
-        let row = rowArray.join(",");
+        const row = rowArray.join(",");
         csvContent += row + "\r\n";
     });
 

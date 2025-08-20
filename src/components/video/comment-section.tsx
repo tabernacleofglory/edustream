@@ -335,7 +335,7 @@ export default function CommentSection({ videoId }: { videoId: string }) {
     const q = query(commentsColRef, orderBy("createdAt", "desc"));
 
     const unsubscribe = onSnapshot(q, (querySnapshot) => {
-      let commentsData: Comment[] = [];
+      const commentsData: Comment[] = [];
       let pinned: Comment | null = null;
       querySnapshot.forEach((doc) => {
         const comment = { id: doc.id, ...doc.data() } as Comment;

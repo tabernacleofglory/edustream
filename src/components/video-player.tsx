@@ -11,7 +11,7 @@ import {
   Link as LinkIcon, Maximize,
   Repeat, Printer, Minimize, Share2,
   Heart, Volume2, VolumeX, Download,
-  ToggleLeft, ToggleRight, PictureInPicture, UserMinus
+  ToggleLeft, ToggleRight, PictureInPicture, UserMinus, Loader2
 } from "lucide-react";
 import type { Course, Video, Enrollment, UserProgress as UserProgressType, VideoProgress, Speaker } from "@/lib/types";
 import { Button } from "@/components/ui/button";

@@ -41,7 +41,7 @@ export function useProcessedCourses(forAllCoursesPage: boolean = false) {
       const coursesSnapshot = await getDocs(coursesQuery);
       const coursesList = coursesSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Course));
       
-      let coursesToProcess = coursesList;
+      const coursesToProcess = coursesList;
 
       if (!user) {
         setProcessedCourses(coursesList.map(c => ({ ...c, isEnrolled: false, isCompleted: false, isLocked: false, totalProgress: 0 })));
