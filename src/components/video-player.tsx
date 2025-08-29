@@ -1,3 +1,4 @@
+// src/components/video-player.tsx
 "use client";
 
 import { useState, useEffect, useRef, useMemo, useCallback } from "react";
@@ -126,9 +127,7 @@ const PlaylistAndResources = ({
 }) => {
   let lastUnlockedIndex = -1;
   courseVideos.forEach((video, index) => {
-    if (watchedVideos.has(video.id)) {
-      lastUnlockedIndex = index;
-    }
+    if (watchedVideos.has(video.id)) lastUnlockedIndex = index;
   });
 
   return (
@@ -275,11 +274,12 @@ export default function VideoPlayer({
   const [isLiked, setIsLiked] = useState(false);
   const [likeCount, setLikeCount] = useState(currentVideo.likeCount || 0);
   const [shareCount, setShareCount] = useState(currentVideo.shareCount || 0);
+  const [isUnenrolling, setIsUnenrolling] = useState(false); // ← added state
 
   const canDownload = hasPermission("downloadContent");
   const canRightClick = hasPermission("allowRightClick");
 
-  // Use the processed course list (single source of truth for locks/prereqs)
+  // Single source of truth for lock/prereq/in-progress (used by Related Courses)
   const { processedCourses, loading: processedLoading, refresh } = useProcessedCourses(true);
 
   const relatedCourses = useMemo(() => {
@@ -423,7 +423,6 @@ export default function VideoPlayer({
         const coursesWithVideoQuery = query(
           collection(db, "courses"),
           where("videos", "array-contains", currentVideo.id),
-          // Guard in case user has no enrollments; we won't write to unrelated courses
           where("status", "==", "published")
         );
         const coursesWithVideoSnapshot = await getDocs(coursesWithVideoQuery);
@@ -576,7 +575,7 @@ export default function VideoPlayer({
   const handleShare = async () => {
     const shareData = {
       title: `${course.title} - ${currentVideo.title}`,
-      text: `Check out this video from the course "${course.title}" on Glory Training Hub!`,
+      text: `Check out this video from the course "${course.title}" on Glory Training Hub!"`,
       url: window.location.href,
     };
 
@@ -714,12 +713,6 @@ export default function VideoPlayer({
       });
     }
     setIsUnenrolling(false);
-  };
-
-  const getInitials = (name?: string | null) => {
-    if (!name) return "U";
-    const parts = name.trim().split(/\s+/);
-    return parts.map((n) => n[0]).join("").toUpperCase();
   };
 
   return (
@@ -999,8 +992,12 @@ export default function VideoPlayer({
                   {isEnrolled && (
                     <AlertDialog>
                       <AlertDialogTrigger asChild>
-                        <Button variant="outline" size="sm">
-                          <UserMinus className="h-4 w-4" />
+                        <Button variant="outline" size="sm" disabled={isUnenrolling}>
+                          {isUnenrolling ? (
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                          ) : (
+                            <UserMinus className="h-4 w-4" />
+                          )}
                         </Button>
                       </AlertDialogTrigger>
                       <AlertDialogContent>
