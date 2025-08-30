@@ -20,24 +20,23 @@ import type {
   Video,
 } from "../lib/types";
 
-/** Normalizes schema differences (some docs use `ladders`, others `ladderIds`) */
-function getLadderIds(c: Partial<Course> & { [k: string]: any }): string[] {
+/** Normalize schema differences (some docs use `ladders`, others `ladderIds`) */
+function getLadderIds(c: Partial<Course> & Record<string, any>): string[] {
   const a = Array.isArray(c.ladderIds) ? (c.ladderIds as string[]) : [];
   const b = Array.isArray((c as any).ladders) ? ((c as any).ladders as string[]) : [];
   return a.length ? a : b;
 }
 
-interface CourseWithStatus extends Course {
+/** The processed course we expose everywhere (extends your base Course) */
+export type CourseWithStatus = Course & {
   isEnrolled?: boolean;
   isCompleted?: boolean;
   completedAt?: string;
   totalProgress?: number;
   lastWatchedVideoId?: string;
   isLocked?: boolean;
-  prerequisiteCourse?: { id: string; title: string };
-  /** Ensure ladderIds is always present for downstream consumers */
-  ladderIds?: string[];
-}
+  prerequisiteCourse?: { id: string; title: string } | undefined;
+};
 
 export function useProcessedCourses(forAllCoursesPage: boolean = false) {
   const { user } = useAuth();
@@ -76,11 +75,12 @@ export function useProcessedCourses(forAllCoursesPage: boolean = false) {
         where("status", "==", "published")
       );
       const coursesSnapshot = await getDocs(coursesQuery);
-      const coursesList: CourseWithStatus[] = coursesSnapshot.docs.map((doc) => {
-        const raw = { id: doc.id, ...doc.data() } as CourseWithStatus;
-        // Normalize ladderIds so downstream logic is consistent
-        raw.ladderIds = getLadderIds(raw);
-        return raw;
+
+      // Normalize to ensure ladderIds is always present on the object
+      const coursesList: Course[] = coursesSnapshot.docs.map((doc) => {
+        const raw = { id: doc.id, ...doc.data() } as Course;
+        const ladderIds = getLadderIds(raw);
+        return { ...raw, ladderIds };
       });
 
       // Always sort once (null/undefined orders go to the end)
@@ -148,9 +148,7 @@ export function useProcessedCourses(forAllCoursesPage: boolean = false) {
           [];
 
         if (publishedVideoIdsForCourse.length === 0) {
-          if (enrollment?.completedAt) {
-            completedCourseIds.add(course.id!);
-          }
+          if (enrollment?.completedAt) completedCourseIds.add(course.id!);
           continue;
         }
 
@@ -174,21 +172,21 @@ export function useProcessedCourses(forAllCoursesPage: boolean = false) {
       const isLowestLadder = userLadderOrder === lowestLadderOrder;
 
       /** Precompute per-ladder ordering for “current course” semantics (within user’s ladder only) */
-      const orderByLadder = new Map<string, CourseWithStatus[]>();
+      const orderByLadder = new Map<string, Course[]>();
       for (const c of sortedCourses) {
         for (const lid of c.ladderIds ?? []) {
           if (!orderByLadder.has(lid)) orderByLadder.set(lid, []);
           orderByLadder.get(lid)!.push(c);
         }
       }
-      for (const [lid, arr] of orderByLadder) {
+      for (const [, arr] of orderByLadder) {
         arr.sort((a, b) => (a.order ?? Infinity) - (b.order ?? Infinity));
       }
 
-      function findNearestLowerPrereq(course: CourseWithStatus, ladderId: string) {
+      function findNearestLowerPrereq(course: Course, ladderId: string) {
         if (course.order == null) return undefined;
         const arr = orderByLadder.get(ladderId) ?? [];
-        let candidate: CourseWithStatus | undefined;
+        let candidate: Course | undefined;
         for (const c of arr) {
           if ((c.order ?? Infinity) < course.order) candidate = c;
           else break;
@@ -219,14 +217,15 @@ export function useProcessedCourses(forAllCoursesPage: boolean = false) {
         let isLocked = false;
         let prerequisiteCourse: CourseWithStatus["prerequisiteCourse"] = undefined;
 
+        // Lock higher ladders
         if (courseLadders.length > 0 && userLadder) {
           const highestCourseLadderOrder = Math.max(...courseLadders.map((l) => l.order));
           if (highestCourseLadderOrder > userLadderOrder) {
-            isLocked = true; // higher ladders locked
+            isLocked = true;
           }
         }
 
-        // **Prereqs enforced ONLY within the user's current ladder**
+        // Enforce prerequisite inside the user's ladder
         if (!isLocked && userLadder) {
           const inUserLadder = (course.ladderIds || []).includes(userLadder.id);
           if (inUserLadder && course.order !== undefined) {
@@ -238,12 +237,11 @@ export function useProcessedCourses(forAllCoursesPage: boolean = false) {
           }
         }
 
-        // Lowest ladder rule: only one in-progress course at a time **within that ladder**.
+        // Lowest ladder: only one in-progress course at a time in that ladder
         if (!isLocked && isLowestLadder && userLadder) {
           const inProgressInUserLadder = [...coursesInProgress].some((cid) => {
-            const cc = coursesList.find((c) => c.id === cid);
-            const lids = getLadderIds(cc || {});
-            return lids.includes(userLadder.id);
+            const cc = sortedCourses.find((c) => c.id === cid);
+            return (cc?.ladderIds || []).includes(userLadder.id);
           });
           const thisInUserLadder = (course.ladderIds || []).includes(userLadder.id);
           if (inProgressInUserLadder && thisInUserLadder && !isCompleted && !enrollment) {
@@ -259,7 +257,6 @@ export function useProcessedCourses(forAllCoursesPage: boolean = false) {
 
         return {
           ...course,
-          ladderIds: course.ladderIds || [], // keep normalized
           isEnrolled: !!enrollment,
           isCompleted,
           isLocked,
