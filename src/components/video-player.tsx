@@ -16,7 +16,6 @@ import {
   Link as LinkIcon,
   Maximize,
   Repeat,
-  Printer,
   Minimize,
   Share2,
   Heart,
@@ -26,8 +25,6 @@ import {
   ToggleLeft,
   ToggleRight,
   PictureInPicture,
-  UserMinus,
-  Loader2,
 } from "lucide-react";
 import type {
   Course,
@@ -48,13 +45,11 @@ import {
   query,
   onSnapshot,
   serverTimestamp,
-  Timestamp,
   doc,
   getDoc,
   runTransaction,
   getDocs,
   where,
-  setDoc,
   writeBatch,
 } from "firebase/firestore";
 import { getFunctions } from "firebase/functions";
@@ -63,7 +58,6 @@ import {
   DialogContent,
   DialogHeader,
   DialogTitle,
-  DialogDescription,
   DialogTrigger,
 } from "@/components/ui/dialog";
 import CertificatePrint from "@/components/certificate-print";
@@ -75,21 +69,9 @@ import {
 } from "@/components/ui/accordion";
 import { CourseCard } from "./course-card";
 import { useToast } from "@/hooks/use-toast";
-import { unenrollUserFromCourse } from "@/lib/user-actions";
 import { useIsMobile } from "@/hooks/use-is-mobile";
 import jsPDF from "jspdf";
 import html2canvas from "html2canvas";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-  AlertDialogTrigger,
-} from "@/components/ui/alert-dialog";
 import CommentSection, { CommentForm } from "./video/comment-section";
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
 import { useProcessedCourses } from "@/hooks/useProcessedCourses";
@@ -274,12 +256,12 @@ export default function VideoPlayerClient({
   const [isLiked, setIsLiked] = useState(false);
   const [likeCount, setLikeCount] = useState(currentVideo.likeCount || 0);
   const [shareCount, setShareCount] = useState(currentVideo.shareCount || 0);
-  const [isUnenrolling, setIsUnenrolling] = useState(false);
 
   const canDownload = hasPermission("downloadContent");
   const canRightClick = hasPermission("allowRightClick");
 
-  const { processedCourses, loading: processedLoading, refresh } = useProcessedCourses(true);
+  const { processedCourses, loading: processedLoading, refresh } =
+    useProcessedCourses(true);
 
   const relatedCourses = useMemo(() => {
     if (!processedCourses?.length || !course.ladderIds?.length) return [];
@@ -654,23 +636,6 @@ export default function VideoPlayerClient({
     };
   }, []);
 
-  const handleUnenroll = async () => {
-    if (!user) return;
-    setIsUnenrolling(true);
-    const result = await unenrollUserFromCourse(user.uid, course.id);
-    if (result.success) {
-      toast({ title: "Successfully unenrolled" });
-      router.push("/courses");
-    } else {
-      toast({
-        variant: "destructive",
-        title: "Unenrollment failed",
-        description: result.message,
-      });
-    }
-    setIsUnenrolling(false);
-  };
-
   const getInitials = (name?: string | null) => {
     if (!name) return "U";
     const parts = name.trim().split(/\s+/);
@@ -821,7 +786,10 @@ export default function VideoPlayerClient({
                     variant="ghost"
                     size="icon"
                     onClick={() => setIsLooping(!isLooping)}
-                    className={cn("text-white hover:text-white hover:bg-white/20", isLooping && "bg-white/20")}
+                    className={cn(
+                      "text-white hover:text-white hover:bg-white/20",
+                      isLooping && "bg-white/20"
+                    )}
                   >
                     <Repeat />
                   </Button>
@@ -902,9 +870,7 @@ export default function VideoPlayerClient({
                 <div className="flex items-center gap-2">
                   <Avatar>
                     <AvatarImage src={speaker?.photoURL || undefined} />
-                    <AvatarFallback>
-                      {getInitials(speaker?.name || "GTH")}
-                    </AvatarFallback>
+                    <AvatarFallback>{getInitials(speaker?.name || "GTH")}</AvatarFallback>
                   </Avatar>
                   <div>
                     <p className="font-semibold">
@@ -943,32 +909,7 @@ export default function VideoPlayerClient({
                       </Button>
                     </a>
                   )}
-                  {isEnrolled && (
-                    <AlertDialog>
-                      <AlertDialogTrigger asChild>
-                        <Button variant="outline" size="sm" disabled={isUnenrolling}>
-                          {isUnenrolling ? <Loader2 className="h-4 w-4 animate-spin" /> : <UserMinus className="h-4 w-4" />}
-                        </Button>
-                      </AlertDialogTrigger>
-                      <AlertDialogContent>
-                        <AlertDialogHeader>
-                          <AlertDialogTitle>
-                            Are you sure you want to un-enroll?
-                          </AlertDialogTitle>
-                          <AlertDialogDescription>
-                            Your progress in this course will be saved if you
-                            choose to re-enroll later.
-                          </AlertDialogDescription>
-                        </AlertDialogHeader>
-                        <AlertDialogFooter>
-                          <AlertDialogCancel>Cancel</AlertDialogCancel>
-                          <AlertDialogAction onClick={handleUnenroll}>
-                            Un-enroll
-                          </AlertDialogAction>
-                        </AlertDialogFooter>
-                      </AlertDialogContent>
-                    </AlertDialog>
-                  )}
+                  {/* Unenroll button was here — removed as requested */}
                 </div>
               </div>
 
