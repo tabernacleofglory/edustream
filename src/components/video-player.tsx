@@ -1,4 +1,3 @@
-// src/components/video-player.tsx
 "use client";
 
 import { useState, useEffect, useRef, useMemo, useCallback } from "react";
@@ -17,6 +16,7 @@ import {
   Link as LinkIcon,
   Maximize,
   Repeat,
+  Printer,
   Minimize,
   Share2,
   Heart,
@@ -26,6 +26,8 @@ import {
   ToggleLeft,
   ToggleRight,
   PictureInPicture,
+  UserMinus,
+  Loader2,
 } from "lucide-react";
 import type {
   Course,
@@ -46,11 +48,13 @@ import {
   query,
   onSnapshot,
   serverTimestamp,
+  Timestamp,
   doc,
   getDoc,
   runTransaction,
   getDocs,
   where,
+  setDoc,
   writeBatch,
 } from "firebase/firestore";
 import { getFunctions } from "firebase/functions";
@@ -59,6 +63,7 @@ import {
   DialogContent,
   DialogHeader,
   DialogTitle,
+  DialogDescription,
   DialogTrigger,
 } from "@/components/ui/dialog";
 import CertificatePrint from "@/components/certificate-print";
@@ -70,13 +75,26 @@ import {
 } from "@/components/ui/accordion";
 import { CourseCard } from "./course-card";
 import { useToast } from "@/hooks/use-toast";
+import { unenrollUserFromCourse } from "@/lib/user-actions";
 import { useIsMobile } from "@/hooks/use-is-mobile";
+import jsPDF from "jspdf";
 import html2canvas from "html2canvas";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 import CommentSection, { CommentForm } from "./video/comment-section";
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
-import { useProcessedCourses, type CourseWithStatus } from "@/hooks/useProcessedCourses";
+import { useProcessedCourses } from "@/hooks/useProcessedCourses";
 
-interface VideoPlayerProps {
+interface VideoPlayerClientProps {
   course: Course;
   courseVideos: Video[];
   currentVideo: Video;
@@ -96,17 +114,38 @@ const PlaylistAndResources = ({
   courseVideos: Video[];
   currentVideo: Video;
   watchedVideos: Set<string>;
-  relatedCourses: CourseWithStatus[];
+  relatedCourses: (Course & {
+    isEnrolled?: boolean;
+    isCompleted?: boolean;
+    isLocked?: boolean;
+    prerequisiteCourse?: { id: string; title: string };
+    totalProgress?: number;
+    lastWatchedVideoId?: string;
+  })[];
   onRelatedChange: () => void;
 }) => {
+  let lastUnlockedIndex = -1;
+  courseVideos.forEach((video, index) => {
+    if (watchedVideos.has(video.id)) {
+      lastUnlockedIndex = index;
+    }
+  });
+
   return (
-    <Accordion type="multiple" defaultValue={["playlist", "resources", "related"]} className="w-full">
+    <Accordion
+      type="multiple"
+      defaultValue={["playlist", "resources", "related"]}
+      className="w-full"
+    >
       <AccordionItem value="playlist">
-        <AccordionTrigger className="px-4 font-semibold">{course.title}</AccordionTrigger>
+        <AccordionTrigger className="px-4 font-semibold">
+          {course.title}
+        </AccordionTrigger>
         <AccordionContent>
           <div className="space-y-1">
             {courseVideos.map((video, index) => {
-              const isLocked = index > 0 && !watchedVideos.has(courseVideos[index - 1].id);
+              const isLocked =
+                index > 0 && !watchedVideos.has(courseVideos[index - 1].id);
               const isCompleted = watchedVideos.has(video.id);
 
               return (
@@ -145,10 +184,13 @@ const PlaylistAndResources = ({
       </AccordionItem>
 
       <AccordionItem value="resources">
-        <AccordionTrigger className="px-4 font-semibold">Resources</AccordionTrigger>
+        <AccordionTrigger className="px-4 font-semibold">
+          Resources
+        </AccordionTrigger>
         <AccordionContent className="px-4 space-y-2">
           {course["Resource Doc"]?.map((url, index) => {
-            const fileName = url.split("/").pop()?.split("?")[0].split("%2F").pop() || "Resource";
+            const fileName =
+              url.split("/").pop()?.split("?")[0].split("%2F").pop() || "Resource";
             return (
               <a
                 key={index}
@@ -179,12 +221,13 @@ const PlaylistAndResources = ({
 
       {relatedCourses.length > 0 && (
         <AccordionItem value="related">
-          <AccordionTrigger className="px-4 font-semibold">Related Courses</AccordionTrigger>
+          <AccordionTrigger className="px-4 font-semibold">
+            Related Courses
+          </AccordionTrigger>
           <AccordionContent className="p-2 space-y-2">
             {relatedCourses.map((rc) => (
               <div key={rc.id} className="w-full px-2">
-                {/* Uses same processed type, so lock/prereq is consistent */}
-                <CourseCard course={rc} onChange={onRelatedChange} />
+                <CourseCard course={rc} onUnenroll={onRelatedChange} />
               </div>
             ))}
           </AccordionContent>
@@ -194,13 +237,13 @@ const PlaylistAndResources = ({
   );
 };
 
-export default function VideoPlayer({
+export default function VideoPlayerClient({
   course,
   courseVideos,
   currentVideo,
   videoIndex,
   speaker,
-}: VideoPlayerProps) {
+}: VideoPlayerClientProps) {
   const { user, refreshUser, hasPermission } = useAuth();
   const router = useRouter();
   const { toast } = useToast();
@@ -208,6 +251,7 @@ export default function VideoPlayer({
   const videoContainerRef = useRef<HTMLDivElement>(null);
   const controlsTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const debounceTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const certificateRef = useRef<HTMLDivElement>(null);
   const db = getFirebaseFirestore();
   const functions = getFunctions(getFirebaseApp());
   const isMobile = useIsMobile();
@@ -230,14 +274,14 @@ export default function VideoPlayer({
   const [isLiked, setIsLiked] = useState(false);
   const [likeCount, setLikeCount] = useState(currentVideo.likeCount || 0);
   const [shareCount, setShareCount] = useState(currentVideo.shareCount || 0);
+  const [isUnenrolling, setIsUnenrolling] = useState(false);
 
   const canDownload = hasPermission("downloadContent");
   const canRightClick = hasPermission("allowRightClick");
 
-  // Single source of truth for locking/prereqs
-  const { processedCourses, refresh } = useProcessedCourses(true);
+  const { processedCourses, loading: processedLoading, refresh } = useProcessedCourses(true);
 
-  const relatedCourses: CourseWithStatus[] = useMemo(() => {
+  const relatedCourses = useMemo(() => {
     if (!processedCourses?.length || !course.ladderIds?.length) return [];
     return processedCourses.filter(
       (c) =>
@@ -280,7 +324,8 @@ export default function VideoPlayer({
     const startPlayback = async () => {
       try {
         await videoElement.play();
-      } catch {
+      } catch (error) {
+        console.warn("Autoplay was prevented:", error);
         setIsPlaying(false);
       }
     };
@@ -315,7 +360,9 @@ export default function VideoPlayer({
       }
     }
 
-    if (currentVideo.duration) setDuration(currentVideo.duration);
+    if (currentVideo.duration) {
+      setDuration(currentVideo.duration);
+    }
 
     const fetchLastPosition = async () => {
       if (!user || !isEnrolled) return;
@@ -415,16 +462,14 @@ export default function VideoPlayer({
           }
 
           if (needsUpdate) {
-            batch.set(
-              progressRef,
-              {
-                userId: user.uid,
-                courseId: courseIdToUpdate,
-                videoProgress: currentProgress,
-                lastWatchedVideoId: currentVideo.id,
-              } as Partial<UserProgressType>,
-              { merge: true }
-            );
+            const dataToSave: Partial<UserProgressType> = {
+              userId: user.uid,
+              courseId: courseIdToUpdate,
+              videoProgress: currentProgress,
+              lastWatchedVideoId: currentVideo.id,
+            };
+
+            batch.set(progressRef, dataToSave, { merge: true });
 
             if (completed) {
               const publishedVideoIds = courseToUpdate.videos || [];
@@ -498,7 +543,7 @@ export default function VideoPlayer({
     if (user && playerRef.current) {
       await saveProgressToFirestore(playerRef.current.duration, true);
       refreshUser();
-      refresh(); // refresh processedCourses so related cards reflect new state
+      refresh();
     }
 
     if (isAutoNextEnabled && nextVideo) {
@@ -529,7 +574,7 @@ export default function VideoPlayer({
   const handleShare = async () => {
     const shareData = {
       title: `${course.title} - ${currentVideo.title}`,
-      text: `Check out this video from the course "${course.title}" on Glory Training Hub!"`,
+      text: `Check out this video from the course "${course.title}" on Glory Training Hub!`,
       url: window.location.href,
     };
 
@@ -543,7 +588,10 @@ export default function VideoPlayer({
       try {
         await navigator.share(shareData);
         await recordShare();
-      } catch {
+      } catch (error: any) {
+        if (error.name !== "NotAllowedError" && error.name !== "AbortError") {
+          console.error("Error sharing:", error);
+        }
         await navigator.clipboard.writeText(shareData.url);
         await recordShare();
         toast({ title: "Link copied to clipboard!" });
@@ -555,11 +603,23 @@ export default function VideoPlayer({
     }
   };
 
+  const handleLike = async () => {
+    if (!user) return;
+    const likeRef = doc(db, "Contents", currentVideo.id, "likes", user.uid);
+    await runTransaction(db, async (transaction) => {
+      const likeDoc = await transaction.get(likeRef);
+      if (likeDoc.exists()) transaction.delete(likeRef);
+      else transaction.set(likeRef, { uid: user.uid, createdAt: serverTimestamp() });
+    });
+  };
+
   const handleFullScreen = () => {
     const playerContainer = videoContainerRef.current;
     if (!playerContainer) return;
     if (!document.fullscreenElement) {
-      playerContainer.requestFullscreen().catch(() => {});
+      playerContainer.requestFullscreen().catch((err) => {
+        alert(`Error attempting to enable full-screen: ${err.message} (${err.name})`);
+      });
     } else {
       document.exitFullscreen();
     }
@@ -579,7 +639,9 @@ export default function VideoPlayer({
       setShowControls(true);
       if (controlsTimeoutRef.current) clearTimeout(controlsTimeoutRef.current);
       controlsTimeoutRef.current = setTimeout(() => {
-        if (playerRef.current && !playerRef.current.paused) setShowControls(false);
+        if (playerRef.current && !playerRef.current.paused) {
+          setShowControls(false);
+        }
       }, 3000);
     };
 
@@ -591,6 +653,23 @@ export default function VideoPlayer({
       if (controlsTimeoutRef.current) clearTimeout(controlsTimeoutRef.current);
     };
   }, []);
+
+  const handleUnenroll = async () => {
+    if (!user) return;
+    setIsUnenrolling(true);
+    const result = await unenrollUserFromCourse(user.uid, course.id);
+    if (result.success) {
+      toast({ title: "Successfully unenrolled" });
+      router.push("/courses");
+    } else {
+      toast({
+        variant: "destructive",
+        title: "Unenrollment failed",
+        description: result.message,
+      });
+    }
+    setIsUnenrolling(false);
+  };
 
   const getInitials = (name?: string | null) => {
     if (!name) return "U";
@@ -627,7 +706,9 @@ export default function VideoPlayer({
                   saveProgressToFirestore(target.currentTime, false);
                 }
               }}
-              onLoadedData={(e) => setDuration((e.target as HTMLVideoElement).duration)}
+              onLoadedData={(e) =>
+                setDuration((e.target as HTMLVideoElement).duration)
+              }
               onEnded={handleEnded}
               loop={isLooping}
               playsInline
@@ -655,9 +736,11 @@ export default function VideoPlayer({
                 onValueChange={(value) => {
                   if (!playerRef.current) return;
                   const newTime = (value[0] / 100) * duration;
-                  if (isEnrolled &&
-                      (newTime <= farthestTimeWatchedRef.current ||
-                       newTime - farthestTimeWatchedRef.current < 1)) {
+                  if (
+                    isEnrolled &&
+                    (newTime <= farthestTimeWatchedRef.current ||
+                      newTime - farthestTimeWatchedRef.current < 1)
+                  ) {
                     playerRef.current.currentTime = newTime;
                     setProgress(value[0]);
                   } else if (!isEnrolled) {
@@ -671,30 +754,58 @@ export default function VideoPlayer({
               />
               <div className="flex items-center justify-between text-sm text-white mt-2">
                 <div className="flex items-center gap-1 md:gap-2">
-                  <Button variant="ghost" size="icon" onClick={togglePlayPause} className="text-white hover:text-white hover:bg-white/20">
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={togglePlayPause}
+                    className="text-white hover:text-white hover:bg-white/20"
+                  >
                     {isPlaying ? <Pause /> : <Play />}
                   </Button>
-                  <Button variant="ghost" size="icon" className="text-white hover:text-white hover:bg-white/20" disabled={videoIndex === 0}>
-                    <Link href={videoIndex > 0 ? `/courses/${course.id}/video/${courseVideos[videoIndex - 1].id}` : "#"}>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="text-white hover:text-white hover:bg-white/20"
+                    disabled={videoIndex === 0}
+                  >
+                    <Link
+                      href={
+                        videoIndex > 0
+                          ? `/courses/${course.id}/video/${courseVideos[videoIndex - 1].id}`
+                          : "#"
+                      }
+                    >
                       <SkipBack />
                     </Link>
                   </Button>
-                  <Button variant="ghost" size="icon" className="text-white hover:text-white hover:bg-white/20" disabled={videoIndex === courseVideos.length - 1}>
-                    <Link href={videoIndex < courseVideos.length - 1 ? `/courses/${course.id}/video/${courseVideos[videoIndex + 1].id}` : "#"}>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="text-white hover:text-white hover:bg-white/20"
+                    disabled={videoIndex === courseVideos.length - 1}
+                  >
+                    <Link
+                      href={
+                        videoIndex < courseVideos.length - 1
+                          ? `/courses/${course.id}/video/${courseVideos[videoIndex + 1].id}`
+                          : "#"
+                      }
+                    >
                       <SkipForward />
                     </Link>
                   </Button>
                   <div className="hidden md:flex items-center gap-2">
-                    <Button variant="ghost" size="icon" onClick={() => setIsMuted((m) => !m)} className="text-white hover:text-white hover:bg-white/20">
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={toggleMute}
+                      className="text-white hover:text-white hover:bg-white/20"
+                    >
                       {isMuted || volume === 0 ? <VolumeX /> : <Volume2 />}
                     </Button>
                     <Slider
                       value={[isMuted ? 0 : volume]}
-                      onValueChange={(v) => {
-                        const newV = (v as number[])[0];
-                        setVolume(newV);
-                        setIsMuted(newV === 0);
-                      }}
+                      onValueChange={(v) => handleVolumeChange(v as number[])}
                       max={1}
                       step={0.05}
                       className="w-24"
@@ -702,13 +813,14 @@ export default function VideoPlayer({
                   </div>
                 </div>
                 <div className="flex items-center text-xs">
-                  {new Date(currentTime * 1000).toISOString().substr(14, 5)} / {new Date(duration * 1000).toISOString().substr(14, 5)}
+                  {new Date(currentTime * 1000).toISOString().substr(14, 5)} /{" "}
+                  {new Date(duration * 1000).toISOString().substr(14, 5)}
                 </div>
                 <div className="flex items-center justify-center gap-1 md:gap-2">
                   <Button
                     variant="ghost"
                     size="icon"
-                    onClick={() => setIsLooping((s) => !s)}
+                    onClick={() => setIsLooping(!isLooping)}
                     className={cn("text-white hover:text-white hover:bg-white/20", isLooping && "bg-white/20")}
                   >
                     <Repeat />
@@ -716,7 +828,7 @@ export default function VideoPlayer({
                   <Button
                     variant="ghost"
                     size="icon"
-                    onClick={() => setIsAutoNextEnabled((s) => !s)}
+                    onClick={() => setIsAutoNextEnabled(!isAutoNextEnabled)}
                     className="text-white hover:text-white hover:bg-white/20"
                   >
                     {isAutoNextEnabled ? <ToggleRight /> : <ToggleLeft />}
@@ -729,7 +841,12 @@ export default function VideoPlayer({
                   >
                     <PictureInPicture />
                   </Button>
-                  <Button variant="ghost" size="icon" onClick={handleFullScreen} className="text-white hover:text-white hover:bg-white/20">
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={handleFullScreen}
+                    className="text-white hover:text-white hover:bg-white/20"
+                  >
                     {isFullScreen ? <Minimize /> : <Maximize />}
                   </Button>
                 </div>
@@ -741,20 +858,29 @@ export default function VideoPlayer({
         <div className="flex flex-col flex-1 lg:h-screen">
           <ScrollArea className="flex-1 p-4 md:p-6 lg:p-8 lg:pb-0">
             <div className={cn(isMobile && "pb-20")}>
-              <h1 className="text-2xl md:text-3xl font-bold font-headline">{currentVideo.title}</h1>
+              <h1 className="text-2xl md:text-3xl font-bold font-headline">
+                {currentVideo.title}
+              </h1>
 
               {isCompleted && (
                 <div className="mt-4 p-4 bg-green-100 dark:bg-green-900/50 border border-green-200 dark:border-green-800 rounded-lg flex flex-col sm:flex-row items-center justify-between gap-4">
                   <div className="flex items-center gap-3">
                     <CheckCircle2 className="h-8 w-8 text-green-600 dark:text-green-400" />
                     <div>
-                      <h3 className="font-bold text-green-800 dark:text-green-300">Congratulations! You've completed the course.</h3>
-                      <p className="text-sm text-green-700 dark:text-green-400">You can now view and download your certificate.</p>
+                      <h3 className="font-bold text-green-800 dark:text-green-300">
+                        Congratulations! You've completed the course.
+                      </h3>
+                      <p className="text-sm text-green-700 dark:text-green-400">
+                        You can now view and download your certificate.
+                      </p>
                     </div>
                   </div>
                   <Dialog>
                     <DialogTrigger asChild>
-                      <Button variant="default" className="bg-green-600 hover:bg-green-700 text-white flex-shrink-0">
+                      <Button
+                        variant="default"
+                        className="bg-green-600 hover:bg-green-700 text-white flex-shrink-0"
+                      >
                         <Award className="mr-2 h-4 w-4" />
                         View Certificate
                       </Button>
@@ -763,7 +889,10 @@ export default function VideoPlayer({
                       <DialogHeader>
                         <DialogTitle>Certificate of Completion</DialogTitle>
                       </DialogHeader>
-                      <CertificatePrint userName={user?.displayName || "Valued Student"} course={course} />
+                      <CertificatePrint
+                        userName={user?.displayName || "Valued Student"}
+                        course={course}
+                      />
                     </DialogContent>
                   </Dialog>
                 </div>
@@ -774,29 +903,27 @@ export default function VideoPlayer({
                   <Avatar>
                     <AvatarImage src={speaker?.photoURL || undefined} />
                     <AvatarFallback>
-                      {(() => {
-                        const n = speaker?.name || "GTH";
-                        return n.trim().split(/\s+/).map((s) => s[0]).join("").toUpperCase();
-                      })()}
+                      {getInitials(speaker?.name || "GTH")}
                     </AvatarFallback>
                   </Avatar>
                   <div>
-                    <p className="font-semibold">{speaker?.name || "Glory Training Hub"}</p>
-                    <p className="text-sm text-muted-foreground">{course.enrollmentCount || 0} Learners</p>
+                    <p className="font-semibold">
+                      {speaker?.name || "Glory Training Hub"}
+                    </p>
+                    <p className="text-sm text-muted-foreground">
+                      {course.enrollmentCount || 0} Learners
+                    </p>
                   </div>
                 </div>
 
                 <div className="flex items-center gap-2">
-                  <Button onClick={async () => {
-                    if (!user) return;
-                    const likeRef = doc(db, "Contents", currentVideo.id, "likes", user.uid);
-                    await runTransaction(db, async (transaction) => {
-                      const likeDoc = await transaction.get(likeRef);
-                      if (likeDoc.exists()) transaction.delete(likeRef);
-                      else transaction.set(likeRef, { uid: user.uid, createdAt: serverTimestamp() });
-                    });
-                  }} variant="outline" size="sm" disabled={!user}>
-                    <Heart className={cn("mr-2 h-4 w-4", isLiked && "fill-destructive text-destructive")} />
+                  <Button onClick={handleLike} variant="outline" size="sm" disabled={!user}>
+                    <Heart
+                      className={cn(
+                        "mr-2 h-4 w-4",
+                        isLiked && "fill-destructive text-destructive"
+                      )}
+                    />
                     {likeCount}
                   </Button>
                   <Button onClick={handleShare} variant="outline" size="sm">
@@ -804,12 +931,43 @@ export default function VideoPlayer({
                     {shareCount}
                   </Button>
                   {canDownload && (
-                    <a href={currentVideo.url} download target="_blank" rel="noopener noreferrer">
+                    <a
+                      href={currentVideo.url}
+                      download
+                      target="_blank"
+                      rel="noopener noreferrer"
+                    >
                       <Button variant="outline" size="sm">
                         <Download className="mr-2 h-4 w-4" />
                         Download
                       </Button>
                     </a>
+                  )}
+                  {isEnrolled && (
+                    <AlertDialog>
+                      <AlertDialogTrigger asChild>
+                        <Button variant="outline" size="sm" disabled={isUnenrolling}>
+                          {isUnenrolling ? <Loader2 className="h-4 w-4 animate-spin" /> : <UserMinus className="h-4 w-4" />}
+                        </Button>
+                      </AlertDialogTrigger>
+                      <AlertDialogContent>
+                        <AlertDialogHeader>
+                          <AlertDialogTitle>
+                            Are you sure you want to un-enroll?
+                          </AlertDialogTitle>
+                          <AlertDialogDescription>
+                            Your progress in this course will be saved if you
+                            choose to re-enroll later.
+                          </AlertDialogDescription>
+                        </AlertDialogHeader>
+                        <AlertDialogFooter>
+                          <AlertDialogCancel>Cancel</AlertDialogCancel>
+                          <AlertDialogAction onClick={handleUnenroll}>
+                            Un-enroll
+                          </AlertDialogAction>
+                        </AlertDialogFooter>
+                      </AlertDialogContent>
+                    </AlertDialog>
                   )}
                 </div>
               </div>

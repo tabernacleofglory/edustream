@@ -1,5 +1,3 @@
-"use client";
-
 import { getFirebaseFirestore } from "@/lib/firebase";
 import { Course, Video, Speaker } from "@/lib/types";
 import {
@@ -16,10 +14,7 @@ import { notFound } from "next/navigation";
 import VideoPlayer from "@/components/video-player";
 import { getFirebaseAuth } from "@/lib/firebase";
 import type { User as FirebaseUser } from "firebase/auth";
-
-// Disable caching for this page to ensure fresh data
-export const revalidate = 0;
-export const dynamic = "force-dynamic";
+import { use } from 'react';
 
 type VideoPageProps = {
   params: {
@@ -104,10 +99,10 @@ export default async function VideoPage({ params }: VideoPageProps) {
   const user = auth.currentUser;
 
   const { course, videos, speaker } = await getCourseAndVideos(courseId, user);
-  if (!course) notFound();
+  if (!course) return notFound();
 
   const currentVideo = videos.find((v) => v.id === videoId);
-  if (!currentVideo) notFound();
+  if (!currentVideo) return notFound();
 
   const videoIndex = videos.findIndex((v) => v.id === currentVideo.id);
 
