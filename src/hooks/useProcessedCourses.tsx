@@ -76,14 +76,14 @@ export function useProcessedCourses(forAllCoursesPage: boolean = false) {
       );
       const coursesSnapshot = await getDocs(coursesQuery);
 
-      // Normalize to ensure ladderIds is always present on the object
+      // Normalize ladderIds so downstream logic always has them
       const coursesList: Course[] = coursesSnapshot.docs.map((doc) => {
         const raw = { id: doc.id, ...doc.data() } as Course;
         const ladderIds = getLadderIds(raw);
         return { ...raw, ladderIds };
       });
 
-      // Always sort once (null/undefined orders go to the end)
+      // Sort once (null/undefined orders to the end)
       const sortedCourses = [...coursesList].sort(
         (a, b) => (a.order ?? Infinity) - (b.order ?? Infinity)
       );
@@ -171,7 +171,7 @@ export function useProcessedCourses(forAllCoursesPage: boolean = false) {
       const userLadderOrder = userLadder?.order ?? (laddersList[0]?.order ?? 0);
       const isLowestLadder = userLadderOrder === lowestLadderOrder;
 
-      /** Precompute per-ladder ordering for “current course” semantics (within user’s ladder only) */
+      /** Precompute per-ladder ordering for prereq lookups */
       const orderByLadder = new Map<string, Course[]>();
       for (const c of sortedCourses) {
         for (const lid of c.ladderIds ?? []) {
@@ -194,7 +194,7 @@ export function useProcessedCourses(forAllCoursesPage: boolean = false) {
         return candidate;
       }
 
-      /** Build final course states */
+      /** Build final course states (with corrected locking + prereq logic) */
       const coursesWithStatus: CourseWithStatus[] = sortedCourses.map((course) => {
         const enrollment = enrollmentData.get(course.id!);
         const progress = progressMap.get(course.id!);
@@ -217,27 +217,33 @@ export function useProcessedCourses(forAllCoursesPage: boolean = false) {
         let isLocked = false;
         let prerequisiteCourse: CourseWithStatus["prerequisiteCourse"] = undefined;
 
-        // Lock higher ladders
-        if (courseLadders.length > 0 && userLadder) {
-          const highestCourseLadderOrder = Math.max(...courseLadders.map((l) => l.order));
-          if (highestCourseLadderOrder > userLadderOrder) {
-            isLocked = true;
-          }
-        }
+        if (userLadder && courseLadders.length > 0) {
+          // 🔒 Lock ONLY if *all* ladders for this course are higher than the user's ladder
+          const minCourseLadderOrder = Math.min(...courseLadders.map((l) => l.order));
+          if (minCourseLadderOrder > userLadderOrder) {
+            isLocked = true; // course entirely above the user's ladder -> locked
+          } else {
+            // ✅ At least one ladder for this course is <= user ladder, so the course is eligible.
+            // Enforce prerequisites within the appropriate ladder:
+            // - If course is in the user's ladder, use that.
+            // - Else, pick the nearest ladder for the course whose order <= user ladder.
+            let ladderForPrereq: Ladder | undefined =
+              courseLadders.find((l) => l.id === userLadder.id) ||
+              courseLadders
+                .filter((l) => l.order <= userLadderOrder)
+                .sort((a, b) => b.order - a.order)[0]; // closest lower/equal ladder
 
-        // Enforce prerequisite inside the user's ladder
-        if (!isLocked && userLadder) {
-          const inUserLadder = (course.ladderIds || []).includes(userLadder.id);
-          if (inUserLadder && course.order !== undefined) {
-            const prereq = findNearestLowerPrereq(course, userLadder.id);
-            if (prereq && !completedCourseIds.has(prereq.id!)) {
-              isLocked = true;
-              prerequisiteCourse = { id: prereq.id!, title: prereq.title };
+            if (ladderForPrereq && course.order !== undefined) {
+              const prereq = findNearestLowerPrereq(course, ladderForPrereq.id);
+              if (prereq && !completedCourseIds.has(prereq.id!)) {
+                isLocked = true;
+                prerequisiteCourse = { id: prereq.id!, title: prereq.title };
+              }
             }
           }
         }
 
-        // Lowest ladder: only one in-progress course at a time in that ladder
+        // Lowest ladder: only one in-progress course at a time in that *user* ladder
         if (!isLocked && isLowestLadder && userLadder) {
           const inProgressInUserLadder = [...coursesInProgress].some((cid) => {
             const cc = sortedCourses.find((c) => c.id === cid);
