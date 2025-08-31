@@ -42,15 +42,13 @@ import { getFirebaseFirestore, getFirebaseApp } from "@/lib/firebase";
 import {
   collection,
   addDoc,
-  query,
   onSnapshot,
   serverTimestamp,
   doc,
   getDoc,
   runTransaction,
-  getDocs,
-  where,
   writeBatch,
+  setDoc,
 } from "firebase/firestore";
 import { getFunctions } from "firebase/functions";
 import {
@@ -70,8 +68,6 @@ import {
 import { CourseCard } from "./course-card";
 import { useToast } from "@/hooks/use-toast";
 import { useIsMobile } from "@/hooks/use-is-mobile";
-import jsPDF from "jspdf";
-import html2canvas from "html2canvas";
 import CommentSection, { CommentForm } from "./video/comment-section";
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
 import { useProcessedCourses } from "@/hooks/useProcessedCourses";
@@ -232,12 +228,18 @@ export default function VideoPlayerClient({
   const playerRef = useRef<HTMLVideoElement>(null);
   const videoContainerRef = useRef<HTMLDivElement>(null);
   const controlsTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-  const debounceTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-  const certificateRef = useRef<HTMLDivElement>(null);
+
+  // Progress / analytics helpers
+  const farthestTimeWatchedRef = useRef<number>(0);
+  const lastSavedRef = useRef<{ time: number; percent: number; atMs: number }>({
+    time: 0,
+    percent: 0,
+    atMs: 0,
+  });
+
   const db = getFirebaseFirestore();
   const functions = getFunctions(getFirebaseApp());
   const isMobile = useIsMobile();
-  const farthestTimeWatchedRef = useRef<number>(0);
 
   const [isPlaying, setIsPlaying] = useState(false);
   const [isLooping, setIsLooping] = useState(false);
@@ -293,76 +295,7 @@ export default function VideoPlayerClient({
     }
   }, [isMobile]);
 
-  useEffect(() => {
-    const videoElement = playerRef.current;
-    if (!videoElement || !isEnrolled) return;
-
-    const handlePlay = () => setIsPlaying(true);
-    const handlePause = () => setIsPlaying(false);
-
-    videoElement.addEventListener("play", handlePlay);
-    videoElement.addEventListener("pause", handlePause);
-
-    const startPlayback = async () => {
-      try {
-        await videoElement.play();
-      } catch (error) {
-        console.warn("Autoplay was prevented:", error);
-        setIsPlaying(false);
-      }
-    };
-    startPlayback();
-
-    return () => {
-      videoElement.removeEventListener("play", handlePlay);
-      videoElement.removeEventListener("pause", handlePause);
-    };
-  }, [isEnrolled, currentVideo.id]);
-
-  useEffect(() => {
-    const videoElement = playerRef.current;
-    if (!videoElement) return;
-    videoElement.volume = volume;
-    videoElement.muted = isMuted;
-  }, [volume, isMuted]);
-
-  useEffect(() => {
-    const videoElement = playerRef.current;
-    if (!videoElement) return;
-
-    const videoUrl = currentVideo.url;
-    if (videoUrl) {
-      if (Hls.isSupported() && videoUrl.includes(".m3u8")) {
-        const hls = new Hls();
-        hls.loadSource(videoUrl);
-        hls.attachMedia(videoElement);
-        return () => hls.destroy();
-      } else {
-        videoElement.src = videoUrl;
-      }
-    }
-
-    if (currentVideo.duration) {
-      setDuration(currentVideo.duration);
-    }
-
-    const fetchLastPosition = async () => {
-      if (!user || !isEnrolled) return;
-      const progressRef = doc(db, "userVideoProgress", `${user.uid}_${course.id}`);
-      const progressSnap = await getDoc(progressRef);
-      if (progressSnap.exists()) {
-        const videoProgress = (progressSnap.data() as UserProgressType).videoProgress?.find(
-          (vp) => vp.videoId === currentVideo.id
-        );
-        if (videoProgress && videoProgress.timeSpent && videoElement) {
-          videoElement.currentTime = videoProgress.timeSpent;
-          farthestTimeWatchedRef.current = videoProgress.timeSpent;
-        }
-      }
-    };
-    fetchLastPosition();
-  }, [currentVideo.id, currentVideo.url, isEnrolled, user, course.id, db]);
-
+  // --- Like / Share live counts ---
   useEffect(() => {
     if (!user) {
       setIsLiked(false);
@@ -386,101 +319,7 @@ export default function VideoPlayerClient({
     };
   }, [currentVideo.id, db]);
 
-  const saveProgressToFirestore = useCallback(
-    async (time: number, completed: boolean) => {
-      if (!user || !isEnrolled) return;
-      if (debounceTimeoutRef.current) clearTimeout(debounceTimeoutRef.current);
-
-      debounceTimeoutRef.current = setTimeout(async () => {
-        const batch = writeBatch(db);
-
-        const enrollmentsQuery = query(
-          collection(db, "enrollments"),
-          where("userId", "==", user.uid)
-        );
-        const enrollmentsSnapshot = await getDocs(enrollmentsQuery);
-        const enrolledCourseIds = enrollmentsSnapshot.docs.map((doc) => doc.data().courseId);
-
-        const coursesWithVideoQuery = query(
-          collection(db, "courses"),
-          where("videos", "array-contains", currentVideo.id),
-          where("status", "==", "published")
-        );
-        const coursesWithVideoSnapshot = await getDocs(coursesWithVideoQuery);
-
-        for (const courseDoc of coursesWithVideoSnapshot.docs) {
-          const courseToUpdate = courseDoc.data() as Course;
-          const courseIdToUpdate = courseDoc.id;
-
-          if (!enrolledCourseIds.includes(courseIdToUpdate)) continue;
-
-          const docId = `${user.uid}_${courseIdToUpdate}`;
-          const progressRef = doc(db, "userVideoProgress", docId);
-
-          const progressDoc = await getDoc(progressRef);
-          let currentProgress: VideoProgress[] = [];
-
-          if (progressDoc.exists()) {
-            currentProgress = (progressDoc.data() as UserProgressType).videoProgress || [];
-          }
-
-          const videoProgressIndex = currentProgress.findIndex(
-            (vp) => vp.videoId === currentVideo.id
-          );
-          let needsUpdate = false;
-
-          if (videoProgressIndex > -1) {
-            if (time > (currentProgress[videoProgressIndex].timeSpent || 0)) {
-              currentProgress[videoProgressIndex].timeSpent = time;
-              needsUpdate = true;
-            }
-            if (completed && !currentProgress[videoProgressIndex].completed) {
-              currentProgress[videoProgressIndex].completed = true;
-              needsUpdate = true;
-            }
-          } else {
-            currentProgress.push({ videoId: currentVideo.id, timeSpent: time, completed });
-            needsUpdate = true;
-          }
-
-          if (needsUpdate) {
-            const dataToSave: Partial<UserProgressType> = {
-              userId: user.uid,
-              courseId: courseIdToUpdate,
-              videoProgress: currentProgress,
-              lastWatchedVideoId: currentVideo.id,
-            };
-
-            batch.set(progressRef, dataToSave, { merge: true });
-
-            if (completed) {
-              const publishedVideoIds = courseToUpdate.videos || [];
-              const completedCount = currentProgress.filter(
-                (p) => p.completed && publishedVideoIds.includes(p.videoId)
-              ).length;
-
-              if (publishedVideoIds.length > 0 && completedCount === publishedVideoIds.length) {
-                const enrollmentRef = doc(db, "enrollments", `${user.uid}_${courseIdToUpdate}`);
-                batch.set(enrollmentRef, { completedAt: serverTimestamp() }, { merge: true });
-              }
-            }
-          }
-        }
-
-        try {
-          await batch.commit();
-        } catch (error) {
-          console.error("Failed to save progress to Firestore:", error);
-          toast({
-            variant: "destructive",
-            title: "We couldn't save your progress. Please try again.",
-          });
-        }
-      }, 1000);
-    },
-    [user, isEnrolled, db, currentVideo.id, toast]
-  );
-
+  // --- Enrollment + progress state subscriptions ---
   useEffect(() => {
     if (!user) {
       setIsLoadingEnrollment(false);
@@ -489,18 +328,18 @@ export default function VideoPlayerClient({
     setIsLoadingEnrollment(true);
 
     const enrollmentRef = doc(db, "enrollments", `${user.uid}_${course.id}`);
-    const unsubscribeEnrollment = onSnapshot(enrollmentRef, (doc) => {
-      const enrolled = doc.exists();
+    const unsubscribeEnrollment = onSnapshot(enrollmentRef, (d) => {
+      const enrolled = d.exists();
       setIsEnrolled(enrolled);
-      setIsCompleted(!!doc.data()?.completedAt);
+      setIsCompleted(!!d.data()?.completedAt);
       setIsLoadingEnrollment(false);
     });
 
     const progressRef = doc(db, "userVideoProgress", `${user.uid}_${course.id}`);
-    const unsubscribeProgress = onSnapshot(progressRef, (doc) => {
-      if (doc.exists()) {
-        const progressData = doc.data() as UserProgressType;
-        const completedIds = (progressData.videoProgress || [])
+    const unsubscribeProgress = onSnapshot(progressRef, (d) => {
+      if (d.exists()) {
+        const pd = d.data() as UserProgressType;
+        const completedIds = (pd.videoProgress || [])
           .filter((vp) => vp.completed)
           .map((vp) => vp.videoId);
         setWatchedVideos(new Set(completedIds));
@@ -515,6 +354,238 @@ export default function VideoPlayerClient({
     };
   }, [user, course.id, db]);
 
+  // --- Video setup (HLS, resume from previous) ---
+  useEffect(() => {
+    const videoElement = playerRef.current;
+    if (!videoElement) return;
+
+    const videoUrl = currentVideo.url;
+
+    let hls: Hls | null = null;
+    if (videoUrl) {
+      if (Hls.isSupported() && videoUrl.includes(".m3u8")) {
+        hls = new Hls();
+        hls.loadSource(videoUrl);
+        hls.attachMedia(videoElement);
+      } else {
+        videoElement.src = videoUrl;
+      }
+    }
+
+    const handlePlay = () => setIsPlaying(true);
+    const handlePause = () => setIsPlaying(false);
+
+    videoElement.addEventListener("play", handlePlay);
+    videoElement.addEventListener("pause", handlePause);
+
+    const tryAutoplay = async () => {
+      if (!isEnrolled) return;
+      try {
+        await videoElement.play();
+      } catch {
+        setIsPlaying(false);
+      }
+    };
+    tryAutoplay();
+
+    // if we already know duration from the object, use it early
+    if (currentVideo.duration) {
+      setDuration(currentVideo.duration);
+    }
+
+    // resume from last saved position
+    const resume = async () => {
+      if (!user || !isEnrolled) return;
+      const progressRef = doc(db, "userVideoProgress", `${user.uid}_${course.id}`);
+      const snap = await getDoc(progressRef);
+      if (snap.exists()) {
+        const vp = (snap.data() as UserProgressType).videoProgress?.find(
+          (x) => x.videoId === currentVideo.id
+        );
+        if (vp && typeof vp.timeSpent === "number") {
+          // set after metadata so browser accepts seek
+          const setTime = () => {
+            try {
+              videoElement.currentTime = vp.timeSpent!;
+              farthestTimeWatchedRef.current = vp.timeSpent!;
+            } catch {}
+          };
+          if (videoElement.readyState >= 1) setTime();
+          else
+            videoElement.addEventListener("loadedmetadata", setTime, {
+              once: true,
+            });
+        }
+      }
+    };
+    resume();
+
+    return () => {
+      videoElement.removeEventListener("play", handlePlay);
+      videoElement.removeEventListener("pause", handlePause);
+      if (hls) hls.destroy();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentVideo.id, currentVideo.url, isEnrolled, user, course.id]);
+
+  useEffect(() => {
+    const v = playerRef.current;
+    if (!v) return;
+    v.volume = volume;
+    v.muted = isMuted;
+  }, [volume, isMuted]);
+
+  // --- Core progress saver (debounced/thresholded + immediate modes) ---
+  const saveProgressToFirestore = useCallback(
+    async (time: number, completed: boolean, immediate = false) => {
+      if (!user || !isEnrolled) return;
+      const dur = duration || playerRef.current?.duration || 0;
+      const farthest = Math.max(time, farthestTimeWatchedRef.current || 0);
+      const percent = dur > 0 ? Math.min(100, (farthest / dur) * 100) : 0;
+
+      // thresholding to reduce chatter unless immediate
+      const now = Date.now();
+      const sinceLastMs = now - lastSavedRef.current.atMs;
+      const timeDelta = Math.abs(farthest - lastSavedRef.current.time);
+      const percentDelta = Math.abs(percent - lastSavedRef.current.percent);
+
+      const shouldWrite =
+        immediate ||
+        completed ||
+        timeDelta >= 5 || // every +5s of true watch time
+        percentDelta >= 2 || // or +2% progress
+        sinceLastMs >= 15000; // or at least every 15s heartbeat
+
+      if (!shouldWrite) return;
+
+      const progressRef = doc(db, "userVideoProgress", `${user.uid}_${course.id}`);
+      const enrollmentRef = doc(db, "enrollments", `${user.uid}_${course.id}`);
+
+      try {
+        // read-modify-write so we can upsert/update array item
+        const snap = await getDoc(progressRef);
+        let currentProgress: VideoProgress[] = [];
+        if (snap.exists()) {
+          currentProgress = (snap.data() as UserProgressType).videoProgress || [];
+        }
+
+        const idx = currentProgress.findIndex((p) => p.videoId === currentVideo.id);
+        if (idx > -1) {
+          // only move forward
+          currentProgress[idx].timeSpent = Math.max(
+            currentProgress[idx].timeSpent || 0,
+            farthest
+          );
+          if (completed) currentProgress[idx].completed = true;
+        } else {
+          currentProgress.push({
+            videoId: currentVideo.id,
+            timeSpent: farthest,
+            completed: !!completed,
+          });
+        }
+
+        const batch = writeBatch(db);
+        const dataToSave: Partial<UserProgressType> = {
+          userId: user.uid,
+          courseId: course.id,
+          videoProgress: currentProgress,
+          lastWatchedVideoId: currentVideo.id,
+          updatedAt: serverTimestamp() as any,
+          // convenience for analytics
+          percent: Math.round(percent),
+        };
+        batch.set(progressRef, dataToSave, { merge: true });
+
+        // completion check for this course only (faster + predictable)
+        if (completed) {
+          const publishedVideoIds: string[] = Array.isArray(course.videos)
+            ? course.videos
+            : [];
+          const completedCount = currentProgress.filter(
+            (p) => p.completed && publishedVideoIds.includes(p.videoId)
+          ).length;
+
+          if (publishedVideoIds.length > 0 && completedCount === publishedVideoIds.length) {
+            batch.set(
+              enrollmentRef,
+              { completedAt: serverTimestamp() as any },
+              { merge: true }
+            );
+          }
+        }
+
+        await batch.commit();
+
+        // update last-saved markers
+        lastSavedRef.current = { time: farthest, percent, atMs: now };
+      } catch (error) {
+        console.error("Failed to save progress:", error);
+        toast({
+          variant: "destructive",
+          title: "We couldn't save your progress. Please try again.",
+        });
+      }
+    },
+    [user, isEnrolled, db, currentVideo.id, course.id, course.videos, duration, toast]
+  );
+
+  // --- Flush helpers for navigation/visibility ---
+  const flushProgress = useCallback(() => {
+    const v = playerRef.current;
+    if (!v) return;
+    const t = Math.max(v.currentTime || 0, farthestTimeWatchedRef.current || 0);
+    return saveProgressToFirestore(t, false, true);
+  }, [saveProgressToFirestore]);
+
+  useEffect(() => {
+    const onPageHide = () => flushProgress();
+    const onVisibility = () => {
+      if (document.hidden) flushProgress();
+    };
+    window.addEventListener("pagehide", onPageHide);
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => {
+      window.removeEventListener("pagehide", onPageHide);
+      document.removeEventListener("visibilitychange", onVisibility);
+    };
+  }, [flushProgress]);
+
+  // --- Video event listeners to capture edges (pause/seek/end/metadata) ---
+  useEffect(() => {
+    const v = playerRef.current;
+    if (!v) return;
+
+    const onPause = () => flushProgress();
+
+    const onSeeking = () => {
+      // user is moving the scrubber; don't regress farthest
+      // we'll update farthest on 'seeked' if forward
+    };
+    const onSeeked = () => {
+      if (!v) return;
+      if (v.currentTime > farthestTimeWatchedRef.current) {
+        farthestTimeWatchedRef.current = v.currentTime;
+      }
+      flushProgress();
+    };
+    const onLoadedMetadata = () => {
+      if (Number.isFinite(v.duration)) setDuration(v.duration);
+    };
+
+    v.addEventListener("pause", onPause);
+    v.addEventListener("seeking", onSeeking);
+    v.addEventListener("seeked", onSeeked);
+    v.addEventListener("loadedmetadata", onLoadedMetadata);
+
+    return () => {
+      v.removeEventListener("pause", onPause);
+      v.removeEventListener("seeking", onSeeking);
+      v.removeEventListener("seeked", onSeeked);
+      v.removeEventListener("loadedmetadata", onLoadedMetadata);
+    };
+  }, [flushProgress]);
+
   const nextVideo = courseVideos[videoIndex + 1];
 
   const handleEnded = async () => {
@@ -523,10 +594,10 @@ export default function VideoPlayerClient({
     setProgress(100);
 
     if (user && playerRef.current) {
-      await saveProgressToFirestore(playerRef.current.duration, true);
-      refreshUser();
-      refresh();
+      await saveProgressToFirestore(playerRef.current.duration || duration, true, true);
     }
+    refreshUser();
+    refresh();
 
     if (isAutoNextEnabled && nextVideo) {
       router.push(`/courses/${course.id}/video/${nextVideo.id}`);
@@ -662,21 +733,31 @@ export default function VideoPlayerClient({
               onClick={togglePlayPause}
               onTimeUpdate={(e) => {
                 const target = e.target as HTMLVideoElement;
-                if (target.currentTime > farthestTimeWatchedRef.current) {
-                  farthestTimeWatchedRef.current = target.currentTime;
+                const t = target.currentTime || 0;
+                const d = (target.duration && Number.isFinite(target.duration))
+                  ? target.duration
+                  : duration;
+
+                if (t > farthestTimeWatchedRef.current) {
+                  farthestTimeWatchedRef.current = t;
                 }
-                setProgress((target.currentTime / target.duration) * 100);
-                setCurrentTime(target.currentTime);
+                const pct = d > 0 ? (t / d) * 100 : 0;
+                setProgress(pct);
+                setCurrentTime(t);
+
                 if (user && isEnrolled) {
-                  saveProgressToFirestore(target.currentTime, false);
+                  // save using farthest time with thresholds
+                  saveProgressToFirestore(farthestTimeWatchedRef.current, false, false);
                 }
               }}
-              onLoadedData={(e) =>
-                setDuration((e.target as HTMLVideoElement).duration)
-              }
+              onLoadedMetadata={(e) => {
+                const dur = (e.target as HTMLVideoElement).duration;
+                if (Number.isFinite(dur)) setDuration(dur);
+              }}
               onEnded={handleEnded}
               loop={isLooping}
               playsInline
+              preload="metadata"
             />
 
             {!isEnrolled && !isLoadingEnrollment && (
@@ -700,17 +781,14 @@ export default function VideoPlayerClient({
                 value={[progress]}
                 onValueChange={(value) => {
                   if (!playerRef.current) return;
-                  const newTime = (value[0] / 100) * duration;
-                  if (
-                    isEnrolled &&
-                    (newTime <= farthestTimeWatchedRef.current ||
-                      newTime - farthestTimeWatchedRef.current < 1)
-                  ) {
-                    playerRef.current.currentTime = newTime;
-                    setProgress(value[0]);
-                  } else if (!isEnrolled) {
-                    playerRef.current.currentTime = newTime;
-                    setProgress(value[0]);
+                  const newTime = (value[0] / 100) * (duration || playerRef.current.duration || 0);
+
+                  // allow seeking anywhere for enrolled users but don't allow regress of farthest marker
+                  playerRef.current.currentTime = newTime;
+                  setProgress(value[0]);
+
+                  if (newTime > farthestTimeWatchedRef.current) {
+                    farthestTimeWatchedRef.current = newTime;
                   }
                 }}
                 max={100}
@@ -779,7 +857,7 @@ export default function VideoPlayerClient({
                 </div>
                 <div className="flex items-center text-xs">
                   {new Date(currentTime * 1000).toISOString().substr(14, 5)} /{" "}
-                  {new Date(duration * 1000).toISOString().substr(14, 5)}
+                  {new Date((duration || 0) * 1000).toISOString().substr(14, 5)}
                 </div>
                 <div className="flex items-center justify-center gap-1 md:gap-2">
                   <Button
@@ -804,7 +882,7 @@ export default function VideoPlayerClient({
                   <Button
                     variant="ghost"
                     size="icon"
-                    onClick={() => playerRef.current?.requestPictureInPicture()}
+                    onClick={() => playerRef.current?.requestPictureInPicture().catch(() => {})}
                     className="text-white hover:text-white hover:bg-white/20 hidden md:flex"
                   >
                     <PictureInPicture />
@@ -909,7 +987,6 @@ export default function VideoPlayerClient({
                       </Button>
                     </a>
                   )}
-                  {/* Unenroll button was here — removed as requested */}
                 </div>
               </div>
 
