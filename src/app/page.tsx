@@ -1,3 +1,4 @@
+
 "use client";
 
 import { Button } from "@/components/ui/button";
@@ -94,9 +95,9 @@ export default function Home() {
   }, []);
 
   return (
-    <div className="dark min-h-screen bg-gradient-to-b from-gray-900 to-black text-white relative">
-        {settings?.homepageBackgroundImageUrl && (
-            <div className="absolute inset-0 z-0">
+    <div className="dark min-h-screen bg-gradient-to-b from-gray-900 to-black text-white">
+        <div className="absolute inset-0 z-0">
+            {settings?.homepageBackgroundImageUrl && (
                 <Image 
                     src={settings.homepageBackgroundImageUrl}
                     alt="Homepage background"
@@ -105,9 +106,9 @@ export default function Home() {
                     style={{objectFit:"cover"}}
                     className="opacity-20"
                 />
-                <div className="absolute inset-0 bg-gradient-to-t from-black via-black/80 to-transparent" />
-            </div>
-        )}
+            )}
+            <div className="absolute inset-0 bg-gradient-to-t from-black via-black/80 to-transparent" />
+        </div>
       {/* Header */}
       <header className="sticky top-0 z-50 bg-transparent backdrop-blur-sm">
         <div className="container mx-auto px-4 sm:px-6 lg:px-8 flex justify-between items-center py-4">
@@ -255,37 +256,40 @@ export default function Home() {
         </div>
       </header>
 
-      {/* Hero Section */}
-      <main className="container mx-auto px-4 sm:px-6 lg:px-8 relative z-10">
-        <section className="text-center py-20 sm:py-32">
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.5 }}
-          >
-            <h1 className="text-4xl sm:text-5xl md:text-6xl font-extrabold tracking-tight mb-4">
-              {settings?.homepageTitle || "Unlock Your Potential."}
-            </h1>
-            <p className="max-w-2xl mx-auto text-lg sm:text-xl text-muted-foreground mb-8">
-              {settings?.homepageSubtitle || "Join Glory Training Hub for world-class training and resources to help you grow in your faith and leadership."}
-            </p>
-            <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
-              <Button size="lg" asChild className="w-full sm:w-auto text-base sm:text-sm">
-                <ConditionalLink href={settings?.enrollButtonLink || "/signup"}>
-                  {settings?.enrollButtonText || "Start Your Journey"} <ArrowRight className="ml-2 h-5 w-5" />
-                </ConditionalLink>
-              </Button>
-              <Button size="lg" variant="outline" asChild className="w-full sm:w-auto text-base sm:text-sm">
-                <ConditionalLink href={settings?.exploreButtonLink || "/courses"}>
-                  {settings?.exploreButtonText || "Explore Courses"}
-                </ConditionalLink>
-              </Button>
+      {/* Main Content */}
+      <main className="relative z-10">
+        {/* Hero Section */}
+        <div className="container mx-auto px-4 sm:px-6 lg:px-8">
+            <div className="flex flex-col items-center justify-center text-center min-h-[calc(100vh-15rem)] py-12">
+                <motion.div
+                    initial={{ opacity: 0, y: 20 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ duration: 0.5 }}
+                >
+                    <h1 className="text-4xl sm:text-5xl md:text-6xl font-extrabold tracking-tight mb-4">
+                    {settings?.homepageTitle || "Unlock Your Potential."}
+                    </h1>
+                    <p className="max-w-2xl mx-auto text-lg sm:text-xl text-muted-foreground mb-8">
+                    {settings?.homepageSubtitle || "Join Glory Training Hub for world-class training and resources to help you grow in your faith and leadership."}
+                    </p>
+                    <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
+                    <Button size="lg" asChild className="w-full sm:w-auto text-base sm:text-sm">
+                        <ConditionalLink href={settings?.enrollButtonLink || "/signup"}>
+                        {settings?.enrollButtonText || "Start Your Journey"} <ArrowRight className="ml-2 h-5 w-5" />
+                        </ConditionalLink>
+                    </Button>
+                    <Button size="lg" variant="outline" asChild className="w-full sm:w-auto text-base sm:text-sm">
+                        <ConditionalLink href={settings?.exploreButtonLink || "/courses"}>
+                        {settings?.exploreButtonText || "Explore Courses"}
+                        </ConditionalLink>
+                    </Button>
+                    </div>
+                </motion.div>
             </div>
-          </motion.div>
-        </section>
+        </div>
 
         {/* Features Section */}
-        <section className="py-20">
+        <div className="container mx-auto px-4 sm:px-6 lg:px-8 py-20">
           <div className="text-center mb-12">
             <h2 className="text-3xl font-bold">{settings?.featuresTitle || "Why Choose Us?"}</h2>
             <p className="text-muted-foreground">{settings?.featuresSubtitle || "Everything you need for your spiritual growth."}</p>
@@ -307,11 +311,11 @@ export default function Home() {
               description={settings?.feature3Description || "Access our extensive library of video resources anytime, anywhere."}
             />
           </div>
-        </section>
+        </div>
       </main>
 
       {/* Footer */}
-      <footer className="border-t border-white/10 mt-20 relative z-10">
+      <footer className="border-t border-white/10 relative z-10">
         <div className="container mx-auto px-4 sm:px-6 lg:px-8 py-8 text-center text-muted-foreground">
           &copy; {new Date().getFullYear()} {settings?.websiteName || "Glory Training Hub"}. All rights reserved.
         </div>

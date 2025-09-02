@@ -501,7 +501,27 @@ export default function EditUserForm({ userToEdit, onUserUpdated }: EditUserForm
             </p>
             )}
         </div>
-
+         <div className="space-y-2">
+            <Label htmlFor="campus">Campus</Label>
+            <div className="flex gap-2">
+                <Controller
+                    control={control}
+                    name="campus"
+                    render={({ field }) => (
+                         <Select onValueChange={field.onChange} value={field.value}>
+                            <SelectTrigger>
+                                <SelectValue placeholder="Select a campus" />
+                            </SelectTrigger>
+                            <SelectContent>
+                                {campuses.map((c) => (
+                                    <SelectItem key={c.id} value={c["Campus Name"]}>{c["Campus Name"]}</SelectItem>
+                                ))}
+                            </SelectContent>
+                        </Select>
+                    )}
+                />
+            </div>
+        </div>
             <div className="space-y-2">
             <Label>Class Ladder</Label>
             <Controller

@@ -30,6 +30,7 @@ import {
   UserRound,
   UserCheck,
   Megaphone,
+  FileQuestion,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
@@ -139,6 +140,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
           subItems: [
             { href: "/admin/content/videos", label: "Videos", icon: Tv },
             { href: "/admin/content/documents", label: "Documents", icon: FileText },
+            { href: "/admin/content/quizzes", label: "Quizzes", icon: FileQuestion },
             { href: "/admin/content/images", label: "Images", icon: ImageIcon },
             { href: "/admin/content/music", label: "Music", icon: Music },
             { href: "/admin/content/logos", label: "Logos", icon: Award },
@@ -326,3 +328,5 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     </div>
   );
 }
+
+    

@@ -93,34 +93,9 @@ body {
 
 @layer components {
   .destructive {
-    @apply bg-gradient-to-r from-blue-900 to-yellow-500 text-white border-blue-900;
+    @apply bg-gradient-to-r from-red-500 to-orange-500 text-white;
   }
   
-  /* Certificate Text Styles */
-  .cert-title-main {
-      font-size: clamp(1.5rem, 5cqi, 3rem);
-  }
-  .cert-title-sub {
-      font-size: clamp(1rem, 3.5cqi, 2rem);
-  }
-  .presented-to-text {
-      font-size: clamp(0.75rem, 2.5cqi, 1.125rem);
-  }
-  .user-name {
-      font-size: clamp(2rem, 9cqi, 5rem);
-  }
-  .completion-text {
-      font-size: clamp(0.75rem, 2.5cqi, 1.125rem);
-  }
-  .course-name {
-      font-size: clamp(1.25rem, 4cqi, 2rem);
-  }
-  .completion-date, .date-label, .signature-title {
-      font-size: clamp(0.6rem, 2cqi, 1rem);
-  }
-  .signature-name {
-      font-size: clamp(1rem, 4cqi, 2rem);
-  }
   .cert-logo {
       width: clamp(3rem, 10cqw, 6rem);
       height: clamp(3rem, 10cqw, 6rem);

@@ -2,7 +2,7 @@
 "use client"
 
 import { useState, useEffect } from "react";
-import { useForm } from "react-hook-form";
+import { useForm, Controller } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { Button } from "./ui/button";
@@ -382,20 +382,22 @@ export default function AddUserForm({ onUserAdded, ladders }: AddUserFormProps) 
        <div className="space-y-2">
         <Label htmlFor="campus">Campus</Label>
         <div className="flex gap-2">
-             <Select
-                value={watch('campus')}
-                onValueChange={(value) => setValue('campus', value)}
-                disabled={isSubmitting}
-            >
-                <SelectTrigger>
-                    <SelectValue placeholder="Select a campus" />
-                </SelectTrigger>
-                <SelectContent>
-                    {campuses.map((c) => (
-                        <SelectItem key={c.id} value={c["Campus Name"]}>{c["Campus Name"]}</SelectItem>
-                    ))}
-                </SelectContent>
-            </Select>
+            <Controller
+                name="campus"
+                control={control}
+                render={({ field }) => (
+                     <Select onValueChange={field.onChange} value={field.value} disabled={isSubmitting}>
+                        <SelectTrigger>
+                            <SelectValue placeholder="Select a campus" />
+                        </SelectTrigger>
+                        <SelectContent>
+                            {campuses.map((c) => (
+                                <SelectItem key={c.id} value={c["Campus Name"]}>{c["Campus Name"]}</SelectItem>
+                            ))}
+                        </SelectContent>
+                    </Select>
+                )}
+            />
              <Dialog open={isCampusDialogOpen} onOpenChange={setIsCampusDialogOpen}>
                 <DialogTrigger asChild>
                     <Button type="button" variant="outline">Manage</Button>
@@ -439,20 +441,22 @@ export default function AddUserForm({ onUserAdded, ladders }: AddUserFormProps) 
       <div className="space-y-2">
         <Label htmlFor="membershipLadder">Membership Ladder</Label>
         <div className="flex gap-2">
-            <Select
-                value={watch('classLadderId')}
-                onValueChange={(value) => setValue('classLadderId', value)}
-                disabled={isSubmitting}
-            >
-                <SelectTrigger>
-                    <SelectValue placeholder="Select a membership ladder" />
-                </SelectTrigger>
-                <SelectContent>
-                    {ladders.map((l) => (
-                        <SelectItem key={l.id} value={l.id}>{l.name} {l.side !== 'none' && `(${l.side})`}</SelectItem>
-                    ))}
-                </SelectContent>
-            </Select>
+             <Controller
+                name="classLadderId"
+                control={control}
+                render={({ field }) => (
+                    <Select onValueChange={field.onChange} value={field.value} disabled={isSubmitting}>
+                        <SelectTrigger>
+                            <SelectValue placeholder="Select a membership ladder" />
+                        </SelectTrigger>
+                        <SelectContent>
+                            {ladders.map((l) => (
+                                <SelectItem key={l.id} value={l.id}>{l.name} {l.side !== 'none' && `(${l.side})`}</SelectItem>
+                            ))}
+                        </SelectContent>
+                    </Select>
+                )}
+            />
         </div>
         {errors.classLadderId && <p className="text-sm text-destructive">{errors.classLadderId.message}</p>}
       </div>
@@ -460,12 +464,18 @@ export default function AddUserForm({ onUserAdded, ladders }: AddUserFormProps) 
         <div className="space-y-2">
             <Label htmlFor="maritalStatus">Marital Status</Label>
             <div className="flex gap-2">
-                <Select value={watch('maritalStatus')} onValueChange={(value) => setValue('maritalStatus', value)} disabled={isSubmitting}>
-                    <SelectTrigger><SelectValue placeholder="Select marital status" /></SelectTrigger>
-                    <SelectContent>
-                        {maritalStatuses.map((s) => (<SelectItem key={s.id} value={s.name}>{s.name}</SelectItem>))}
-                    </SelectContent>
-                </Select>
+                 <Controller
+                    name="maritalStatus"
+                    control={control}
+                    render={({ field }) => (
+                        <Select onValueChange={field.onChange} value={field.value} disabled={isSubmitting}>
+                            <SelectTrigger><SelectValue placeholder="Select marital status" /></SelectTrigger>
+                            <SelectContent>
+                                {maritalStatuses.map((s) => (<SelectItem key={s.id} value={s.name}>{s.name}</SelectItem>))}
+                            </SelectContent>
+                        </Select>
+                    )}
+                />
                 <Dialog open={isMaritalStatusDialogOpen} onOpenChange={setIsMaritalStatusDialogOpen}>
                     <DialogTrigger asChild><Button type="button" variant="outline">Manage</Button></DialogTrigger>
                     <DialogContent className="sm:max-w-[425px]">
@@ -488,12 +498,18 @@ export default function AddUserForm({ onUserAdded, ladders }: AddUserFormProps) 
         <div className="space-y-2">
             <Label htmlFor="ministry">Ministry</Label>
             <div className="flex gap-2">
-                <Select value={watch('ministry')} onValueChange={(value) => setValue('ministry', value)} disabled={isSubmitting}>
-                    <SelectTrigger><SelectValue placeholder="Select ministry" /></SelectTrigger>
-                    <SelectContent>
-                        {ministries.map((m) => (<SelectItem key={m.id} value={m.name}>{m.name}</SelectItem>))}
-                    </SelectContent>
-                </Select>
+                 <Controller
+                    name="ministry"
+                    control={control}
+                    render={({ field }) => (
+                        <Select onValueChange={field.onChange} value={field.value} disabled={isSubmitting}>
+                            <SelectTrigger><SelectValue placeholder="Select ministry" /></SelectTrigger>
+                            <SelectContent>
+                                {ministries.map((m) => (<SelectItem key={m.id} value={m.name}>{m.name}</SelectItem>))}
+                            </SelectContent>
+                        </Select>
+                    )}
+                />
                 <Dialog open={isMinistryDialogOpen} onOpenChange={setIsMinistryDialogOpen}>
                     <DialogTrigger asChild><Button type="button" variant="outline">Manage</Button></DialogTrigger>
                     <DialogContent className="sm:max-w-[425px]">
@@ -516,20 +532,22 @@ export default function AddUserForm({ onUserAdded, ladders }: AddUserFormProps) 
       <div className="space-y-2">
         <Label htmlFor="charge">Charge</Label>
         <div className="flex gap-2">
-            <Select
-                value={watch('charge')}
-                onValueChange={(value) => setValue('charge', value)}
-                disabled={isSubmitting}
-            >
-                <SelectTrigger>
-                    <SelectValue placeholder="Select a charge" />
-                </SelectTrigger>
-                <SelectContent>
-                    {charges.map((c) => (
-                        <SelectItem key={c.id} value={c.name}>{c.name}</SelectItem>
-                    ))}
-                </SelectContent>
-            </Select>
+            <Controller
+                name="charge"
+                control={control}
+                render={({ field }) => (
+                    <Select onValueChange={field.onChange} value={field.value} disabled={isSubmitting}>
+                        <SelectTrigger>
+                            <SelectValue placeholder="Select a charge" />
+                        </SelectTrigger>
+                        <SelectContent>
+                            {charges.map((c) => (
+                                <SelectItem key={c.id} value={c.name}>{c.name}</SelectItem>
+                            ))}
+                        </SelectContent>
+                    </Select>
+                )}
+            />
             <Dialog open={isChargeDialogOpen} onOpenChange={setIsChargeDialogOpen}>
                 <DialogTrigger asChild>
                     <Button type="button" variant="outline">Manage</Button>

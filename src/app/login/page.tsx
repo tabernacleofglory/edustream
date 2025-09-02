@@ -13,7 +13,7 @@ import {
     signInWithEmailAndPassword,
     sendPasswordResetEmail,
 } from "firebase/auth";
-import { getFirebaseAuth } from "@/lib/firebase";
+import { getFirebaseAuth, getFirebaseFirestore } from "@/lib/firebase";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -24,6 +24,23 @@ import { Loader2 } from "lucide-react";
 import React from "react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogTrigger } from "@/components/ui/dialog";
+import { doc, getDoc, setDoc, collection, query, where, getDocs, orderBy, limit } from "firebase/firestore";
+
+const getDefaultLadderId = async (db: any): Promise<string | null> => {
+    const laddersRef = collection(db, "courseLevels");
+    const q = query(laddersRef, where("name", "==", "New Member"), where("category", "==", "membership"));
+    const querySnapshot = await getDocs(q);
+    if (!querySnapshot.empty) {
+        return querySnapshot.docs[0].id;
+    }
+    // Fallback if "New Member" doesn't exist
+    const fallbackQuery = query(laddersRef, orderBy("order"), limit(1));
+    const fallbackSnapshot = await getDocs(fallbackQuery);
+    if(!fallbackSnapshot.empty) {
+        return fallbackSnapshot.docs[0].id;
+    }
+    return null;
+}
 
 export default function LoginPage() {
     const router = useRouter();
@@ -40,6 +57,7 @@ export default function LoginPage() {
     const [isResetDialogOpen, setIsResetDialogOpen] = useState(false);
 
     const auth = getFirebaseAuth();
+    const db = getFirebaseFirestore();
     
     useEffect(() => {
         const handleSignInWithLink = async () => {
@@ -51,8 +69,32 @@ export default function LoginPage() {
                 if (emailFromStorage) {
                     setIsLoading(true);
                     try {
-                        await signInWithEmailLink(auth, emailFromStorage, window.location.href);
+                        const result = await signInWithEmailLink(auth, emailFromStorage, window.location.href);
                         window.localStorage.removeItem('emailForSignIn');
+                        
+                        const user = result.user;
+                        const userDocRef = doc(db, "users", user.uid);
+                        const userDoc = await getDoc(userDocRef);
+
+                        if (!userDoc.exists()) {
+                            // First time sign-in with email link
+                            const defaultLadderId = await getDefaultLadderId(db);
+                            await setDoc(userDocRef, {
+                                uid: user.uid,
+                                id: user.uid,
+                                displayName: user.displayName || user.email,
+                                fullName: user.displayName || user.email,
+                                email: user.email,
+                                photoURL: user.photoURL,
+                                role: 'user',
+                                charge: 'App User',
+                                membershipStatus: 'Active',
+                                classLadderId: defaultLadderId,
+                                classLadder: 'New Member',
+                                createdAt: new Date(),
+                            });
+                        }
+                        
                         router.push('/dashboard');
                         router.refresh();
                     } catch (error) {
@@ -64,7 +106,7 @@ export default function LoginPage() {
             }
         };
         handleSignInWithLink();
-    }, [auth, router]);
+    }, [auth, router, db]);
 
 
     const handleLogin = async (e: React.FormEvent) => {
@@ -125,7 +167,33 @@ export default function LoginPage() {
         setError(null);
         const provider = new GoogleAuthProvider();
         try {
-            await signInWithPopup(auth, provider);
+            const result = await signInWithPopup(auth, provider);
+            const user = result.user;
+            const userDocRef = doc(db, "users", user.uid);
+            const userDoc = await getDoc(userDocRef);
+
+            if (!userDoc.exists()) {
+                // First-time sign-in with Google, create their user document
+                const defaultLadderId = await getDefaultLadderId(db);
+                await setDoc(userDocRef, {
+                    uid: user.uid,
+                    id: user.uid,
+                    displayName: user.displayName,
+                    fullName: user.displayName,
+                    email: user.email,
+                    photoURL: user.photoURL,
+                    role: 'user',
+                    charge: 'App User',
+                    membershipStatus: 'Active',
+                    classLadderId: defaultLadderId,
+                    classLadder: 'New Member',
+                    createdAt: new Date(),
+                });
+                toast({ title: "Welcome!", description: "Your account has been created." });
+            } else {
+                 toast({ title: "Welcome back!" });
+            }
+
             router.push('/dashboard');
             router.refresh();
         } catch (error: any) {

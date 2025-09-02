@@ -40,6 +40,7 @@ const ALL_PERMISSIONS: Permission[] = [
     // Action-based permissions
     { id: 'addCourses', name: 'Add Courses', description: 'Can access the form to add new courses.' },
     { id: 'manageCourses', name: 'Manage Courses', description: 'Can create, edit, and delete courses.' },
+    { id: 'manageQuizzes', name: 'Manage Quizzes', description: 'Can create, edit, and delete quizzes.' },
     { id: 'manageUsers', name: 'Manage Users', description: 'Can add, edit, and delete users.' },
     { id: 'manageContent', name: 'Manage Content', description: 'Can upload and manage all content (videos, images, etc.).' },
     { id: 'manageLinks', name: 'Manage Nav Links', description: 'Can add/remove header navigation links.' },

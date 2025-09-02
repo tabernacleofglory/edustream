@@ -64,23 +64,23 @@ async function getCourseAndVideos(courseId: string, _user: FirebaseUser | null) 
     return { course, videos: [], speaker };
   }
 
-  // Firestore 'in' queries max 10 IDs — chunk to be safe.
+  // Firestore 'in' queries max 30 IDs — chunk to be safe.
   const ids = course.videos as string[];
-  const chunkSize = 10;
+  const chunkSize = 30;
   const allDocs: Video[] = [];
 
   for (let i = 0; i < ids.length; i += chunkSize) {
     const slice = ids.slice(i, i + chunkSize);
-    const videosQuery = query(
+    const contentQuery = query(
       collection(db, "Contents"),
       where(documentId(), "in", slice),
       where("status", "==", "published")
     );
-    const videosSnapshot = await getDocs(videosQuery);
-    const videos = videosSnapshot.docs.map((d) =>
+    const contentSnapshot = await getDocs(contentQuery);
+    const contentItems = contentSnapshot.docs.map((d) =>
       convertTimestamps({ id: d.id, ...d.data() })
     ) as Video[];
-    allDocs.push(...videos);
+    allDocs.push(...contentItems);
   }
 
   // Preserve original order from course.videos

@@ -29,6 +29,25 @@ export interface Speaker {
   createdAt: any;
 }
 
+export interface QuizQuestion {
+  id: string;
+  questionText: string;
+  options: string[];
+  type: 'multiple-choice' | 'multiple-select' | 'free-text';
+  correctAnswerIndex?: number;
+  correctAnswerIndexes?: number[];
+  minCharLength?: number;
+}
+
+
+export interface Quiz {
+    id: string;
+    title: string;
+    questions: QuizQuestion[];
+    createdAt: any;
+    passThreshold?: number;
+}
+
 export interface Course {
   id: string;
   title: string;
@@ -47,6 +66,7 @@ export interface Course {
   certificateTemplateUrl?: string;
   logoUrl?: string;
   attendanceLinks?: { title: string; url: string }[];
+  quizIds?: string[];
   createdAt?: any;
   updatedAt?: any;
   completedAt?: any;
@@ -71,6 +91,18 @@ export interface Video {
   commentCount?: number;
   status?: 'published' | 'private';
   errorMessage?: string;
+  type?: 'video' | 'quiz';
+  questions?: QuizQuestion[];
+}
+
+export interface UserQuizResult {
+  userId: string;
+  courseId: string;
+  quizId: string;
+  answers: number[];
+  score: number;
+  passed: boolean;
+  attemptedAt: any;
 }
 
 export interface Enrollment {
@@ -248,4 +280,5 @@ export interface SiteSettings {
     cert_spacing_userName_completionText?: number;
     cert_spacing_completionText_courseName?: number;
     cert_spacing_courseName_signatures?: number;
+    quiz_pass_threshold?: number;
 }

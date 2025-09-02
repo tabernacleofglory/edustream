@@ -3,14 +3,14 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { 
     createUserWithEmailAndPassword, 
     GoogleAuthProvider, 
     signInWithPopup, 
     updateProfile,
 } from "firebase/auth";
-import { getFirebaseAuth } from "@/lib/firebase";
+import { getFirebaseAuth, getFirebaseFirestore } from "@/lib/firebase";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -18,6 +18,24 @@ import { Label } from "@/components/ui/label";
 import { Logo } from "@/components/logo";
 import { useToast } from "@/hooks/use-toast";
 import { Loader2 } from "lucide-react";
+import { doc, setDoc, getDoc, collection, query, where, getDocs } from "firebase/firestore";
+import type { Ladder } from "@/lib/types";
+
+const getDefaultLadderId = async (db: any): Promise<string | null> => {
+    const laddersRef = collection(db, "courseLevels");
+    const q = query(laddersRef, where("name", "==", "New Member"), where("category", "==", "membership"));
+    const querySnapshot = await getDocs(q);
+    if (!querySnapshot.empty) {
+        return querySnapshot.docs[0].id;
+    }
+    // Fallback if "New Member" doesn't exist
+    const fallbackQuery = query(laddersRef, orderBy("order"), limit(1));
+    const fallbackSnapshot = await getDocs(fallbackQuery);
+    if(!fallbackSnapshot.empty) {
+        return fallbackSnapshot.docs[0].id;
+    }
+    return null;
+}
 
 export default function SignupPage() {
     const router = useRouter();
@@ -28,6 +46,7 @@ export default function SignupPage() {
     const [isLoading, setIsLoading] = useState(false);
     const [isGoogleLoading, setIsGoogleLoading] = useState(false);
     const auth = getFirebaseAuth();
+    const db = getFirebaseFirestore();
 
     const handleSignup = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -38,10 +57,26 @@ export default function SignupPage() {
             const user = userCredential.user;
             
             await updateProfile(user, {
-                displayName: fullName
+                displayName: fullName,
             });
 
-            // The Cloud Function 'createUserDocument' will handle creating the user doc in Firestore.
+            const userDocRef = doc(db, "users", user.uid);
+            const defaultLadderId = await getDefaultLadderId(db);
+
+            await setDoc(userDocRef, {
+                uid: user.uid,
+                id: user.uid,
+                displayName: fullName,
+                fullName: fullName,
+                email: user.email,
+                photoURL: user.photoURL,
+                role: 'user',
+                charge: 'App User',
+                membershipStatus: 'Active',
+                classLadderId: defaultLadderId,
+                classLadder: 'New Member',
+                createdAt: new Date(),
+            });
             
             toast({
                 title: "Account Created!",
@@ -64,13 +99,40 @@ export default function SignupPage() {
         setIsGoogleLoading(true);
         const provider = new GoogleAuthProvider();
         try {
-            await signInWithPopup(auth, provider);
-            // The Cloud Function 'createUserDocument' will handle creating the user doc in Firestore
-            // for both new and returning Google users.
-             toast({
-                title: "Signed In!",
-                description: "Welcome!",
-            });
+            const result = await signInWithPopup(auth, provider);
+            const user = result.user;
+
+            const userDocRef = doc(db, "users", user.uid);
+            const userDoc = await getDoc(userDocRef);
+
+            if (!userDoc.exists()) {
+                const defaultLadderId = await getDefaultLadderId(db);
+                // This is a new user
+                await setDoc(userDocRef, {
+                    uid: user.uid,
+                    id: user.uid,
+                    displayName: user.displayName,
+                    fullName: user.displayName,
+                    email: user.email,
+                    photoURL: user.photoURL,
+                    role: 'user',
+                    charge: 'App User',
+                    membershipStatus: 'Active',
+                    classLadderId: defaultLadderId,
+                    classLadder: 'New Member',
+                    createdAt: new Date(),
+                });
+                 toast({
+                    title: "Account Created!",
+                    description: "Welcome!",
+                });
+            } else {
+                 toast({
+                    title: "Signed In!",
+                    description: "Welcome back!",
+                });
+            }
+
             router.push('/dashboard');
         } catch (error: any) {
              toast({

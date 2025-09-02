@@ -7,16 +7,29 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { useForm, SubmitHandler } from "react-hook-form";
+import { useForm, SubmitHandler, Controller } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { getFirebaseFirestore, getFirebaseStorage } from "@/lib/firebase";
-import { doc, updateDoc } from "firebase/firestore";
+import { collection, doc, getDocs, query, updateDoc, orderBy } from "firebase/firestore";
 import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
 import { useToast } from "@/hooks/use-toast";
-import { useState } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { Loader2 } from "lucide-react";
 import { Textarea } from "@/components/ui/textarea";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import type { Ladder } from "@/lib/types";
+
+
+interface StoredItem {
+    id: string;
+    name: string;
+}
+
+interface Campus {
+    id: string;
+    "Campus Name": string;
+}
 
 const settingsSchema = z.object({
   fullName: z.string().min(2, "Full name must be at least 2 characters."),
@@ -24,6 +37,9 @@ const settingsSchema = z.object({
   bio: z.string().max(200, "Bio cannot be more than 200 characters.").optional(),
   phoneNumber: z.string().optional(),
   hpNumber: z.string().optional(),
+  campus: z.string().optional(),
+  maritalStatus: z.string().optional(),
+  ministry: z.string().optional(),
 });
 
 type SettingsFormValues = z.infer<typeof settingsSchema>;
@@ -34,10 +50,33 @@ export default function SettingsPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const db = getFirebaseFirestore();
   const storage = getFirebaseStorage();
+  
+  const [campuses, setCampuses] = useState<Campus[]>([]);
+  const [maritalStatuses, setMaritalStatuses] = useState<StoredItem[]>([]);
+  const [ministries, setMinistries] = useState<StoredItem[]>([]);
+
+  const fetchItems = useCallback(async (collectionName: string, setter: React.Dispatch<React.SetStateAction<any[]>>, nameField: string, orderByField = "name") => {
+    try {
+        const q = query(collection(db, collectionName), orderBy(orderByField === "name" ? nameField : orderByField));
+        const querySnapshot = await getDocs(q);
+        const items = querySnapshot.docs.map(doc => ({ id: doc.id, name: doc.data()[nameField] }));
+        setter(items);
+    } catch (error) {
+        toast({ variant: 'destructive', title: `Failed to fetch ${collectionName}` });
+    }
+  }, [toast, db]);
+
+  useEffect(() => {
+    fetchItems('Campus', setCampuses, 'Campus Name');
+    fetchItems('maritalStatuses', setMaritalStatuses, 'name');
+    fetchItems('ministries', setMinistries, 'name');
+  }, [fetchItems]);
+
 
   const {
     register,
     handleSubmit,
+    control,
     formState: { errors },
   } = useForm<SettingsFormValues>({
     resolver: zodResolver(settingsSchema),
@@ -46,6 +85,9 @@ export default function SettingsPage() {
       bio: user?.bio || "",
       phoneNumber: user?.phoneNumber || "",
       hpNumber: user?.hpNumber || "",
+      campus: user?.campus || "",
+      maritalStatus: user?.maritalStatus || "",
+      ministry: user?.ministry || "",
     },
   });
 
@@ -75,6 +117,9 @@ export default function SettingsPage() {
         bio: data.bio,
         phoneNumber: data.phoneNumber,
         hpNumber: data.hpNumber,
+        campus: data.campus,
+        maritalStatus: data.maritalStatus,
+        ministry: data.ministry,
       });
 
       await refreshUser();
@@ -141,21 +186,66 @@ export default function SettingsPage() {
                         <p className="text-sm text-destructive">{errors.hpNumber.message}</p>
                     )}
                 </div>
-                <div className="space-y-2">
+                 <div className="space-y-2">
                     <Label>Campus</Label>
-                    <Input value={user.campus || "Not specified"} disabled />
-                </div>
-                <div className="space-y-2">
-                    <Label>Class Ladder</Label>
-                    <Input value={user.classLadder || "Not specified"} disabled />
+                    <Controller
+                        control={control}
+                        name="campus"
+                        render={({ field }) => (
+                            <Select onValueChange={field.onChange} defaultValue={field.value}>
+                                <SelectTrigger>
+                                    <SelectValue placeholder="Select your campus" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    {campuses.map(campus => (
+                                        <SelectItem key={campus.id} value={campus.name}>{campus.name}</SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
+                        )}
+                    />
                 </div>
                  <div className="space-y-2">
                     <Label>Marital Status</Label>
-                    <Input value={user.maritalStatus || "Not specified"} disabled />
+                     <Controller
+                        control={control}
+                        name="maritalStatus"
+                        render={({ field }) => (
+                            <Select onValueChange={field.onChange} defaultValue={field.value}>
+                                <SelectTrigger>
+                                    <SelectValue placeholder="Select marital status" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    {maritalStatuses.map(status => (
+                                        <SelectItem key={status.id} value={status.name}>{status.name}</SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
+                        )}
+                    />
                 </div>
                 <div className="space-y-2">
                     <Label>Ministry</Label>
-                    <Input value={user.ministry || "Not specified"} disabled />
+                     <Controller
+                        control={control}
+                        name="ministry"
+                        render={({ field }) => (
+                            <Select onValueChange={field.onChange} defaultValue={field.value}>
+                                <SelectTrigger>
+                                    <SelectValue placeholder="Select your ministry" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    {ministries.map(ministry => (
+                                        <SelectItem key={ministry.id} value={ministry.name}>{ministry.name}</SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
+                        )}
+                    />
+                </div>
+                 <div className="space-y-2">
+                    <Label>Class Ladder</Label>
+                    <Input value={user.classLadder || "Not specified"} disabled />
                 </div>
                  <div className="space-y-2">
                     <Label>Charge</Label>

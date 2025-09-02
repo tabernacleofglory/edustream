@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useState, useEffect, useRef, useMemo, useCallback } from "react";
@@ -25,6 +26,7 @@ import {
   ToggleLeft,
   ToggleRight,
   PictureInPicture,
+  FileQuestion,
 } from "lucide-react";
 import type {
   Course,
@@ -32,6 +34,8 @@ import type {
   UserProgress as UserProgressType,
   VideoProgress,
   Speaker,
+  Quiz,
+  UserQuizResult,
 } from "@/lib/types";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -40,15 +44,7 @@ import { useAuth } from "@/hooks/use-auth";
 import { Slider } from "@/components/ui/slider";
 import { getFirebaseFirestore, getFirebaseApp } from "@/lib/firebase";
 import {
-  collection,
-  addDoc,
-  onSnapshot,
-  serverTimestamp,
-  doc,
-  getDoc,
-  runTransaction,
-  writeBatch,
-  setDoc,
+  collection, addDoc, onSnapshot, serverTimestamp, doc, getDoc, runTransaction, writeBatch, setDoc, query, where, getDocs, documentId,
 } from "firebase/firestore";
 import { getFunctions } from "firebase/functions";
 import {
@@ -71,23 +67,10 @@ import { useIsMobile } from "@/hooks/use-is-mobile";
 import CommentSection, { CommentForm } from "./video/comment-section";
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
 import { useProcessedCourses } from "@/hooks/useProcessedCourses";
+import { Progress } from "./ui/progress";
 
-interface VideoPlayerClientProps {
-  course: Course;
-  courseVideos: Video[];
-  currentVideo: Video;
-  videoIndex: number;
-  speaker: Speaker | null;
-}
 
-const PlaylistAndResources = ({
-  course,
-  courseVideos,
-  currentVideo,
-  watchedVideos,
-  relatedCourses,
-  onRelatedChange,
-}: {
+interface PlaylistAndResourcesProps {
   course: Course;
   courseVideos: Video[];
   currentVideo: Video;
@@ -101,7 +84,20 @@ const PlaylistAndResources = ({
     lastWatchedVideoId?: string;
   })[];
   onRelatedChange: () => void;
-}) => {
+  quizzes: Quiz[];
+  quizResults: UserQuizResult[];
+}
+
+const PlaylistAndResources = ({
+  course,
+  courseVideos,
+  currentVideo,
+  watchedVideos,
+  relatedCourses,
+  onRelatedChange,
+  quizzes,
+  quizResults = [],
+}: PlaylistAndResourcesProps) => {
   let lastUnlockedIndex = -1;
   courseVideos.forEach((video, index) => {
     if (watchedVideos.has(video.id)) {
@@ -112,7 +108,7 @@ const PlaylistAndResources = ({
   return (
     <Accordion
       type="multiple"
-      defaultValue={["playlist", "resources", "related"]}
+      defaultValue={["playlist", "resources", "related", "quizzes"]}
       className="w-full"
     >
       <AccordionItem value="playlist">
@@ -161,6 +157,43 @@ const PlaylistAndResources = ({
         </AccordionContent>
       </AccordionItem>
 
+      {quizzes.length > 0 && (
+        <AccordionItem value="quizzes">
+            <AccordionTrigger className="px-4 font-semibold">
+                Quizzes
+            </AccordionTrigger>
+            <AccordionContent className="px-4 space-y-2">
+                 {quizzes.map((quiz) => {
+                    const result = quizResults.find(r => r.quizId === quiz.id);
+                    const isCompleted = !!result && result.passed;
+                    
+                    return (
+                        <Link
+                            key={quiz.id}
+                            href={`/courses/${course.id}/quiz/${quiz.id}`}
+                            className="block p-3 rounded-md hover:bg-muted"
+                        >
+                             <div className="flex items-start gap-3">
+                                {isCompleted ? (
+                                    <CheckCircle2 className="h-5 w-5 text-green-500 mt-0.5" />
+                                ) : (
+                                    <FileQuestion className="h-5 w-5 text-muted-foreground mt-0.5" />
+                                )}
+                                <div className="flex-1">
+                                    <div className="flex justify-between items-center">
+                                        <p className="font-semibold">{quiz.title}</p>
+                                        {result && <span className="text-xs font-bold text-primary">{result.score.toFixed(0)}%</span>}
+                                    </div>
+                                    {result && <Progress value={result.score} className="h-1 mt-1" />}
+                                </div>
+                            </div>
+                        </Link>
+                    )
+                 })}
+            </AccordionContent>
+        </AccordionItem>
+      )}
+
       <AccordionItem value="resources">
         <AccordionTrigger className="px-4 font-semibold">
           Resources
@@ -205,7 +238,7 @@ const PlaylistAndResources = ({
           <AccordionContent className="p-2 space-y-2">
             {relatedCourses.map((rc) => (
               <div key={rc.id} className="w-full px-2">
-                <CourseCard course={rc} onUnenroll={onRelatedChange} />
+                <CourseCard course={rc} onChange={onRelatedChange} />
               </div>
             ))}
           </AccordionContent>
@@ -214,6 +247,15 @@ const PlaylistAndResources = ({
     </Accordion>
   );
 };
+
+
+interface VideoPlayerClientProps {
+  course: Course;
+  courseVideos: Video[];
+  currentVideo: Video;
+  videoIndex: number;
+  speaker: Speaker | null;
+}
 
 export default function VideoPlayerClient({
   course,
@@ -258,6 +300,8 @@ export default function VideoPlayerClient({
   const [isLiked, setIsLiked] = useState(false);
   const [likeCount, setLikeCount] = useState(currentVideo.likeCount || 0);
   const [shareCount, setShareCount] = useState(currentVideo.shareCount || 0);
+  const [quizzes, setQuizzes] = useState<Quiz[]>([]);
+  const [quizResults, setQuizResults] = useState<UserQuizResult[]>([]);
 
   const canDownload = hasPermission("downloadContent");
   const canRightClick = hasPermission("allowRightClick");
@@ -284,6 +328,33 @@ export default function VideoPlayerClient({
       video.pause();
     }
   }, []);
+
+    useEffect(() => {
+        const fetchQuizzesAndResults = async () => {
+            if (!course.quizIds || course.quizIds.length === 0) {
+                setQuizzes([]);
+                return;
+            }
+            const q = query(collection(db, 'quizzes'), where(documentId(), 'in', course.quizIds));
+            const snapshot = await getDocs(q);
+            const fetchedQuizzes = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Quiz));
+            setQuizzes(fetchedQuizzes);
+
+            if(user) {
+                const resultsQuery = query(
+                    collection(db, 'userQuizResults'), 
+                    where('userId', '==', user.uid),
+                    where('courseId', '==', course.id),
+                    where('quizId', 'in', course.quizIds)
+                );
+                const resultsSnapshot = await getDocs(resultsQuery);
+                const fetchedResults = resultsSnapshot.docs.map(doc => ({id: doc.id, ...doc.data()}) as UserQuizResult);
+                setQuizResults(fetchedResults);
+            }
+        }
+        fetchQuizzesAndResults();
+    }, [course.quizIds, course.id, user, db]);
+
 
   useEffect(() => {
     if (isMobile) {
@@ -499,19 +570,15 @@ export default function VideoPlayerClient({
 
         // completion check for this course only (faster + predictable)
         if (completed) {
-          const publishedVideoIds: string[] = Array.isArray(course.videos)
-            ? course.videos
-            : [];
-          const completedCount = currentProgress.filter(
-            (p) => p.completed && publishedVideoIds.includes(p.videoId)
-          ).length;
+          const publishedVideoIds: string[] = Array.isArray(course.videos) ? course.videos : [];
+          const allVideosCompleted = publishedVideoIds.every(vid => currentProgress.some(p => p.videoId === vid && p.completed));
+          
+          const allQuizzesCompleted = (course.quizIds || []).every(quizId => 
+            quizResults.some(res => res.quizId === quizId && res.passed)
+          );
 
-          if (publishedVideoIds.length > 0 && completedCount === publishedVideoIds.length) {
-            batch.set(
-              enrollmentRef,
-              { completedAt: serverTimestamp() as any },
-              { merge: true }
-            );
+          if (allVideosCompleted && allQuizzesCompleted) {
+            batch.set(enrollmentRef, { completedAt: serverTimestamp() as any }, { merge: true });
           }
         }
 
@@ -527,7 +594,7 @@ export default function VideoPlayerClient({
         });
       }
     },
-    [user, isEnrolled, db, currentVideo.id, course.id, course.videos, duration, toast]
+    [user, isEnrolled, db, currentVideo.id, course.id, course.videos, course.quizIds, quizResults, duration, toast]
   );
 
   // --- Flush helpers for navigation/visibility ---
@@ -596,7 +663,6 @@ export default function VideoPlayerClient({
     if (user && playerRef.current) {
       await saveProgressToFirestore(playerRef.current.duration || duration, true, true);
     }
-    refreshUser();
     refresh();
 
     if (isAutoNextEnabled && nextVideo) {
@@ -735,19 +801,19 @@ export default function VideoPlayerClient({
                 const target = e.target as HTMLVideoElement;
                 const t = target.currentTime || 0;
                 const d = (target.duration && Number.isFinite(target.duration))
-                  ? target.duration
-                  : duration;
+                ? target.duration
+                : duration;
 
                 if (t > farthestTimeWatchedRef.current) {
-                  farthestTimeWatchedRef.current = t;
+                farthestTimeWatchedRef.current = t;
                 }
                 const pct = d > 0 ? (t / d) * 100 : 0;
                 setProgress(pct);
                 setCurrentTime(t);
 
                 if (user && isEnrolled) {
-                  // save using farthest time with thresholds
-                  saveProgressToFirestore(farthestTimeWatchedRef.current, false, false);
+                // save using farthest time with thresholds
+                saveProgressToFirestore(farthestTimeWatchedRef.current, false, false);
                 }
               }}
               onLoadedMetadata={(e) => {
@@ -759,6 +825,7 @@ export default function VideoPlayerClient({
               playsInline
               preload="metadata"
             />
+
 
             {!isEnrolled && !isLoadingEnrollment && (
               <div className="absolute inset-0 bg-black/80 flex flex-col items-center justify-center text-white p-4 text-center">
@@ -772,131 +839,134 @@ export default function VideoPlayerClient({
             )}
 
             <div
-              className={cn(
+            className={cn(
                 "video-controls absolute bottom-0 left-0 right-0 p-2 md:p-4 bg-gradient-to-t from-black/50 to-transparent transition-opacity",
                 showControls ? "opacity-100" : "opacity-0"
-              )}
+            )}
             >
-              <Slider
+            <Slider
                 value={[progress]}
                 onValueChange={(value) => {
-                  if (!playerRef.current) return;
-                  const newTime = (value[0] / 100) * (duration || playerRef.current.duration || 0);
+                    if (!playerRef.current) return;
+                    const newTime = (value[0] / 100) * (duration || playerRef.current.duration || 0);
 
-                  // allow seeking anywhere for enrolled users but don't allow regress of farthest marker
-                  playerRef.current.currentTime = newTime;
-                  setProgress(value[0]);
-
-                  if (newTime > farthestTimeWatchedRef.current) {
-                    farthestTimeWatchedRef.current = newTime;
-                  }
+                    // Restrict fast-forwarding
+                    if (newTime > farthestTimeWatchedRef.current) {
+                        playerRef.current.currentTime = farthestTimeWatchedRef.current;
+                        const farthestPercentage = (farthestTimeWatchedRef.current / (duration || playerRef.current.duration || 1)) * 100;
+                        setProgress(farthestPercentage);
+                        toast({ title: "Fast-forwarding is disabled", description: "You must watch the video to proceed." });
+                    } else {
+                        playerRef.current.currentTime = newTime;
+                        setProgress(value[0]);
+                    }
                 }}
                 max={100}
                 step={0.1}
                 className="w-full"
-              />
-              <div className="flex items-center justify-between text-sm text-white mt-2">
+            />
+            <div className="flex items-center justify-between text-sm text-white mt-2">
                 <div className="flex items-center gap-1 md:gap-2">
-                  <Button
+                <Button
                     variant="ghost"
                     size="icon"
                     onClick={togglePlayPause}
                     className="text-white hover:text-white hover:bg-white/20"
-                  >
+                >
                     {isPlaying ? <Pause /> : <Play />}
-                  </Button>
-                  <Button
+                </Button>
+                <Button
                     variant="ghost"
                     size="icon"
                     className="text-white hover:text-white hover:bg-white/20"
                     disabled={videoIndex === 0}
-                  >
+                >
                     <Link
-                      href={
+                    href={
                         videoIndex > 0
-                          ? `/courses/${course.id}/video/${courseVideos[videoIndex - 1].id}`
-                          : "#"
-                      }
+                        ? `/courses/${course.id}/video/${courseVideos[videoIndex - 1].id}`
+                        : "#"
+                    }
                     >
-                      <SkipBack />
+                    <SkipBack />
                     </Link>
-                  </Button>
-                  <Button
+                </Button>
+                <Button
                     variant="ghost"
                     size="icon"
                     className="text-white hover:text-white hover:bg-white/20"
                     disabled={videoIndex === courseVideos.length - 1}
-                  >
+                >
                     <Link
-                      href={
+                    href={
                         videoIndex < courseVideos.length - 1
-                          ? `/courses/${course.id}/video/${courseVideos[videoIndex + 1].id}`
-                          : "#"
-                      }
+                        ? `/courses/${course.id}/video/${courseVideos[videoIndex + 1].id}`
+                        : "#"
+                    }
                     >
-                      <SkipForward />
+                    <SkipForward />
                     </Link>
-                  </Button>
-                  <div className="hidden md:flex items-center gap-2">
+                </Button>
+                <div className="hidden md:flex items-center gap-2">
                     <Button
-                      variant="ghost"
-                      size="icon"
-                      onClick={toggleMute}
-                      className="text-white hover:text-white hover:bg-white/20"
+                    variant="ghost"
+                    size="icon"
+                    onClick={toggleMute}
+                    className="text-white hover:text-white hover:bg-white/20"
                     >
-                      {isMuted || volume === 0 ? <VolumeX /> : <Volume2 />}
+                    {isMuted || volume === 0 ? <VolumeX /> : <Volume2 />}
                     </Button>
                     <Slider
-                      value={[isMuted ? 0 : volume]}
-                      onValueChange={(v) => handleVolumeChange(v as number[])}
-                      max={1}
-                      step={0.05}
-                      className="w-24"
+                    value={[isMuted ? 0 : volume]}
+                    onValueChange={(v) => handleVolumeChange(v as number[])}
+                    max={1}
+                    step={0.05}
+                    className="w-24"
                     />
-                  </div>
+                </div>
                 </div>
                 <div className="flex items-center text-xs">
-                  {new Date(currentTime * 1000).toISOString().substr(14, 5)} /{" "}
-                  {new Date((duration || 0) * 1000).toISOString().substr(14, 5)}
+                {new Date(currentTime * 1000).toISOString().substr(14, 5)} /{" "}
+                {new Date((duration || 0) * 1000).toISOString().substr(14, 5)}
                 </div>
                 <div className="flex items-center justify-center gap-1 md:gap-2">
-                  <Button
+                <Button
                     variant="ghost"
                     size="icon"
                     onClick={() => setIsLooping(!isLooping)}
                     className={cn(
-                      "text-white hover:text-white hover:bg-white/20",
-                      isLooping && "bg-white/20"
+                    "text-white hover:text-white hover:bg-white/20",
+                    isLooping && "bg-white/20"
                     )}
-                  >
+                >
                     <Repeat />
-                  </Button>
-                  <Button
+                </Button>
+                <Button
                     variant="ghost"
                     size="icon"
                     onClick={() => setIsAutoNextEnabled(!isAutoNextEnabled)}
                     className="text-white hover:text-white hover:bg-white/20"
-                  >
+                >
                     {isAutoNextEnabled ? <ToggleRight /> : <ToggleLeft />}
-                  </Button>
-                  <Button
+                </Button>
+                <Button
                     variant="ghost"
                     size="icon"
                     onClick={() => playerRef.current?.requestPictureInPicture().catch(() => {})}
                     className="text-white hover:text-white hover:bg-white/20 hidden md:flex"
-                  >
+                >
                     <PictureInPicture />
-                  </Button>
-                  <Button
+                </Button>
+                <Button
                     variant="ghost"
                     size="icon"
                     onClick={handleFullScreen}
                     className="text-white hover:text-white hover:bg-white/20"
-                  >
+                >
                     {isFullScreen ? <Minimize /> : <Maximize />}
-                  </Button>
+                </Button>
                 </div>
-              </div>
+            </div>
             </div>
           </div>
         </div>
@@ -909,7 +979,7 @@ export default function VideoPlayerClient({
               </h1>
 
               {isCompleted && (
-                <div className="mt-4 p-4 bg-green-100 dark:bg-green-900/50 border border-green-200 dark:border-green-800 rounded-lg flex flex-col sm:flex-row items-center justify-between gap-4">
+                 <div className="mt-4 p-4 bg-green-100 dark:bg-green-900/50 border border-green-200 dark:border-green-800 rounded-lg flex flex-col sm:flex-row items-center justify-between gap-4">
                   <div className="flex items-center gap-3">
                     <CheckCircle2 className="h-8 w-8 text-green-600 dark:text-green-400" />
                     <div>
@@ -998,6 +1068,8 @@ export default function VideoPlayerClient({
                   watchedVideos={watchedVideos}
                   relatedCourses={relatedCourses}
                   onRelatedChange={refresh}
+                  quizzes={quizzes}
+                  quizResults={quizResults}
                 />
               </div>
 
@@ -1017,6 +1089,8 @@ export default function VideoPlayerClient({
             watchedVideos={watchedVideos}
             relatedCourses={relatedCourses}
             onRelatedChange={refresh}
+            quizzes={quizzes}
+            quizResults={quizResults}
           />
         </ScrollArea>
       </div>

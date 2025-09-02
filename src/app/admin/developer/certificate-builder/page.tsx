@@ -20,7 +20,7 @@ import { useToast } from "@/hooks/use-toast";
 import { doc, setDoc, getDoc } from "firebase/firestore";
 import { getFirebaseFirestore } from "@/lib/firebase";
 import { useEffect, useState } from "react";
-import { Loader2, Lock, Eye, Save, icons, ChevronsUpDown, Minus, Plus } from "lucide-react";
+import { Loader2, Lock, Eye, Save, icons, ChevronsUpDown, Minus, Plus, Percent } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
 import Certificate from "@/components/certificate";
 import type { SiteSettings } from "@/lib/types";
@@ -33,6 +33,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import DynamicIcon from "@/components/dynamic-icon";
 import { Separator } from "@/components/ui/separator";
 import { Switch } from "@/components/ui/switch";
+import { Slider } from "@/components/ui/slider";
 
 const certificateSettingsSchema = z.object({
   cert_title: z.string().min(1, "Title is required."),
@@ -62,6 +63,7 @@ const certificateSettingsSchema = z.object({
   cert_spacing_userName_completionText: z.coerce.number().optional(),
   cert_spacing_completionText_courseName: z.coerce.number().optional(),
   cert_spacing_courseName_signatures: z.coerce.number().optional(),
+  quiz_pass_threshold: z.coerce.number().min(0).max(100).default(70),
 });
 
 type FormValues = z.infer<typeof certificateSettingsSchema>;
@@ -106,6 +108,7 @@ export default function CertificateBuilderPage() {
       cert_spacing_userName_completionText: 0.5,
       cert_spacing_completionText_courseName: 0.5,
       cert_spacing_courseName_signatures: 1,
+      quiz_pass_threshold: 70,
     },
   });
 
@@ -149,13 +152,13 @@ export default function CertificateBuilderPage() {
       await setDoc(doc(db, "siteSettings", "main"), values, { merge: true });
       toast({
         title: "Settings Saved!",
-        description: "Your certificate settings have been updated.",
+        description: "Your certificate and quiz settings have been updated.",
       });
     } catch (error) {
       toast({
         variant: "destructive",
         title: "Error Saving",
-        description: "Could not save certificate settings.",
+        description: "Could not save settings.",
       });
     } finally {
       setIsLoading(false);
@@ -212,16 +215,38 @@ export default function CertificateBuilderPage() {
     <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 items-start">
       <Card>
         <CardHeader>
-          <CardTitle>Certificate Builder</CardTitle>
+          <CardTitle>Certificate &amp; Quiz Builder</CardTitle>
           <CardDescription>
-            Customize the default content and appearance of your course certificates.
+            Customize default content for certificates and quiz settings.
           </CardDescription>
         </CardHeader>
         <CardContent>
           <Form {...form}>
             <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
               
-              <h4 className="font-semibold text-lg border-b pb-2">Header Section</h4>
+              <h4 className="font-semibold text-lg border-b pb-2">Quiz Settings</h4>
+              <FormField
+                control={form.control}
+                name="quiz_pass_threshold"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Passing Percentage ({field.value}%)</FormLabel>
+                    <FormControl>
+                        <Slider
+                            defaultValue={[field.value || 70]}
+                            onValueChange={(value) => field.onChange(value[0])}
+                            max={100}
+                            step={5}
+                        />
+                    </FormControl>
+                    <FormDescription>The minimum score a user must achieve to pass a quiz.</FormDescription>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              
+              <Separator />
+              <h4 className="font-semibold text-lg border-b pb-2">Certificate Header Section</h4>
               <div className="grid grid-cols-3 gap-2 items-end">
                 <FormField control={form.control} name="cert_title" render={({ field }) => ( <FormItem className="col-span-2"><FormLabel>Main Title</FormLabel><FormControl><Input {...field} placeholder="e.g., Certificate"/></FormControl><FormMessage /></FormItem> )} />
                 <FormField control={form.control} name="cert_title_size" render={({ field }) => ( <FormItem><FormLabel>Size</FormLabel><FormControl><SizeStepper field={field} /></FormControl></FormItem> )}/>
@@ -241,7 +266,7 @@ export default function CertificateBuilderPage() {
               <FormField control={form.control} name="cert_spacing_decoration_presentedTo" render={({ field }) => ( <FormItem><FormLabel>Spacing After Decoration (cqw)</FormLabel><FormControl><SizeStepper field={field} min={0} /></FormControl></FormItem> )}/>
               
               <Separator />
-              <h4 className="font-semibold text-lg border-b pb-2">Body Section</h4>
+              <h4 className="font-semibold text-lg border-b pb-2">Certificate Body Section</h4>
               <div className="grid grid-cols-3 gap-2 items-end">
                   <FormField control={form.control} name="cert_presentedToText" render={({ field }) => ( <FormItem className="col-span-2"><FormLabel>Presented To Text</FormLabel><FormControl><Input {...field} /></FormControl><FormMessage /></FormItem> )}/>
                   <FormField control={form.control} name="cert_presentedToText_size" render={({ field }) => ( <FormItem><FormLabel>Size</FormLabel><FormControl><SizeStepper field={field} /></FormControl></FormItem> )}/>
@@ -263,7 +288,7 @@ export default function CertificateBuilderPage() {
               <FormField control={form.control} name="cert_spacing_courseName_signatures" render={({ field }) => ( <FormItem><FormLabel>Spacing After Course Name (cqw)</FormLabel><FormControl><SizeStepper field={field} min={0} /></FormControl></FormItem> )}/>
 
               <Separator />
-              <h4 className="font-semibold text-lg border-b pb-2">Footer Section</h4>
+              <h4 className="font-semibold text-lg border-b pb-2">Certificate Footer Section</h4>
               <div className="grid grid-cols-3 gap-2 items-end">
                 <FormField control={form.control} name="cert_signatureName" render={({ field }) => ( <FormItem className="col-span-2"><FormLabel>Signature Name</FormLabel><FormControl><Input {...field} /></FormControl><FormMessage /></FormItem> )}/>
                 <FormField control={form.control} name="cert_signatureName_size" render={({ field }) => ( <FormItem><FormLabel>Size</FormLabel><FormControl><SizeStepper field={field} /></FormControl></FormItem> )}/>
