@@ -40,6 +40,7 @@ import { useIsMobile } from "@/hooks/use-is-mobile";
 import type { Ladder } from '@/lib/types';
 import { onSnapshot, doc } from "firebase/firestore";
 import DynamicIcon from "@/components/dynamic-icon";
+import { Providers } from "@/components/providers";
 
 
 const navItems = [
@@ -191,7 +192,7 @@ const HeaderContent = () => {
   )
 }
 
-export default function AppContent({ children }: { children: React.ReactNode }) {
+function AppContentInternal({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const { user, loading, hasPermission } = useAuth();
   const router = useRouter();
@@ -313,4 +314,12 @@ export default function AppContent({ children }: { children: React.ReactNode }) 
             </PanelGroup>
         </SidebarProvider>
   );
+}
+
+export default function AppContent({ children }: { children: React.ReactNode }) {
+  return (
+    <Providers>
+        <AppContentInternal>{children}</AppContentInternal>
+    </Providers>
+  )
 }

@@ -5,6 +5,7 @@ import { useState, useEffect, useRef, useMemo, useCallback } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import Hls from "hls.js";
+import ReactPlayer from 'react-player/lazy';
 import {
   Play,
   Pause,
@@ -267,11 +268,12 @@ export default function VideoPlayerClient({
   const { user, refreshUser, hasPermission } = useAuth();
   const router = useRouter();
   const { toast } = useToast();
-  const playerRef = useRef<HTMLVideoElement>(null);
+  const playerRef = useRef<HTMLVideoElement | null>(null);
+  const reactPlayerRef = useRef<ReactPlayer | null>(null);
   const videoContainerRef = useRef<HTMLDivElement>(null);
   const controlsTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const gradientFadeTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
-  // Progress / analytics helpers
   const farthestTimeWatchedRef = useRef<number>(0);
   const lastSavedRef = useRef<{ time: number; percent: number; atMs: number }>({
     time: 0,
@@ -283,7 +285,7 @@ export default function VideoPlayerClient({
   const functions = getFunctions(getFirebaseApp());
   const isMobile = useIsMobile();
 
-  const [isPlaying, setIsPlaying] = useState(false);
+  const [isPlaying, setIsPlaying] = useState(true);
   const [isLooping, setIsLooping] = useState(false);
   const [isAutoNextEnabled, setIsAutoNextEnabled] = useState(true);
   const [progress, setProgress] = useState(0);
@@ -297,13 +299,17 @@ export default function VideoPlayerClient({
   const [isLoadingEnrollment, setIsLoadingEnrollment] = useState(true);
   const [isFullScreen, setIsFullScreen] = useState(false);
   const [showControls, setShowControls] = useState(true);
+  const [showGradientOverlay, setShowGradientOverlay] = useState(true);
   const [isLiked, setIsLiked] = useState(false);
   const [likeCount, setLikeCount] = useState(currentVideo.likeCount || 0);
   const [shareCount, setShareCount] = useState(currentVideo.shareCount || 0);
   const [quizzes, setQuizzes] = useState<Quiz[]>([]);
   const [quizResults, setQuizResults] = useState<UserQuizResult[]>([]);
 
-  const canDownload = hasPermission("downloadContent");
+  const isYouTube = currentVideo.type === 'youtube' || (currentVideo.url && (currentVideo.url.includes('youtube.com') || currentVideo.url.includes('youtu.be')));
+  const isGoogleDrive = currentVideo.type === 'googledrive';
+
+  const canDownload = hasPermission("downloadContent") && !isYouTube && !isGoogleDrive;
   const canRightClick = hasPermission("allowRightClick");
 
   const { processedCourses, loading: processedLoading, refresh } =
@@ -320,13 +326,7 @@ export default function VideoPlayerClient({
   }, [processedCourses, course.id, course.ladderIds]);
 
   const togglePlayPause = useCallback(() => {
-    const video = playerRef.current;
-    if (!video) return;
-    if (video.paused || video.ended) {
-      video.play().catch((err) => console.warn("Play interrupted:", err));
-    } else {
-      video.pause();
-    }
+    setIsPlaying(prev => !prev);
   }, []);
 
     useEffect(() => {
@@ -366,7 +366,6 @@ export default function VideoPlayerClient({
     }
   }, [isMobile]);
 
-  // --- Like / Share live counts ---
   useEffect(() => {
     if (!user) {
       setIsLiked(false);
@@ -390,7 +389,6 @@ export default function VideoPlayerClient({
     };
   }, [currentVideo.id, db]);
 
-  // --- Enrollment + progress state subscriptions ---
   useEffect(() => {
     if (!user) {
       setIsLoadingEnrollment(false);
@@ -425,16 +423,47 @@ export default function VideoPlayerClient({
     };
   }, [user, course.id, db]);
 
-  // --- Video setup (HLS, resume from previous) ---
   useEffect(() => {
     const videoElement = playerRef.current;
+    
+    // Common setup for both video types
+    const resume = async () => {
+        if (!user || !isEnrolled) return;
+        const progressRef = doc(db, "userVideoProgress", `${user.uid}_${course.id}`);
+        const snap = await getDoc(progressRef);
+        if (snap.exists()) {
+            const vp = (snap.data() as UserProgressType).videoProgress?.find(
+                (x) => x.videoId === currentVideo.id
+            );
+            if (vp && typeof vp.timeSpent === "number") {
+                const resumeTime = vp.timeSpent;
+                farthestTimeWatchedRef.current = resumeTime;
+                
+                if ((isYouTube || isGoogleDrive) && reactPlayerRef.current) {
+                    reactPlayerRef.current.seekTo(resumeTime, 'seconds');
+                } else if (videoElement) {
+                    const setTime = () => {
+                        try {
+                            videoElement.currentTime = resumeTime;
+                        } catch {}
+                    };
+                    if (videoElement.readyState >= 1) setTime();
+                    else videoElement.addEventListener("loadedmetadata", setTime, { once: true });
+                }
+            }
+        }
+    };
+    resume();
+
+    if (isYouTube || isGoogleDrive) return; // Skip HLS and native video setup for YouTube/Drive
+    
     if (!videoElement) return;
 
-    const videoUrl = currentVideo.url;
+    const videoUrl = currentVideo.hlsUrl || currentVideo.url;
 
     let hls: Hls | null = null;
     if (videoUrl) {
-      if (Hls.isSupported() && videoUrl.includes(".m3u8")) {
+      if (Hls.isSupported() && (videoUrl.includes(".m3u8") || currentVideo.hlsUrl)) {
         hls = new Hls();
         hls.loadSource(videoUrl);
         hls.attachMedia(videoElement);
@@ -459,62 +488,43 @@ export default function VideoPlayerClient({
     };
     tryAutoplay();
 
-    // if we already know duration from the object, use it early
     if (currentVideo.duration) {
       setDuration(currentVideo.duration);
     }
-
-    // resume from last saved position
-    const resume = async () => {
-      if (!user || !isEnrolled) return;
-      const progressRef = doc(db, "userVideoProgress", `${user.uid}_${course.id}`);
-      const snap = await getDoc(progressRef);
-      if (snap.exists()) {
-        const vp = (snap.data() as UserProgressType).videoProgress?.find(
-          (x) => x.videoId === currentVideo.id
-        );
-        if (vp && typeof vp.timeSpent === "number") {
-          // set after metadata so browser accepts seek
-          const setTime = () => {
-            try {
-              videoElement.currentTime = vp.timeSpent!;
-              farthestTimeWatchedRef.current = vp.timeSpent!;
-            } catch {}
-          };
-          if (videoElement.readyState >= 1) setTime();
-          else
-            videoElement.addEventListener("loadedmetadata", setTime, {
-              once: true,
-            });
-        }
-      }
-    };
-    resume();
 
     return () => {
       videoElement.removeEventListener("play", handlePlay);
       videoElement.removeEventListener("pause", handlePause);
       if (hls) hls.destroy();
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentVideo.id, currentVideo.url, isEnrolled, user, course.id]);
-
+  }, [currentVideo.id, currentVideo.url, currentVideo.hlsUrl, isEnrolled, user, course.id, isYouTube, isGoogleDrive]);
+  
   useEffect(() => {
-    const v = playerRef.current;
-    if (!v) return;
-    v.volume = volume;
-    v.muted = isMuted;
-  }, [volume, isMuted]);
+    if (isYouTube || isGoogleDrive) {
+        if(reactPlayerRef.current) {
+            // handle volume for react-player if needed
+        }
+    } else {
+        const v = playerRef.current;
+        if (!v) return;
+        v.volume = volume;
+        v.muted = isMuted;
+    }
+  }, [volume, isMuted, isYouTube, isGoogleDrive]);
 
-  // --- Core progress saver (debounced/thresholded + immediate modes) ---
   const saveProgressToFirestore = useCallback(
     async (time: number, completed: boolean, immediate = false) => {
       if (!user || !isEnrolled) return;
-      const dur = duration || playerRef.current?.duration || 0;
-      const farthest = Math.max(time, farthestTimeWatchedRef.current || 0);
-      const percent = dur > 0 ? Math.min(100, (farthest / dur) * 100) : 0;
+      
+      const currentDuration = (isYouTube || isGoogleDrive)
+        ? reactPlayerRef.current?.getDuration() ?? 0
+        : playerRef.current?.duration ?? 0;
 
-      // thresholding to reduce chatter unless immediate
+      if(currentDuration === 0) return; // Don't save if duration is not known
+
+      const farthest = Math.max(time, farthestTimeWatchedRef.current || 0);
+      const percent = Math.min(100, (farthest / currentDuration) * 100);
+
       const now = Date.now();
       const sinceLastMs = now - lastSavedRef.current.atMs;
       const timeDelta = Math.abs(farthest - lastSavedRef.current.time);
@@ -523,9 +533,9 @@ export default function VideoPlayerClient({
       const shouldWrite =
         immediate ||
         completed ||
-        timeDelta >= 5 || // every +5s of true watch time
-        percentDelta >= 2 || // or +2% progress
-        sinceLastMs >= 15000; // or at least every 15s heartbeat
+        timeDelta >= 5 || 
+        percentDelta >= 2 ||
+        sinceLastMs >= 15000; 
 
       if (!shouldWrite) return;
 
@@ -533,7 +543,6 @@ export default function VideoPlayerClient({
       const enrollmentRef = doc(db, "enrollments", `${user.uid}_${course.id}`);
 
       try {
-        // read-modify-write so we can upsert/update array item
         const snap = await getDoc(progressRef);
         let currentProgress: VideoProgress[] = [];
         if (snap.exists()) {
@@ -542,7 +551,6 @@ export default function VideoPlayerClient({
 
         const idx = currentProgress.findIndex((p) => p.videoId === currentVideo.id);
         if (idx > -1) {
-          // only move forward
           currentProgress[idx].timeSpent = Math.max(
             currentProgress[idx].timeSpent || 0,
             farthest
@@ -563,16 +571,13 @@ export default function VideoPlayerClient({
           videoProgress: currentProgress,
           lastWatchedVideoId: currentVideo.id,
           updatedAt: serverTimestamp() as any,
-          // convenience for analytics
           percent: Math.round(percent),
         };
         batch.set(progressRef, dataToSave, { merge: true });
 
-        // completion check for this course only (faster + predictable)
         if (completed) {
           const publishedVideoIds: string[] = Array.isArray(course.videos) ? course.videos : [];
           const allVideosCompleted = publishedVideoIds.every(vid => currentProgress.some(p => p.videoId === vid && p.completed));
-          
           const allQuizzesCompleted = (course.quizIds || []).every(quizId => 
             quizResults.some(res => res.quizId === quizId && res.passed)
           );
@@ -584,7 +589,6 @@ export default function VideoPlayerClient({
 
         await batch.commit();
 
-        // update last-saved markers
         lastSavedRef.current = { time: farthest, percent, atMs: now };
       } catch (error) {
         console.error("Failed to save progress:", error);
@@ -594,16 +598,19 @@ export default function VideoPlayerClient({
         });
       }
     },
-    [user, isEnrolled, db, currentVideo.id, course.id, course.videos, course.quizIds, quizResults, duration, toast]
+    [user, isEnrolled, db, currentVideo.id, course.id, course.videos, course.quizIds, quizResults, isYouTube, isGoogleDrive, toast]
   );
-
-  // --- Flush helpers for navigation/visibility ---
+  
   const flushProgress = useCallback(() => {
-    const v = playerRef.current;
-    if (!v) return;
-    const t = Math.max(v.currentTime || 0, farthestTimeWatchedRef.current || 0);
-    return saveProgressToFirestore(t, false, true);
-  }, [saveProgressToFirestore]);
+    let t = 0;
+    if (isYouTube || isGoogleDrive) {
+        if(reactPlayerRef.current) t = reactPlayerRef.current.getCurrentTime();
+    } else if (playerRef.current) {
+        t = playerRef.current.currentTime;
+    }
+    const finalTime = Math.max(t || 0, farthestTimeWatchedRef.current || 0);
+    return saveProgressToFirestore(finalTime, false, true);
+  }, [saveProgressToFirestore, isYouTube, isGoogleDrive]);
 
   useEffect(() => {
     const onPageHide = () => flushProgress();
@@ -618,16 +625,24 @@ export default function VideoPlayerClient({
     };
   }, [flushProgress]);
 
-  // --- Video event listeners to capture edges (pause/seek/end/metadata) ---
   useEffect(() => {
+    if(isYouTube || isGoogleDrive) return;
     const v = playerRef.current;
     if (!v) return;
 
     const onPause = () => flushProgress();
-
+    
+    // Disable fast-forwarding
     const onSeeking = () => {
-      // user is moving the scrubber; don't regress farthest
-      // we'll update farthest on 'seeked' if forward
+        if (!v) return;
+        if (v.currentTime > farthestTimeWatchedRef.current) {
+            v.currentTime = farthestTimeWatchedRef.current;
+            toast({
+              title: "Fast-forwarding is disabled",
+              description: "You must watch the video to proceed.",
+              duration: 2000,
+            });
+        }
     };
     const onSeeked = () => {
       if (!v) return;
@@ -651,17 +666,22 @@ export default function VideoPlayerClient({
       v.removeEventListener("seeked", onSeeked);
       v.removeEventListener("loadedmetadata", onLoadedMetadata);
     };
-  }, [flushProgress]);
+  }, [flushProgress, isYouTube, isGoogleDrive, toast]);
 
   const nextVideo = courseVideos[videoIndex + 1];
 
   const handleEnded = async () => {
-    if (isLooping) return;
+    if (isLooping) {
+        if(isYouTube || isGoogleDrive) reactPlayerRef.current?.seekTo(0);
+        else if(playerRef.current) playerRef.current.currentTime = 0;
+        return;
+    }
     setIsPlaying(false);
     setProgress(100);
 
-    if (user && playerRef.current) {
-      await saveProgressToFirestore(playerRef.current.duration || duration, true, true);
+    const currentDuration = (isYouTube || isGoogleDrive) ? reactPlayerRef.current?.getDuration() ?? 0 : playerRef.current?.duration ?? duration;
+    if (user && currentDuration > 0) {
+      await saveProgressToFirestore(currentDuration, true, true);
     }
     refresh();
 
@@ -677,17 +697,7 @@ export default function VideoPlayerClient({
   };
 
   const toggleMute = () => {
-    const player = playerRef.current;
-    if (!player) return;
-
-    const currentlyMuted = isMuted || volume === 0;
-    if (currentlyMuted) {
-      const newVolume = volume > 0 ? volume : 0.5;
-      setVolume(newVolume);
-      setIsMuted(false);
-    } else {
-      setIsMuted(true);
-    }
+    setIsMuted(prev => !prev);
   };
 
   const handleShare = async () => {
@@ -758,7 +768,9 @@ export default function VideoPlayerClient({
       setShowControls(true);
       if (controlsTimeoutRef.current) clearTimeout(controlsTimeoutRef.current);
       controlsTimeoutRef.current = setTimeout(() => {
-        if (playerRef.current && !playerRef.current.paused) {
+        if (!isYouTube && !isGoogleDrive && playerRef.current && !playerRef.current.paused) {
+          setShowControls(false);
+        } else if ((isYouTube || isGoogleDrive) && isPlaying) {
           setShowControls(false);
         }
       }, 3000);
@@ -771,12 +783,60 @@ export default function VideoPlayerClient({
       container.removeEventListener("click", handleInteraction);
       if (controlsTimeoutRef.current) clearTimeout(controlsTimeoutRef.current);
     };
-  }, []);
+  }, [isPlaying, isYouTube, isGoogleDrive]);
+  
+  // Logic for the gradient overlay
+  useEffect(() => {
+    if (gradientFadeTimeoutRef.current) {
+        clearTimeout(gradientFadeTimeoutRef.current);
+    }
+
+    if (isPlaying) {
+        // When playing starts, wait 5 seconds before hiding the gradient
+        gradientFadeTimeoutRef.current = setTimeout(() => {
+            setShowGradientOverlay(false);
+        }, 5000);
+    } else {
+        // When paused, show the gradient immediately
+        setShowGradientOverlay(true);
+    }
+
+    return () => {
+        if (gradientFadeTimeoutRef.current) {
+            clearTimeout(gradientFadeTimeoutRef.current);
+        }
+    };
+  }, [isPlaying]);
+
 
   const getInitials = (name?: string | null) => {
     if (!name) return "U";
     const parts = name.trim().split(/\s+/);
     return parts.map((n) => n[0]).join("").toUpperCase();
+  };
+  
+   const handlePlayerProgress = (state: { played: number, playedSeconds: number }) => {
+    const t = state.playedSeconds;
+    const d = reactPlayerRef.current?.getDuration() ?? 0;
+    
+    if (t > farthestTimeWatchedRef.current) {
+        farthestTimeWatchedRef.current = t;
+    }
+    
+    const pct = d > 0 ? (t / d) * 100 : 0;
+    setProgress(pct);
+    setCurrentTime(t);
+    
+    if (user && isEnrolled) {
+        saveProgressToFirestore(farthestTimeWatchedRef.current, false, false);
+    }
+  };
+  
+  const handlePlayerSeek = (seconds: number) => {
+    if (seconds > farthestTimeWatchedRef.current) {
+        reactPlayerRef.current?.seekTo(farthestTimeWatchedRef.current, 'seconds');
+        toast({ title: "Fast-forwarding is disabled", description: "You must watch the video to proceed." });
+    }
   };
 
   return (
@@ -793,39 +853,76 @@ export default function VideoPlayerClient({
               isFullScreen ? "rounded-none" : "lg:rounded-lg"
             )}
           >
-            <video
-              ref={playerRef}
-              className="w-full h-full"
-              onClick={togglePlayPause}
-              onTimeUpdate={(e) => {
-                const target = e.target as HTMLVideoElement;
-                const t = target.currentTime || 0;
-                const d = (target.duration && Number.isFinite(target.duration))
-                ? target.duration
-                : duration;
-
-                if (t > farthestTimeWatchedRef.current) {
-                farthestTimeWatchedRef.current = t;
-                }
-                const pct = d > 0 ? (t / d) * 100 : 0;
-                setProgress(pct);
-                setCurrentTime(t);
-
-                if (user && isEnrolled) {
-                // save using farthest time with thresholds
-                saveProgressToFirestore(farthestTimeWatchedRef.current, false, false);
-                }
-              }}
-              onLoadedMetadata={(e) => {
-                const dur = (e.target as HTMLVideoElement).duration;
-                if (Number.isFinite(dur)) setDuration(dur);
-              }}
-              onEnded={handleEnded}
-              loop={isLooping}
-              playsInline
-              preload="metadata"
-            />
-
+            {isYouTube || isGoogleDrive ? (
+                <div className="relative w-full h-full">
+                    <ReactPlayer
+                        ref={reactPlayerRef}
+                        url={currentVideo.url}
+                        playing={isPlaying}
+                        controls={false}
+                        loop={isLooping}
+                        volume={volume}
+                        muted={isMuted}
+                        width="100%"
+                        height="100%"
+                        onPlay={() => setIsPlaying(true)}
+                        onPause={() => setIsPlaying(false)}
+                        onEnded={handleEnded}
+                        onProgress={handlePlayerProgress}
+                        onDuration={setDuration}
+                        onSeek={handlePlayerSeek}
+                        config={{
+                            youtube: {
+                                playerVars: { 
+                                    showinfo: 0,
+                                    modestbranding: 1,
+                                    rel: 0,
+                                    controls: 0,
+                                    disablekb: 1, // Disable keyboard controls
+                                }
+                            }
+                        }}
+                    />
+                    {/* Click Interceptor Overlay */}
+                    <div className="absolute inset-0" onClick={togglePlayPause} />
+                    {(isYouTube || isGoogleDrive) && showGradientOverlay && (
+                      <>
+                        <div className="absolute top-0 left-0 right-0 h-1/5 bg-gradient-to-b from-black/95 via-black/80 to-transparent pointer-events-none transition-opacity duration-300" />
+                        <div className="absolute bottom-0 left-0 right-0 h-1/5 bg-gradient-to-t from-black/95 via-black/80 to-transparent pointer-events-none transition-opacity duration-300" />
+                      </>
+                    )}
+                    {!isPlaying && (
+                        <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                            <Button variant="ghost" size="icon" className="h-20 w-20 bg-black/50 text-white hover:bg-black/70 hover:text-white">
+                                <Play className="h-12 w-12" />
+                            </Button>
+                        </div>
+                    )}
+                </div>
+            ) : (
+                <video
+                    ref={playerRef}
+                    className="w-full h-full"
+                    onClick={togglePlayPause}
+                    onTimeUpdate={(e) => {
+                      const target = e.target as HTMLVideoElement;
+                      const t = target.currentTime || 0;
+                      const d = (target.duration && Number.isFinite(target.duration)) ? target.duration : duration;
+                      if (t > farthestTimeWatchedRef.current) farthestTimeWatchedRef.current = t;
+                      const pct = d > 0 ? (t / d) * 100 : 0;
+                      setProgress(pct);
+                      setCurrentTime(t);
+                      if (user && isEnrolled) saveProgressToFirestore(farthestTimeWatchedRef.current, false, false);
+                    }}
+                    onLoadedMetadata={(e) => {
+                      const dur = (e.target as HTMLVideoElement).duration;
+                      if (Number.isFinite(dur)) setDuration(dur);
+                    }}
+                    onEnded={handleEnded}
+                    playsInline
+                    preload="metadata"
+                />
+            )}
 
             {!isEnrolled && !isLoadingEnrollment && (
               <div className="absolute inset-0 bg-black/80 flex flex-col items-center justify-center text-white p-4 text-center">
@@ -847,19 +944,21 @@ export default function VideoPlayerClient({
             <Slider
                 value={[progress]}
                 onValueChange={(value) => {
-                    if (!playerRef.current) return;
-                    const newTime = (value[0] / 100) * (duration || playerRef.current.duration || 0);
-
-                    // Restrict fast-forwarding
+                    const newTime = (value[0] / 100) * duration;
+                    // Fast-forward prevention
                     if (newTime > farthestTimeWatchedRef.current) {
-                        playerRef.current.currentTime = farthestTimeWatchedRef.current;
-                        const farthestPercentage = (farthestTimeWatchedRef.current / (duration || playerRef.current.duration || 1)) * 100;
-                        setProgress(farthestPercentage);
-                        toast({ title: "Fast-forwarding is disabled", description: "You must watch the video to proceed." });
-                    } else {
-                        playerRef.current.currentTime = newTime;
-                        setProgress(value[0]);
+                        toast({ title: "Fast-forwarding is disabled", description: "You must watch the video to proceed.", duration: 2000 });
+                        if (isYouTube || isGoogleDrive) reactPlayerRef.current?.seekTo(farthestTimeWatchedRef.current, 'seconds');
+                        else if (playerRef.current) playerRef.current.currentTime = farthestTimeWatchedRef.current;
+                        return;
                     }
+
+                    if (isYouTube || isGoogleDrive) {
+                        reactPlayerRef.current?.seekTo(newTime, 'seconds');
+                    } else if (playerRef.current) {
+                        playerRef.current.currentTime = newTime;
+                    }
+                    setProgress(value[0]);
                 }}
                 max={100}
                 step={0.1}
@@ -952,7 +1051,7 @@ export default function VideoPlayerClient({
                 <Button
                     variant="ghost"
                     size="icon"
-                    onClick={() => playerRef.current?.requestPictureInPicture().catch(() => {})}
+                    onClick={() => (playerRef.current as any)?.requestPictureInPicture?.().catch(() => {})}
                     className="text-white hover:text-white hover:bg-white/20 hidden md:flex"
                 >
                     <PictureInPicture />

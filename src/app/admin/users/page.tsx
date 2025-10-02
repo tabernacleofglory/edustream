@@ -1,3 +1,4 @@
+
 import UserManagement from "@/components/user-management";
 
 export default function UserManagementPage() {
@@ -8,7 +9,7 @@ export default function UserManagementPage() {
           User Management
         </h1>
         <p className="text-muted-foreground">
-          View, edit, and manage user roles and permissions.
+          View, edit, and manage user roles, permissions, and details.
         </p>
       </div>
       <UserManagement />

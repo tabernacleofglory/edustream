@@ -1,5 +1,6 @@
 
-"use client"
+
+"use client";
 
 import { useState, useEffect } from "react";
 import { useForm, Controller } from "react-hook-form";
@@ -35,6 +36,7 @@ const addUserSchema = z.object({
   campus: z.string().min(1, "Campus is required"),
   phoneNumber: z.string().optional(),
   hpNumber: z.string().optional(),
+  facilitatorName: z.string().optional(),
   maritalStatus: z.string().optional(),
   ministry: z.string().optional(),
   charge: z.string().optional(),
@@ -161,6 +163,7 @@ export default function AddUserForm({ onUserAdded, ladders }: AddUserFormProps) 
         campus: "",
         phoneNumber: "",
         hpNumber: "",
+        facilitatorName: "",
         maritalStatus: "",
         ministry: "",
         charge: "",
@@ -318,6 +321,7 @@ export default function AddUserForm({ onUserAdded, ladders }: AddUserFormProps) 
         campus: data.campus,
         phoneNumber: data.phoneNumber,
         hpNumber: data.hpNumber,
+        facilitatorName: data.facilitatorName,
         maritalStatus: data.maritalStatus,
         ministry: data.ministry,
         charge: data.charge,
@@ -377,6 +381,11 @@ export default function AddUserForm({ onUserAdded, ladders }: AddUserFormProps) 
       <div className="space-y-2">
         <Label htmlFor="hpNumber">HP Number</Label>
         <Input id="hpNumber" placeholder="Your HP Number" {...register("hpNumber")} disabled={isSubmitting} />
+      </div>
+
+      <div className="space-y-2">
+        <Label htmlFor="facilitatorName">Facilitator's Full Name</Label>
+        <Input id="facilitatorName" placeholder="Facilitator's Name" {...register("facilitatorName")} disabled={isSubmitting} />
       </div>
 
        <div className="space-y-2">

@@ -6,7 +6,7 @@ import type { LiveEvent } from './types';
 import { v4 as uuidv4 } from 'uuid';
 
 export const createLiveEvent = async (
-  eventData: Omit<LiveEvent, 'id' | 'status' | 'streamKey' | 'playbackId' | 'muxLiveStreamId'>
+  eventData: Omit<LiveEvent, 'id' | 'status'>
 ): Promise<LiveEvent> => {
   try {
     const docRef = await db.collection('liveEvents').add({

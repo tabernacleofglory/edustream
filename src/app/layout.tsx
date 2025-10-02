@@ -2,7 +2,6 @@
 import type { Metadata } from "next";
 import { Inter, Space_Grotesk, Dancing_Script, Great_Vibes, Source_Serif_4 } from "next/font/google";
 import "./globals.css";
-import { Providers } from "@/components/providers";
 import { getSiteSettings } from "@/lib/data";
 import AppContent from "./app-content";
 
@@ -63,9 +62,7 @@ export default function RootLayout({
   return (
     <html lang="en" className={`${inter.variable} ${spaceGrotesk.variable} ${dancingScript.variable} ${greatVibes.variable} ${sourceSerif.variable}`} suppressHydrationWarning>
       <body className="font-body">
-        <Providers>
-          <AppContent>{children}</AppContent>
-        </Providers>
+        <AppContent>{children}</AppContent>
       </body>
     </html>
   );

@@ -7,7 +7,8 @@ if (!admin.apps.length) {
     // initializeApp() automatically uses Application Default Credentials.
     admin.initializeApp({
         projectId: 'edustream-5t6z4',
-        storageBucket: "edustream-5t6z4.appspot.com"
+        storageBucket: "edustream-5t6z4.appspot.com",
+        databaseURL: "https://edustream-5t6z4.firebaseio.com"
     });
     console.log("Firebase Admin SDK initialized successfully with Application Default Credentials.");
   } catch (error: any) {

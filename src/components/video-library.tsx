@@ -2,10 +2,10 @@
 "use client";
 
 import { useState, useMemo, useEffect, useRef } from 'react';
-import { db, storage } from '@/lib/firebase';
-import { doc, updateDoc, deleteDoc } from 'firebase/firestore';
+import { db, storage, videoStorage } from '@/lib/firebase';
+import { doc, updateDoc, deleteDoc, onSnapshot, query, collection, where, addDoc, serverTimestamp } from 'firebase/firestore';
 import { ref, deleteObject, uploadBytes, getDownloadURL } from 'firebase/storage';
-import { Edit, Trash, Loader2, Check, Eye, Play } from 'lucide-react';
+import { Edit, Trash2, Loader2, Check, Eye, Play, Film, RefreshCw, X, AlertTriangle, VideoOff, Youtube, RemoveFormattingIcon, FolderKanban } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import Image from 'next/image';
@@ -19,6 +19,37 @@ import { Switch } from './ui/switch';
 import { Label } from './ui/label';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from './ui/tooltip';
 import { AspectRatio } from './ui/aspect-ratio';
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from './ui/alert-dialog';
+import ReactPlayer from 'react-player/lazy';
+import { useAuth } from '@/hooks/use-auth';
+
+
+const VideoPlayerPreview = ({ video }: { video: Video }) => {
+    const isYouTube = video.type === 'youtube' || video.url?.includes('youtube.com') || video.url?.includes('youtu.be');
+    const isGoogleDrive = video.type === 'googledrive';
+
+    let videoUrl = video.url;
+    if (isGoogleDrive && videoUrl?.includes('/view')) {
+        videoUrl = videoUrl.replace('/view', '/preview');
+    }
+
+    if (isYouTube || isGoogleDrive) {
+        return (
+            <ReactPlayer
+                url={videoUrl}
+                controls
+                playing
+                width="100%"
+                height="100%"
+                className="w-full h-full rounded-md"
+            />
+        );
+    }
+    
+    return <video src={video.hlsUrl || video.url} controls autoPlay muted playsInline className="w-full h-full rounded-md" />;
+};
+
+const EMPTY_ARRAY: Video[] = [];
 
 interface VideoLibraryProps {
     videos?: Video[];
@@ -27,32 +58,49 @@ interface VideoLibraryProps {
     onDeleteVideo?: (videoId: string) => void;
     onUpdateVideo?: (video: Video) => void;
     onSelectVideos?: (videos: Video[]) => void;
-    initialSelectedVideos?: {id: string}[];
+    initialSelectedVideos?: Video[];
 }
 
-const VideoPlayerPreview = ({ video }: { video: Video }) => {    
-    const videoRef = useRef<HTMLVideoElement>(null);
-    return <video ref={videoRef} src={video.url} controls autoPlay muted playsInline className="w-full h-full rounded-md" />;
-};
-
-const EMPTY_ARRAY: Video[] = [];
-
-export default function VideoLibrary({ videos = [], isLoading = false, onStatusChange, onDeleteVideo, onUpdateVideo, onSelectVideos, initialSelectedVideos = EMPTY_ARRAY }: VideoLibraryProps) {
+export default function VideoLibrary({ videos: initialVideos = [], isLoading: initialLoading = false, onStatusChange, onDeleteVideo, onUpdateVideo, onSelectVideos, initialSelectedVideos = EMPTY_ARRAY }: VideoLibraryProps) {
+    const [videos, setVideos] = useState<Video[]>(initialVideos);
+    const [isLoading, setIsLoading] = useState(initialLoading);
     const [searchTerm, setSearchTerm] = useState('');
     const [editingVideo, setEditingVideo] = useState<Video | null>(null);
     const { toast } = useToast();
     const [selectedVideos, setSelectedVideos] = useState<Video[]>([]);
     const [previewingVideo, setPreviewingVideo] = useState<Video | null>(null);
+    const [isTranscoding, setIsTranscoding] = useState<string | null>(null);
+    const { user } = useAuth();
     
     // State for the edit form
     const [title, setTitle] = useState('');
     const [thumbnailFile, setThumbnailFile] = useState<File | null>(null);
     const [thumbnailPreview, setThumbnailPreview] = useState<string | null>(null);
     const [isUpdating, setIsUpdating] = useState(false);
+
+    useEffect(() => {
+        setIsLoading(true);
+        const q = query(collection(db, 'Contents'), where("Type", "in", ["video", "youtube", "googledrive"]));
+        const unsubscribe = onSnapshot(q, (snapshot) => {
+            const videosList = snapshot.docs
+                .map(doc => ({ id: doc.id, ...doc.data() } as Video))
+                .sort((a, b) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0));
+            setVideos(videosList);
+            setIsLoading(false);
+        }, (error) => {
+            console.error("Error fetching videos in real-time: ", error);
+            toast({ variant: 'destructive', title: 'Failed to sync videos.' });
+            setIsLoading(false);
+        });
+
+        return () => unsubscribe();
+    }, [toast]);
     
     useEffect(() => {
-        const initialSelection = videos.filter(v => initialSelectedVideos.some(iv => iv.id === v.id));
-        setSelectedVideos(initialSelection);
+        if (initialSelectedVideos && videos.length > 0) {
+            const initialSelection = videos.filter(v => initialSelectedVideos.some(iv => iv.id === v.id));
+            setSelectedVideos(initialSelection);
+        }
     }, [initialSelectedVideos, videos]);
 
     useEffect(() => {
@@ -80,24 +128,14 @@ export default function VideoLibrary({ videos = [], isLoading = false, onStatusC
         );
     }, [videos, searchTerm]);
 
-    const handleDelete = async (video: Video) => {
-        if (!window.confirm("Are you sure you want to delete this video? This cannot be undone.")) return;
-        
+    const handleRemove = async (video: Video) => {
         try {
-            if (video.path) {
-                const videoStorageRef = ref(storage, video.path);
-                await deleteObject(videoStorageRef);
-            }
-            if(video.thumbnailPath) {
-                const thumbnailStorageRef = ref(storage, video.thumbnailPath);
-                await deleteObject(thumbnailStorageRef);
-            }
             await deleteDoc(doc(db, 'Contents', video.id));
-            toast({ title: "Video deleted successfully." });
+            toast({ title: `Video removed successfully.` });
             if (onDeleteVideo) onDeleteVideo(video.id);
         } catch (error) {
-             toast({ variant: 'destructive', title: "Delete failed.", description: "Could not delete the video." });
-             console.error("Delete error: ", error);
+             toast({ variant: 'destructive', title: "Action failed.", description: `Could not remove the video.` });
+             console.error("Remove error: ", error);
         }
     }
     
@@ -111,7 +149,7 @@ export default function VideoLibrary({ videos = [], isLoading = false, onStatusC
             const updatedData: { title: string; Thumbnail?: string; thumbnailPath?: string } = { title };
 
             if (thumbnailFile) {
-                if (editingVideo.thumbnailPath) {
+                if (editingVideo.thumbnailPath && editingVideo.type !== 'youtube' && editingVideo.type !== 'googledrive') {
                     const oldThumbnailRef = ref(storage, editingVideo.thumbnailPath);
                     await deleteObject(oldThumbnailRef).catch(err => console.warn("Could not delete old thumbnail", err));
                 }
@@ -127,15 +165,7 @@ export default function VideoLibrary({ videos = [], isLoading = false, onStatusC
             
             await updateDoc(videoDocRef, updatedData);
 
-            const updatedVideo: Video = {
-                ...editingVideo,
-                title: updatedData.title,
-                Thumbnail: updatedData.Thumbnail || editingVideo.Thumbnail,
-                thumbnailPath: updatedData.thumbnailPath || editingVideo.thumbnailPath,
-            };
-
             toast({ title: "Video updated!" });
-            if (onUpdateVideo) onUpdateVideo(updatedVideo);
             setEditingVideo(null);
         } catch (error) {
              toast({ variant: 'destructive', title: "Update failed", description: "Could not update the video details." });
@@ -145,12 +175,118 @@ export default function VideoLibrary({ videos = [], isLoading = false, onStatusC
         }
     }
 
-    const renderStatusBadge = (video: Video) => {
-        if (video.status === 'published') {
-            return <Badge variant="default" className="absolute top-2 right-2">Published</Badge>;
+    const handleDisableTranscoding = async () => {
+        if (!editingVideo) return;
+        setIsUpdating(true);
+        try {
+            const videoDocRef = doc(db, 'Contents', editingVideo.id);
+            await updateDoc(videoDocRef, {
+                hlsUrl: null, // or deleteField() if you prefer
+                transcodeStatus: 'not_requested'
+            });
+
+            toast({ title: "Transcoding Disabled", description: "The video will now use standard playback." });
+            setEditingVideo(null);
+        } catch (error) {
+            toast({ variant: 'destructive', title: "Update Failed", description: "Could not disable transcoding." });
+        } finally {
+            setIsUpdating(false);
         }
-        return <Badge variant="secondary" className="absolute top-2 right-2">Private</Badge>;
     };
+    
+    const handleRetranscode = async (video: Video) => {
+        setIsTranscoding(video.id);
+        try {
+            const videoRef = doc(db, 'Contents', video.id);
+            await updateDoc(videoRef, { 
+                transcodeStatus: 'processing',
+                transcodeTrigger: 'manual' 
+            });
+            toast({ title: "Transcoding Started", description: "The video is now being processed." });
+        } catch (error: any) {
+            toast({ variant: 'destructive', title: "Transcoding Failed", description: error.message });
+        } finally {
+            setIsTranscoding(null);
+        }
+    }
+    
+    const handleCancelTranscode = async (video: Video) => {
+        if (isTranscoding === video.id) return;
+        setIsTranscoding(video.id);
+        try {
+            const videoRef = doc(db, 'Contents', video.id);
+            // This update now happens immediately on the client for instant UI feedback.
+            await updateDoc(videoRef, { 
+                transcodeStatus: 'cancelled',
+                transcodeTrigger: 'cancel', // Still set trigger for backend cleanup
+                errorMessage: null // Clear any old errors
+            });
+            toast({ title: "Cancellation Requested", description: "The transcoding job will be stopped." });
+        } catch (error: any) {
+            toast({ variant: 'destructive', title: "Cancellation Failed", description: error.message });
+        } finally {
+            setIsTranscoding(null);
+        }
+    }
+
+    const renderTranscodeBadge = (status?: string) => {
+        switch (status) {
+            case 'pending':
+            case 'processing':
+                return <Badge variant="secondary" className="bg-yellow-100 text-yellow-800">Processing</Badge>;
+            case 'succeeded': return <Badge variant="secondary" className="bg-green-100 text-green-800">Ready</Badge>;
+            case 'failed': return <Badge variant="destructive">Failed</Badge>;
+            case 'cancelled': return <Badge variant="outline">Cancelled</Badge>;
+            default: return <Badge variant="outline">Not Requested</Badge>;
+        }
+    };
+    
+    const renderActionButtons = (video: Video) => {
+        if (video.type === 'youtube' || video.type === 'googledrive') return null;
+
+        const isJobProcessing = video.transcodeStatus === 'processing' || video.transcodeStatus === 'pending';
+        const isJobActionInProgress = isTranscoding === video.id;
+
+        if (isJobProcessing) {
+            return (
+                <Button variant="outline" size="sm" className="w-full" onClick={() => handleCancelTranscode(video)} disabled={isJobActionInProgress}>
+                    {isJobActionInProgress ? <Loader2 className="mr-2 h-3 w-3 animate-spin" /> : <X className="mr-2 h-3 w-3" />}
+                    Stop
+                </Button>
+            );
+        }
+
+        const showRetranscode = video.transcodeStatus === 'failed' || video.transcodeStatus === 'cancelled';
+        
+        return (
+            <Button variant="outline" size="sm" className="w-full" onClick={() => handleRetranscode(video)} disabled={isJobActionInProgress}>
+                 {isJobActionInProgress ? <Loader2 className="mr-2 h-3 w-3 animate-spin" /> : (showRetranscode ? <RefreshCw className="mr-2 h-3 w-3" /> : <Film className="mr-2 h-3 w-3" />)}
+                 {showRetranscode ? 'Retranscode' : 'Transcode'}
+            </Button>
+        );
+    }
+    
+    const renderRemoveButton = (video: Video) => {
+        return (
+             <AlertDialog>
+                <AlertDialogTrigger asChild>
+                    <Button variant="outline" size="sm" className="w-full mt-2" onClick={e => e.stopPropagation()}>
+                        <Trash2 className="mr-2 h-3 w-3" /> Remove
+                    </Button>
+                </AlertDialogTrigger>
+                <AlertDialogContent>
+                        <AlertDialogHeader>
+                        <AlertDialogTitle>Are you sure?</AlertDialogTitle>
+                        <AlertDialogDescription>This will remove the video record from your library. This action cannot be undone.</AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                        <AlertDialogCancel>Cancel</AlertDialogCancel>
+                        <AlertDialogAction onClick={() => handleRemove(video)}>Remove</AlertDialogAction>
+                    </AlertDialogFooter>
+                </AlertDialogContent>
+            </AlertDialog>
+        )
+    }
 
     return (
         <>
@@ -173,7 +309,7 @@ export default function VideoLibrary({ videos = [], isLoading = false, onStatusC
                                </CardContent>
                             </Card>
                         ))
-                    ) : (
+                    ) : (filteredVideos || []).length > 0 ? (
                         (filteredVideos || []).map(video => {
                             const selectionIndex = selectedVideos.findIndex(v => v.id === video.id);
                             const isSelected = selectionIndex !== -1;
@@ -193,12 +329,25 @@ export default function VideoLibrary({ videos = [], isLoading = false, onStatusC
                                                 style={{objectFit:"cover"}}
                                                 className="transition-transform group-hover:scale-105"
                                             />
-                                            {(!onSelectVideos && video.url) && (
+                                            {video.type === 'youtube' && (
+                                                 <div className="absolute inset-0 bg-black/40 flex items-center justify-center">
+                                                    <Youtube className="h-12 w-12 text-red-500/80" />
+                                                </div>
+                                            )}
+                                             {video.type === 'googledrive' && (
+                                                <div className="absolute inset-0 bg-black/40 flex items-center justify-center">
+                                                    <FolderKanban className="h-12 w-12 text-blue-500/80" />
+                                                </div>
+                                            )}
+                                            {(!onSelectVideos && video.url && video.type === 'video') && (
                                                 <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
                                                     <Play className="h-12 w-12 text-white" />
                                                 </div>
                                             )}
-                                            {renderStatusBadge(video)}
+                                             <div className="absolute top-2 right-2 flex flex-col items-end gap-1">
+                                                {onStatusChange && <Badge variant={video.status === 'published' ? 'default' : 'secondary'}>{video.status}</Badge>}
+                                                {video.type === 'video' && video.transcodeStatus && renderTranscodeBadge(video.transcodeStatus)}
+                                             </div>
                                             {(isSelected && onSelectVideos) && (
                                                 <div className="absolute top-2 left-2 bg-primary text-primary-foreground rounded-full h-6 w-6 flex items-center justify-center text-xs font-bold z-10">
                                                     {selectionIndex + 1}
@@ -223,23 +372,24 @@ export default function VideoLibrary({ videos = [], isLoading = false, onStatusC
                                                         />
                                                     </div>
                                                 )}
-                                                <div className="flex flex-wrap items-center gap-2 mt-2">
-                                                    <Button variant="outline" size="sm" className="flex-1" onClick={() => setPreviewingVideo(video)} disabled={!video.url}>
-                                                        <Eye className="mr-2 h-3 w-3" /> Watch
-                                                    </Button>
+                                                <div className="grid grid-cols-2 gap-2 mt-2">
+                                                    {renderActionButtons(video)}
                                                     <Button variant="outline" size="sm" className="flex-1" onClick={() => setEditingVideo(video)}>
                                                         <Edit className="mr-2 h-3 w-3" /> Edit
                                                     </Button>
-                                                    <Button variant="destructive" size="sm" className="flex-1" onClick={() => handleDelete(video)}>
-                                                        <Trash className="mr-2 h-3 w-3" /> Delete
-                                                    </Button>
                                                 </div>
+                                                {renderRemoveButton(video)}
                                             </>
                                         )}
                                     </div>
                                 </Card>
                             )
                         })
+                    ) : (
+                        <div className="col-span-full text-center py-12 text-muted-foreground">
+                            <VideoOff className="mx-auto h-12 w-12"/>
+                            <p className="mt-4">No videos found.</p>
+                        </div>
                     )}
                 </div>
             </ScrollArea>
@@ -281,6 +431,16 @@ export default function VideoLibrary({ videos = [], isLoading = false, onStatusC
                                     }
                                 }} />
                             </div>
+                            {editingVideo.type === 'video' && editingVideo.transcodeStatus === 'succeeded' && editingVideo.hlsUrl && (
+                                <div className="space-y-2 rounded-md border border-destructive/50 p-3">
+                                    <Label className="text-destructive">Danger Zone</Label>
+                                    <p className="text-xs text-muted-foreground">This will remove the transcoded version of the video and revert to standard playback.</p>
+                                    <Button type="button" variant="destructive" onClick={handleDisableTranscoding} disabled={isUpdating}>
+                                        <VideoOff className="mr-2 h-4 w-4" />
+                                        Disable Transcoding
+                                    </Button>
+                                </div>
+                            )}
                             <DialogFooter>
                                 <Button type="button" variant="secondary" onClick={() => setEditingVideo(null)}>Cancel</Button>
                                 <Button type="submit" disabled={isUpdating}>
@@ -307,4 +467,6 @@ export default function VideoLibrary({ videos = [], isLoading = false, onStatusC
              </Dialog>
         </>
     );
-};
+}
+
+    

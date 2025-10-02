@@ -1,3 +1,5 @@
+
+
 // src/hooks/useProcessedCourses.tsx
 "use client";
 
@@ -11,6 +13,7 @@ import {
   where,
   orderBy,
   Timestamp,
+  documentId,
 } from "firebase/firestore";
 import type {
   Course,
@@ -18,6 +21,7 @@ import type {
   UserProgress as UserProgressType,
   Ladder,
   Video,
+  UserQuizResult,
 } from "../lib/types";
 
 /** Normalize schema differences (some docs use `ladders`, others `ladderIds`) */
@@ -70,10 +74,14 @@ export function useProcessedCourses(forAllCoursesPage: boolean = false) {
       );
 
       /** PUBLISHED COURSES */
-      const coursesQuery = query(
+      let coursesQuery = query(
         collection(db, "courses"),
         where("status", "==", "published")
       );
+      // If a user has a language set, filter courses by that language.
+      if (user?.language) {
+          coursesQuery = query(coursesQuery, where("language", "==", user.language));
+      }
       const coursesSnapshot = await getDocs(coursesQuery);
 
       // Normalize ladderIds so downstream logic always has them
@@ -106,7 +114,7 @@ export function useProcessedCourses(forAllCoursesPage: boolean = false) {
         return;
       }
 
-      /** USER DATA: enrollments + progress */
+      /** USER DATA: enrollments, progress, and quiz results */
       const enrollmentsQuery = query(
         collection(db, "enrollments"),
         where("userId", "==", user.uid)
@@ -115,10 +123,16 @@ export function useProcessedCourses(forAllCoursesPage: boolean = false) {
         collection(db, "userVideoProgress"),
         where("userId", "==", user.uid)
       );
+      const quizResultsQuery = query(
+        collection(db, 'userQuizResults'),
+        where('userId', '==', user.uid)
+      );
 
-      const [enrollmentsSnapshot, progressSnapshot] = await Promise.all([
+
+      const [enrollmentsSnapshot, progressSnapshot, quizResultsSnapshot] = await Promise.all([
         getDocs(enrollmentsQuery),
         getDocs(progressQuery),
+        getDocs(quizResultsQuery),
       ]);
 
       const enrollmentData = new Map<string, Enrollment>(
@@ -134,8 +148,19 @@ export function useProcessedCourses(forAllCoursesPage: boolean = false) {
           doc.data() as UserProgressType,
         ])
       );
+      
+      const passedQuizzesByCourse = new Map<string, Set<string>>();
+      quizResultsSnapshot.docs.forEach(doc => {
+          const result = doc.data() as UserQuizResult;
+          if (result.passed) {
+              if (!passedQuizzesByCourse.has(result.courseId)) {
+                passedQuizzesByCourse.set(result.courseId, new Set());
+              }
+              passedQuizzesByCourse.get(result.courseId)!.add(result.quizId);
+          }
+      });
 
-      /** Identify completed + in-progress courses based on published videos only */
+      /** Identify completed + in-progress courses based on published videos AND quizzes */
       const completedCourseIds = new Set<string>();
       const coursesInProgress = new Set<string>();
 
@@ -147,17 +172,15 @@ export function useProcessedCourses(forAllCoursesPage: boolean = false) {
           course.videos?.filter((vid) => allPublishedVideosMap.has(vid as string)) ??
           [];
 
-        if (publishedVideoIdsForCourse.length === 0) {
-          if (enrollment?.completedAt) completedCourseIds.add(course.id!);
-          continue;
-        }
+        const allVideosCompleted = publishedVideoIdsForCourse.length > 0 && publishedVideoIdsForCourse.every(vid => 
+            progress?.videoProgress?.some(p => p.videoId === vid && p.completed)
+        );
 
-        const completedVideosCount =
-          progress?.videoProgress?.filter(
-            (v) => v.completed && publishedVideoIdsForCourse.includes(v.videoId)
-          ).length ?? 0;
+        const requiredQuizIds = course.quizIds || [];
+        const passedCourseQuizzes = passedQuizzesByCourse.get(course.id!) || new Set();
+        const allQuizzesCompleted = requiredQuizIds.every(quizId => passedCourseQuizzes.has(quizId));
 
-        if (completedVideosCount === publishedVideoIdsForCourse.length) {
+        if (allVideosCompleted && allQuizzesCompleted) {
           completedCourseIds.add(course.id!);
         } else if (enrollment) {
           coursesInProgress.add(course.id!);
@@ -216,32 +239,29 @@ export function useProcessedCourses(forAllCoursesPage: boolean = false) {
 
         let isLocked = false;
         let prerequisiteCourse: CourseWithStatus["prerequisiteCourse"] = undefined;
-
+        
         if (userLadder && courseLadders.length > 0) {
-          // 🔒 Lock ONLY if *all* ladders for this course are higher than the user's ladder
-          const minCourseLadderOrder = Math.min(...courseLadders.map((l) => l.order));
-          if (minCourseLadderOrder > userLadderOrder) {
-            isLocked = true; // course entirely above the user's ladder -> locked
-          } else {
-            // ✅ At least one ladder for this course is <= user ladder, so the course is eligible.
-            // Enforce prerequisites within the appropriate ladder:
-            // - If course is in the user's ladder, use that.
-            // - Else, pick the nearest ladder for the course whose order <= user ladder.
-            let ladderForPrereq: Ladder | undefined =
-              courseLadders.find((l) => l.id === userLadder.id) ||
-              courseLadders
-                .filter((l) => l.order <= userLadderOrder)
-                .sort((a, b) => b.order - a.order)[0]; // closest lower/equal ladder
+            const minCourseLadderOrder = Math.min(...courseLadders.map((l) => l.order));
+            const maxCourseLadderOrder = Math.max(...courseLadders.map((l) => l.order));
 
-            if (ladderForPrereq && course.order !== undefined) {
-              const prereq = findNearestLowerPrereq(course, ladderForPrereq.id);
-              if (prereq && !completedCourseIds.has(prereq.id!)) {
+            if (minCourseLadderOrder > userLadderOrder) {
+                // If the course's lowest ladder is still higher than the user's, it's locked.
                 isLocked = true;
-                prerequisiteCourse = { id: prereq.id!, title: prereq.title };
-              }
+            } else if (maxCourseLadderOrder < userLadderOrder) {
+                // If the course's highest ladder is below the user's, it's always unlocked.
+                isLocked = false; 
+            } else {
+                // The course is in the user's ladder or spans it. Check prerequisites only within the user's ladder.
+                if (courseLadders.some(l => l.id === userLadder.id)) {
+                    const prereq = findNearestLowerPrereq(course, userLadder.id);
+                    if (prereq && !completedCourseIds.has(prereq.id!)) {
+                        isLocked = true;
+                        prerequisiteCourse = { id: prereq.id!, title: prereq.title };
+                    }
+                }
             }
-          }
         }
+
 
         // Lowest ladder: only one in-progress course at a time in that *user* ladder
         if (!isLocked && isLowestLadder && userLadder) {
@@ -287,8 +307,15 @@ export function useProcessedCourses(forAllCoursesPage: boolean = false) {
   }, [user]);
 
   useEffect(() => {
-    fetchAndProcessCourses();
-  }, [fetchAndProcessCourses]);
+    if(user?.language) { // Only fetch courses if user has a language set
+        fetchAndProcessCourses();
+    } else if (user && !user.language) { // If user is logged in but has no language, don't show any courses
+        setProcessedCourses([]);
+        setLoading(false);
+    } else { // For guests
+        fetchAndProcessCourses();
+    }
+  }, [fetchAndProcessCourses, user]);
 
   const refresh = () => {
     fetchAndProcessCourses();

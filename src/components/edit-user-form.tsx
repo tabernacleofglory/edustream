@@ -41,6 +41,7 @@ const profileSchema = z.object({
   email: z.string().email(),
   phoneNumber: z.string().optional(),
   hpNumber: z.string().optional(),
+  facilitatorName: z.string().optional(),
   campus: z.string().optional(),
   classLadderId: z.string().optional(),
   role: z.string().optional(),
@@ -122,6 +123,7 @@ export default function EditUserForm({ userToEdit, onUserUpdated }: EditUserForm
         email: userToEdit.email || "",
         phoneNumber: userToEdit.phoneNumber || "",
         hpNumber: userToEdit.hpNumber || "",
+        facilitatorName: userToEdit.facilitatorName || "",
         campus: userToEdit.campus || "",
         classLadderId: userToEdit.classLadderId || "",
         role: userToEdit.role || "user",
@@ -219,6 +221,7 @@ export default function EditUserForm({ userToEdit, onUserUpdated }: EditUserForm
         email: userToEdit.email || "",
         phoneNumber: userToEdit.phoneNumber || "",
         hpNumber: userToEdit.hpNumber || "",
+        facilitatorName: userToEdit.facilitatorName || "",
         campus: userToEdit.campus || "",
         classLadderId: userToEdit.classLadderId || "",
         role: userToEdit.role || "user",
@@ -286,6 +289,7 @@ export default function EditUserForm({ userToEdit, onUserUpdated }: EditUserForm
         email: data.email,
         phoneNumber: data.phoneNumber,
         hpNumber: data.hpNumber,
+        facilitatorName: data.facilitatorName,
         campus: data.campus,
         classLadder: selectedLadder ? selectedLadder.name : '',
         classLadderId: data.classLadderId,
@@ -498,6 +502,19 @@ export default function EditUserForm({ userToEdit, onUserUpdated }: EditUserForm
             {errors.hpNumber && (
             <p className="text-sm text-destructive">
                 {errors.hpNumber.message}
+            </p>
+            )}
+        </div>
+        <div className="space-y-2">
+            <Label htmlFor="facilitatorName">Facilitator's Full Name</Label>
+            <Input
+            id="facilitatorName"
+            {...register("facilitatorName")}
+            placeholder="Facilitator's Name"
+            />
+            {errors.facilitatorName && (
+            <p className="text-sm text-destructive">
+                {errors.facilitatorName.message}
             </p>
             )}
         </div>

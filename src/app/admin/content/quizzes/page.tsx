@@ -2,7 +2,7 @@
 
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/use-auth";
 import { db } from "@/lib/firebase";
@@ -23,10 +23,12 @@ import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { useFieldArray, useForm, Controller } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from 'zod';
-import { Form, FormControl, FormField, FormItem, FormMessage, FormLabel } from "@/components/ui/form";
+import { Form, FormControl, FormField, FormItem, FormMessage, FormLabel, FormDescription } from "@/components/ui/form";
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Slider } from "@/components/ui/slider";
+import { Switch } from "@/components/ui/switch";
+import { useDebounce } from 'use-debounce';
 
 
 const quizQuestionSchema = z.discriminatedUnion("type", [
@@ -59,10 +61,15 @@ const quizQuestionSchema = z.discriminatedUnion("type", [
 const quizFormSchema = z.object({
   title: z.string().min(3, "Quiz title is required"),
   passThreshold: z.coerce.number().min(0).max(100).optional(),
+  shuffleQuestions: z.boolean().optional(),
+  timeLimitEnabled: z.boolean().optional(),
+  timeLimitPerQuestion: z.coerce.number().min(1, "Time limit must be at least 1 minute.").optional(),
   questions: z.array(quizQuestionSchema).min(1, "At least one question is required"),
 });
 
 type QuizFormValues = z.infer<typeof quizFormSchema>;
+
+const DRAFT_STORAGE_KEY = 'quiz-form-draft';
 
 const QuizForm = ({ quiz, onSuccess, closeDialog }: { quiz?: Quiz | null; onSuccess: () => void; closeDialog: () => void; }) => {
   const { toast } = useToast();
@@ -73,6 +80,9 @@ const QuizForm = ({ quiz, onSuccess, closeDialog }: { quiz?: Quiz | null; onSucc
     defaultValues: {
       title: quiz?.title || '',
       passThreshold: quiz?.passThreshold,
+      shuffleQuestions: quiz?.shuffleQuestions || false,
+      timeLimitEnabled: quiz?.timeLimitEnabled || false,
+      timeLimitPerQuestion: quiz?.timeLimitPerQuestion || 3,
       questions: quiz?.questions || [{ id: uuidv4(), type: 'multiple-choice', questionText: '', options: ['', ''], correctAnswerIndex: -1 }],
     },
   });
@@ -81,13 +91,60 @@ const QuizForm = ({ quiz, onSuccess, closeDialog }: { quiz?: Quiz | null; onSucc
     control: form.control,
     name: "questions",
   });
+  
+  const watchTimeLimitEnabled = form.watch('timeLimitEnabled');
+  const watchedForm = form.watch();
+  const [debouncedForm] = useDebounce(watchedForm, 1000);
+
+  // Auto-save draft
+  useEffect(() => {
+    // Don't save if it's the initial state of an existing quiz
+    if (quiz && !form.formState.isDirty) return;
+    
+    // Save to localStorage
+    const draftData = JSON.stringify(debouncedForm);
+    localStorage.setItem(DRAFT_STORAGE_KEY, draftData);
+  }, [debouncedForm, quiz, form.formState.isDirty]);
+  
+  // Load draft on component mount
+  useEffect(() => {
+    const savedDraft = localStorage.getItem(DRAFT_STORAGE_KEY);
+    if (savedDraft && !quiz) { // Only load draft for new quizzes
+      const draftData = JSON.parse(savedDraft);
+      toast({
+        title: "Draft Found",
+        description: "You have an unsaved quiz draft.",
+        action: (
+          <div className="flex gap-2">
+            <Button size="sm" onClick={() => {
+                form.reset(draftData);
+                toast({ title: "Draft restored!" });
+            }}>
+              Restore
+            </Button>
+            <Button size="sm" variant="secondary" onClick={() => {
+                localStorage.removeItem(DRAFT_STORAGE_KEY);
+                toast({ title: "Draft cleared." });
+            }}>
+              Discard
+            </Button>
+          </div>
+        ),
+        duration: 10000,
+      });
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [quiz, form.reset]);
+
 
   const onSubmit = async (data: QuizFormValues) => {
     setIsSubmitting(true);
     try {
-      const dataToSave = {
+      const dataToSave: Partial<Quiz> = {
         ...data,
-        passThreshold: data.passThreshold === undefined ? null : data.passThreshold, // Store null if empty
+        passThreshold: data.passThreshold === undefined ? null : data.passThreshold,
+        timeLimitEnabled: data.timeLimitEnabled,
+        timeLimitPerQuestion: data.timeLimitPerQuestion,
       }
 
       if (quiz) {
@@ -103,6 +160,7 @@ const QuizForm = ({ quiz, onSuccess, closeDialog }: { quiz?: Quiz | null; onSucc
         });
         toast({ title: "Quiz Created", description: "The new quiz has been successfully created." });
       }
+      localStorage.removeItem(DRAFT_STORAGE_KEY); // Clear draft on successful submission
       onSuccess();
       closeDialog();
     } catch (error) {
@@ -153,144 +211,206 @@ const QuizForm = ({ quiz, onSuccess, closeDialog }: { quiz?: Quiz | null; onSucc
 
   return (
     <Form {...form}>
-      <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
-        <div className="space-y-2">
-            <Label htmlFor="quiz-title">Quiz Title</Label>
-            <Input id="quiz-title" {...form.register('title')} placeholder="e.g., Final Exam" />
-            {form.formState.errors.title && <p className="text-sm text-destructive">{form.formState.errors.title.message}</p>}
-        </div>
-
-        <FormField
-            control={form.control}
-            name="passThreshold"
-            render={({ field }) => (
-                <FormItem>
-                <FormLabel>Passing Percentage ({field.value || 'Default'}%)</FormLabel>
-                <FormControl>
-                    <Slider
-                        defaultValue={[field.value || 70]}
-                        onValueChange={(value) => field.onChange(value[0])}
-                        max={100}
-                        step={5}
+      <form onSubmit={form.handleSubmit(onSubmit)} className="flex flex-col h-full">
+        <ScrollArea className="flex-grow pr-6 -mr-6">
+            <div className="space-y-6">
+                <div className="space-y-4">
+                    <FormField
+                        control={form.control}
+                        name="title"
+                        render={({ field }) => (
+                            <FormItem>
+                            <FormLabel>Quiz Title</FormLabel>
+                            <FormControl>
+                                <Input {...field} placeholder="e.g., Final Exam" />
+                            </FormControl>
+                            <FormMessage />
+                            </FormItem>
+                        )}
                     />
-                </FormControl>
-                <FormMessage />
-                </FormItem>
-            )}
-        />
+                    
+                    <FormField
+                        control={form.control}
+                        name="shuffleQuestions"
+                        render={({ field }) => (
+                            <FormItem className="flex flex-row items-center justify-between rounded-lg border p-3 shadow-sm">
+                                <div className="space-y-0.5">
+                                    <FormLabel>Shuffle Questions</FormLabel>
+                                    <FormDescription>Randomize the question order for each attempt.</FormDescription>
+                                </div>
+                                <FormControl>
+                                    <Switch checked={field.value} onCheckedChange={field.onChange} />
+                                </FormControl>
+                            </FormItem>
+                        )}
+                    />
+
+                    <FormField
+                        control={form.control}
+                        name="timeLimitEnabled"
+                        render={({ field }) => (
+                            <FormItem className="flex flex-row items-center justify-between rounded-lg border p-3 shadow-sm">
+                                <div className="space-y-0.5">
+                                    <FormLabel>Enable Time Limit</FormLabel>
+                                    <FormDescription>Set a time limit for the entire quiz.</FormDescription>
+                                </div>
+                                <FormControl>
+                                    <Switch checked={field.value} onCheckedChange={field.onChange} />
+                                </FormControl>
+                            </FormItem>
+                        )}
+                    />
+
+                    {watchTimeLimitEnabled && (
+                        <FormField
+                            control={form.control}
+                            name="timeLimitPerQuestion"
+                            render={({ field }) => (
+                                <FormItem>
+                                <FormLabel>Time Limit Per Question (minutes)</FormLabel>
+                                <FormControl>
+                                    <Input type="number" {...field} value={field.value || ''} placeholder="e.g., 3" />
+                                </FormControl>
+                                <FormMessage />
+                                </FormItem>
+                            )}
+                        />
+                    )}
 
 
-        <ScrollArea className="h-96 pr-4 -mr-4">
-            <div className="space-y-4">
-                {fields.map((field, index) => (
-                    <Card key={field.id} className="p-4">
-                        <div className="flex justify-between items-center mb-2">
-                            <h4 className="font-semibold">Question {index + 1}</h4>
-                            <div className="flex items-center gap-2">
-                                <Select onValueChange={(value: 'multiple-choice' | 'multiple-select' | 'free-text') => handleQuestionTypeChange(value, index)} defaultValue={field.type}>
-                                    <SelectTrigger className="w-[180px]">
-                                        <SelectValue placeholder="Question Type" />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                        <SelectItem value="multiple-choice">Multiple Choice</SelectItem>
-                                        <SelectItem value="multiple-select">Multiple Select</SelectItem>
-                                        <SelectItem value="free-text">Free Text</SelectItem>
-                                    </SelectContent>
-                                </Select>
-                                <Button type="button" variant="ghost" size="icon" onClick={() => remove(index)}>
-                                    <Trash2 className="h-4 w-4 text-destructive" />
-                                </Button>
+                    <FormField
+                        control={form.control}
+                        name="passThreshold"
+                        render={({ field }) => (
+                            <FormItem>
+                            <FormLabel>Passing Percentage ({field.value || 'Default'}%)</FormLabel>
+                            <FormControl>
+                                <Slider
+                                    defaultValue={[field.value || 70]}
+                                    onValueChange={(value) => field.onChange(value[0])}
+                                    max={100}
+                                    step={5}
+                                />
+                            </FormControl>
+                            <FormMessage />
+                            </FormItem>
+                        )}
+                    />
+                </div>
+
+                <div className="space-y-4">
+                    {fields.map((field, index) => (
+                        <Card key={field.id} className="p-4">
+                            <div className="flex justify-between items-center mb-2">
+                                <h4 className="font-semibold">Question {index + 1}</h4>
+                                <div className="flex items-center gap-2">
+                                    <Select onValueChange={(value: 'multiple-choice' | 'multiple-select' | 'free-text') => handleQuestionTypeChange(value, index)} defaultValue={field.type}>
+                                        <SelectTrigger className="w-[180px]">
+                                            <SelectValue placeholder="Question Type" />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            <SelectItem value="multiple-choice">Multiple Choice</SelectItem>
+                                            <SelectItem value="multiple-select">Multiple Select</SelectItem>
+                                            <SelectItem value="free-text">Free Text</SelectItem>
+                                        </SelectContent>
+                                    </Select>
+                                    <Button type="button" variant="ghost" size="icon" onClick={() => remove(index)}>
+                                        <Trash2 className="h-4 w-4 text-destructive" />
+                                    </Button>
+                                </div>
                             </div>
-                        </div>
-                        <div className="space-y-2">
-                            <Label htmlFor={`questions.${index}.questionText`}>Question</Label>
-                            <Textarea id={`questions.${index}.questionText`} {...form.register(`questions.${index}.questionText`)} />
-                            {form.formState.errors.questions?.[index]?.questionText && <p className="text-sm text-destructive">{form.formState.errors.questions?.[index]?.questionText?.message}</p>}
-                            
-                             {field.type === 'free-text' ? (
-                                <FormField
-                                    control={form.control}
-                                    name={`questions.${index}.minCharLength`}
-                                    render={({ field: lengthField }) => (
-                                        <FormItem>
-                                            <FormLabel>Min. Character Length</FormLabel>
-                                            <Input
-                                                type="number"
-                                                {...lengthField}
-                                                value={lengthField.value || ''}
-                                                onChange={e => lengthField.onChange(parseInt(e.target.value, 10))}
-                                                placeholder="e.g., 50"
-                                            />
-                                            <FormMessage />
-                                        </FormItem>
-                                    )}
-                                />
-                             ) : <Label>Options & Correct Answer(s)</Label> }
-
-                            {field.type === 'multiple-choice' && (
-                                <Controller
-                                    control={form.control}
-                                    name={`questions.${index}.correctAnswerIndex`}
-                                    render={({ field: radioField }) => (
-                                        <RadioGroup onValueChange={(val) => radioField.onChange(Number(val))} value={String(radioField.value)} className="space-y-2">
-                                            {(form.watch(`questions.${index}.options`) || []).map((_, optionIndex) => (
-                                                <div key={optionIndex} className="flex items-center gap-2">
-                                                    <RadioGroupItem value={String(optionIndex)} id={`questions.${index}.option.${optionIndex}.radio`} />
-                                                    <Input {...form.register(`questions.${index}.options.${optionIndex}`)} placeholder={`Option ${optionIndex + 1}`} />
-                                                    <Button type="button" variant="ghost" size="icon" onClick={() => removeOption(index, optionIndex)}><Trash2 className="h-4 w-4" /></Button>
-                                                </div>
-                                            ))}
-                                        </RadioGroup>
-                                    )}
-                                />
-                            )}
-
-                            {field.type === 'multiple-select' && (
-                                <Controller
-                                    control={form.control}
-                                    name={`questions.${index}.correctAnswerIndexes`}
-                                    render={({ field: checkboxField }) => (
-                                        <div className="space-y-2">
-                                            {(form.watch(`questions.${index}.options`) || []).map((_, optionIndex) => (
-                                                <div key={optionIndex} className="flex items-center gap-2">
-                                                    <Checkbox
-                                                        checked={checkboxField.value?.includes(optionIndex)}
-                                                        onCheckedChange={(checked) => {
-                                                            const currentValues = checkboxField.value || [];
-                                                            if (checked) {
-                                                                checkboxField.onChange([...currentValues, optionIndex]);
-                                                            } else {
-                                                                checkboxField.onChange(currentValues.filter((v) => v !== optionIndex));
-                                                            }
-                                                        }}
+                            <div className="space-y-2">
+                                <Label htmlFor={`questions.${index}.questionText`}>Question</Label>
+                                <Textarea id={`questions.${index}.questionText`} {...form.register(`questions.${index}.questionText`)} />
+                                {form.formState.errors.questions?.[index]?.questionText && <p className="text-sm text-destructive">{form.formState.errors.questions?.[index]?.questionText?.message}</p>}
+                                
+                                {field.type === 'free-text' ? (
+                                    <FormField
+                                        control={form.control}
+                                        name={`questions.${index}.minCharLength`}
+                                        render={({ field: lengthField }) => (
+                                            <FormItem>
+                                                <FormLabel>Min. Character Length</FormLabel>
+                                                <FormControl>
+                                                    <Input
+                                                        type="number"
+                                                        {...lengthField}
+                                                        value={lengthField.value || ''}
+                                                        onChange={e => lengthField.onChange(parseInt(e.target.value, 10))}
+                                                        placeholder="e.g., 50"
                                                     />
-                                                     <Input {...form.register(`questions.${index}.options.${optionIndex}`)} placeholder={`Option ${optionIndex + 1}`} />
-                                                     <Button type="button" variant="ghost" size="icon" onClick={() => removeOption(index, optionIndex)}><Trash2 className="h-4 w-4" /></Button>
-                                                </div>
-                                            ))}
-                                        </div>
-                                    )}
-                                />
-                            )}
+                                                </FormControl>
+                                                <FormMessage />
+                                            </FormItem>
+                                        )}
+                                    />
+                                ) : <Label>Options & Correct Answer(s)</Label> }
 
-                            {field.type !== 'free-text' && (
-                                <Button type="button" variant="outline" size="sm" onClick={() => addOption(index)} disabled={(form.watch(`questions.${index}.options`) || []).length >= 6}>
-                                    <Plus className="mr-2 h-4 w-4" /> Add Option
-                                </Button>
-                            )}
+                                {field.type === 'multiple-choice' && (
+                                    <Controller
+                                        control={form.control}
+                                        name={`questions.${index}.correctAnswerIndex`}
+                                        render={({ field: radioField }) => (
+                                            <RadioGroup onValueChange={(val) => radioField.onChange(Number(val))} value={String(radioField.value)} className="space-y-2">
+                                                {(form.watch(`questions.${index}.options`) || []).map((_, optionIndex) => (
+                                                    <div key={optionIndex} className="flex items-center gap-2">
+                                                        <RadioGroupItem value={String(optionIndex)} id={`questions.${index}.option.${optionIndex}.radio`} />
+                                                        <Input {...form.register(`questions.${index}.options.${optionIndex}`)} placeholder={`Option ${optionIndex + 1}`} />
+                                                        <Button type="button" variant="ghost" size="icon" onClick={() => removeOption(index, optionIndex)}><Trash2 className="h-4 w-4" /></Button>
+                                                    </div>
+                                                ))}
+                                            </RadioGroup>
+                                        )}
+                                    />
+                                )}
 
-                             {form.formState.errors.questions?.[index]?.options && <p className="text-sm text-destructive">{form.formState.errors.questions?.[index]?.options?.message}</p>}
-                             {form.formState.errors.questions?.[index]?.correctAnswerIndex && <p className="text-sm text-destructive">{form.formState.errors.questions?.[index]?.correctAnswerIndex?.message}</p>}
-                             {form.formState.errors.questions?.[index]?.correctAnswerIndexes && <p className="text-sm text-destructive">{form.formState.errors.questions?.[index]?.correctAnswerIndexes?.message}</p>}
-                        </div>
-                    </Card>
-                ))}
+                                {field.type === 'multiple-select' && (
+                                    <Controller
+                                        control={form.control}
+                                        name={`questions.${index}.correctAnswerIndexes`}
+                                        render={({ field: checkboxField }) => (
+                                            <div className="space-y-2">
+                                                {(form.watch(`questions.${index}.options`) || []).map((_, optionIndex) => (
+                                                    <div key={optionIndex} className="flex items-center gap-2">
+                                                        <Checkbox
+                                                            checked={checkboxField.value?.includes(optionIndex)}
+                                                            onCheckedChange={(checked) => {
+                                                                const currentValues = checkboxField.value || [];
+                                                                if (checked) {
+                                                                    checkboxField.onChange([...currentValues, optionIndex]);
+                                                                } else {
+                                                                    checkboxField.onChange(currentValues.filter((v) => v !== optionIndex));
+                                                                }
+                                                            }}
+                                                        />
+                                                        <Input {...form.register(`questions.${index}.options.${optionIndex}`)} placeholder={`Option ${optionIndex + 1}`} />
+                                                        <Button type="button" variant="ghost" size="icon" onClick={() => removeOption(index, optionIndex)}><Trash2 className="h-4 w-4" /></Button>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        )}
+                                    />
+                                )}
+
+                                {field.type !== 'free-text' && (
+                                    <Button type="button" variant="outline" size="sm" onClick={() => addOption(index)} disabled={(form.watch(`questions.${index}.options`) || []).length >= 6}>
+                                        <Plus className="mr-2 h-4 w-4" /> Add Option
+                                    </Button>
+                                )}
+
+                                {form.formState.errors.questions?.[index]?.options && <p className="text-sm text-destructive">{form.formState.errors.questions?.[index]?.options?.message}</p>}
+                                {form.formState.errors.questions?.[index]?.correctAnswerIndex && <p className="text-sm text-destructive">{form.formState.errors.questions?.[index]?.correctAnswerIndex?.message}</p>}
+                                {form.formState.errors.questions?.[index]?.correctAnswerIndexes && <p className="text-sm text-destructive">{form.formState.errors.questions?.[index]?.correctAnswerIndexes?.message}</p>}
+                            </div>
+                        </Card>
+                    ))}
+                </div>
+                <Button type="button" variant="secondary" onClick={() => append({ id: uuidv4(), type: 'multiple-choice', questionText: '', options: ['', ''], correctAnswerIndex: -1 })}>
+                    <Plus className="mr-2 h-4 w-4" /> Add Question
+                </Button>
             </div>
         </ScrollArea>
-         <Button type="button" variant="secondary" onClick={() => append({ id: uuidv4(), type: 'multiple-choice', questionText: '', options: ['', ''], correctAnswerIndex: -1 })}>
-            <Plus className="mr-2 h-4 w-4" /> Add Question
-        </Button>
-        <DialogFooter>
+        <DialogFooter className="pt-4 border-t">
           <Button type="button" variant="secondary" onClick={closeDialog}>Cancel</Button>
           <Button type="submit" disabled={isSubmitting}>
             {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
@@ -415,7 +535,7 @@ export default function QuizzesPage() {
       </Card>
       
        <Dialog open={isFormOpen} onOpenChange={setIsFormOpen}>
-        <DialogContent className="max-w-4xl">
+        <DialogContent className="max-w-4xl h-[90vh] flex flex-col">
           <DialogHeader>
             <DialogTitle>{editingQuiz ? 'Edit Quiz' : 'Create New Quiz'}</DialogTitle>
           </DialogHeader>
@@ -425,3 +545,7 @@ export default function QuizzesPage() {
     </div>
   );
 }
+
+
+
+    

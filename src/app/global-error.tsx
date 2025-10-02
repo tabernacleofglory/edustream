@@ -1,4 +1,3 @@
-
 'use client';
 
 import { useEffect } from 'react';
@@ -11,10 +10,12 @@ export default function GlobalError({
   reset: () => void;
 }) {
   useEffect(() => {
-    // Check for the specific Next.js chunk load error
-    if (error.message.includes('ChunkLoadError')) {
-      // Force a hard reload of the page to get the latest assets
-      window.location.reload(true);
+    // This is a specific Next.js error that can happen when a new version of the
+    // site is deployed and the user's browser has cached an old HTML file
+    // that tries to load JS chunks that no longer exist.
+    // A hard reload is the best way to solve this.
+    if (error.name === 'ChunkLoadError') {
+      window.location.reload();
     }
   }, [error]);
 
@@ -33,7 +34,7 @@ export default function GlobalError({
         }}>
           <h2>Something went wrong!</h2>
           <p style={{ marginBottom: '1rem', color: '#666' }}>
-            We're attempting to refresh the application to fix the issue.
+            An unexpected error occurred. We are attempting to fix it.
           </p>
           <button
             onClick={() => reset()}

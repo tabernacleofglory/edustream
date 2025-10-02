@@ -1,4 +1,5 @@
 
+
 "use client";
 
 import React, { createContext, useContext, useEffect, useState, useCallback } from 'react';
@@ -14,6 +15,7 @@ interface AuthContextType {
   isCurrentUserAdmin: boolean;
   refreshUser: () => void;
   hasPermission: (permission: string) => boolean;
+  isProfileComplete: boolean;
 }
 
 const AuthContext = createContext<AuthContextType>({
@@ -22,6 +24,7 @@ const AuthContext = createContext<AuthContextType>({
   isCurrentUserAdmin: false,
   refreshUser: () => {},
   hasPermission: () => false,
+  isProfileComplete: false,
 });
 
 export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
@@ -35,6 +38,8 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   const pathname = usePathname();
   const isCurrentUserAdmin = user?.role === 'admin' || user?.role === 'developer';
   
+  const isProfileComplete = !!user?.firstName && !!user?.lastName && !!user.email && !!user.language && !!user.phoneNumber && !!user.campus && !!user.hpNumber && !!user.classLadderId && !!user.charge && !!user.role && !!user.facilitatorName;
+
   useEffect(() => {
     const fetchDefaultLadder = async () => {
         try {
@@ -168,10 +173,26 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   }, [auth, fetchUserDocument]);
 
   useEffect(() => {
-    if (!loading && user && (pathname === '/login' || pathname === '/signup')) {
-        router.push('/dashboard');
+    if (loading) return;
+
+    // Unauthenticated user on protected page -> redirect to login
+    if (!user && pathname !== '/login' && pathname !== '/signup' && pathname !== '/') {
+        router.push('/login');
+        return;
     }
-  }, [user, loading, pathname, router]);
+    
+    // Authenticated user with incomplete profile on any page other than settings -> redirect to settings
+    if (user && !isProfileComplete && pathname !== '/settings') {
+        router.push('/settings');
+        return;
+    }
+    
+    // Authenticated user on login/signup page -> redirect to dashboard
+    if (user && (pathname === '/login' || pathname === '/signup')) {
+        router.push('/dashboard');
+        return;
+    }
+  }, [user, loading, pathname, router, isProfileComplete]);
 
 
   const hasPermission = useCallback((permission: string) => {
@@ -195,7 +216,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
 
 
   return (
-    <AuthContext.Provider value={{ user, loading, refreshUser, isCurrentUserAdmin, hasPermission }}>
+    <AuthContext.Provider value={{ user, loading, refreshUser, isCurrentUserAdmin, hasPermission, isProfileComplete }}>
       {children}
     </AuthContext.Provider>
   );

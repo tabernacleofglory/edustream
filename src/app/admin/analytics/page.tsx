@@ -29,11 +29,11 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { Button } from "@/components/ui/button";
 import { Bar, BarChart, CartesianGrid, XAxis, YAxis, Tooltip, ResponsiveContainer } from "recharts";
 import { ChartConfig, ChartContainer, ChartTooltipContent } from "@/components/ui/chart";
-import { collection, getDocs, query, where, getCountFromServer, documentId } from "firebase/firestore";
+import { collection, getDocs, query, where, getCountFromServer, documentId, orderBy } from "firebase/firestore";
 import { getFirebaseFirestore } from "@/lib/firebase";
-import type { User, Course, UserProgress as UserProgressType, Video, Enrollment, Post } from "@/lib/types";
+import type { User, Course, UserProgress as UserProgressType, Video, Enrollment, Post, Quiz, UserQuizResult } from "@/lib/types";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Eye, Download, ArrowUpDown, MessageSquare, ThumbsUp, Share2, ChevronLeft, ChevronRight, Repeat2, Calendar as CalendarIcon, X as XIcon } from "lucide-react";
+import { Eye, Download, ArrowUpDown, MessageSquare, ThumbsUp, Share2, ChevronLeft, ChevronRight, Repeat2, Calendar as CalendarIcon, X as XIcon, CheckCircle, XCircle } from "lucide-react";
 import jsPDF from "jspdf";
 import html2canvas from "html2canvas";
 import Papa from 'papaparse';
@@ -42,6 +42,7 @@ import { DateRange } from "react-day-picker";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Calendar } from "@/components/ui/calendar";
 import { cn } from "@/lib/utils";
+import { Badge } from "@/components/ui/badge";
 
 
 interface Campus {
@@ -88,6 +89,20 @@ interface CourseEngagementData {
     comments: number;
 }
 
+interface QuizReportData {
+    resultId: string;
+    userId: string;
+    userName: string;
+    courseId: string;
+    courseTitle: string;
+    quizId: string;
+    quizTitle: string;
+    score: number;
+    passed: boolean;
+    attemptedAt: Date;
+}
+
+
 type SortKey = 'user' | 'course' | 'startDate' | 'completionDate';
 type SortDirection = 'asc' | 'desc';
 
@@ -111,22 +126,30 @@ export default function AnalyticsDashboard() {
   const [userProgressData, setUserProgressData] = useState<(UserProgressType & { enrollment?: Enrollment })[]>([]);
   const [allUsers, setAllUsers] = useState<User[]>([]);
   const [allCourses, setAllCourses] = useState<Course[]>([]);
+  const [allQuizzes, setAllQuizzes] = useState<Quiz[]>([]);
   const [allVideos, setAllVideos] = useState<Video[]>([]);
   const [allCampuses, setAllCampuses] = useState<Campus[]>([]);
   const [socialData, setSocialData] = useState<SocialInteractionData[]>([]);
   const [courseEngagementData, setCourseEngagementData] = useState<CourseEngagementData[]>([]);
+  const [quizReportData, setQuizReportData] = useState<QuizReportData[]>([]);
   const [loading, setLoading] = useState(true);
   const [isClient, setIsClient] = useState(false);
   const [selectedProgressDetail, setSelectedProgressDetail] = useState<ProgressDetail | null>(null);
   const dashboardRef = useRef<HTMLDivElement>(null);
   const courseEngagementRef = useRef<HTMLDivElement>(null);
-  const [sortConfig, setSortConfig] = useState<{ key: SortKey; direction: SortDirection } | null>(null);
-  const [dateRange, setDateRange] = useState<DateRange | undefined>();
+  const quizReportRef = useRef<HTMLDivElement>(null);
+  const [sortConfig, setSortConfig] = useState < {
+    key: SortKey;
+    direction: SortDirection
+  } | null > (null);
+  const [dateRange, setDateRange] = useState < DateRange | undefined > ();
 
   const [courseEngagementPage, setCourseEngagementPage] = useState(1);
   const [courseEngagementPageSize, setCourseEngagementPageSize] = useState(10);
   const [socialDataPage, setSocialDataPage] = useState(1);
   const [socialDataPageSize, setSocialDataPageSize] = useState(10);
+  const [quizReportPage, setQuizReportPage] = useState(1);
+  const [quizReportPageSize, setQuizReportPageSize] = useState(10);
   const [detailedReportPage, setDetailedReportPage] = useState(1);
   const [detailedReportPageSize, setDetailedReportPageSize] = useState(10);
   const db = getFirebaseFirestore();
@@ -138,121 +161,187 @@ export default function AnalyticsDashboard() {
   const fetchAllStaticData = useCallback(async () => {
     setLoading(true);
     try {
-        const usersCollection = collection(db, 'users');
-        const coursesCollection = query(collection(db, 'courses'), where('status', '==', 'published'));
-        const videosCollection = query(collection(db, 'Contents'), where("Type", "==", "video"));
-        const campusesCollection = collection(db, 'Campus');
-        const communityPostsCollection = collection(db, 'communityPosts');
+      const usersCollection = collection(db, 'users');
+      const coursesCollection = query(collection(db, 'courses'), where('status', '==', 'published'));
+      const videosCollection = query(collection(db, 'Contents'), where("Type", "in", ["video", "youtube", "googledrive"]));
+      const quizzesCollection = collection(db, 'quizzes');
+      const quizResultsCollection = query(collection(db, 'userQuizResults'), orderBy('attemptedAt', 'desc'));
+      const campusesCollection = collection(db, 'Campus');
+      const communityPostsCollection = collection(db, 'communityPosts');
 
-        const [usersSnapshot, coursesSnapshot, videosSnapshot, campusesSnapshot, communityPostsSnapshot] = await Promise.all([
-            getDocs(usersCollection),
-            getDocs(coursesCollection),
-            getDocs(videosCollection),
-            getDocs(campusesCollection),
-            getDocs(communityPostsCollection),
-        ]);
-        
-        const usersList = usersSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as User));
-        const coursesList = coursesSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Course));
-        const videosList = videosSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Video));
-        const campusesList = campusesSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Campus));
-        const postsList = communityPostsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Post));
+      const [usersSnapshot, coursesSnapshot, videosSnapshot, quizzesSnapshot, quizResultsSnapshot, campusesSnapshot, communityPostsSnapshot] = await Promise.all([
+        getDocs(usersCollection),
+        getDocs(coursesCollection),
+        getDocs(videosCollection),
+        getDocs(quizzesCollection),
+        getDocs(quizResultsCollection),
+        getDocs(campusesCollection),
+        getDocs(communityPostsCollection),
+      ]);
 
-        setAllUsers(usersList);
-        setAllCourses(coursesList);
-        setAllVideos(videosList);
-        setAllCampuses(campusesList);
+      const usersList = usersSnapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      } as User));
+      const coursesList = coursesSnapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      } as Course));
+      const videosList = videosSnapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      } as Video));
+      const quizzesList = quizzesSnapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      } as Quiz));
+      const quizResultsList = quizResultsSnapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      } as UserQuizResult));
+      const campusesList = campusesSnapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      } as Campus));
+      const postsList = communityPostsSnapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      } as Post));
 
-        const socialInteractionData = postsList.map(post => ({
-            postId: post.id,
-            postContent: post.content,
-            authorName: post.authorName,
-            likes: post.likeCount || 0,
-            shares: post.shareCount || 0,
-            reposts: post.repostCount || 0,
-            comments: 0, 
-        }));
-        setSocialData(socialInteractionData);
-        
-        const courseDataPromises = coursesList.map(async (course) => {
-            const videosInCourse = videosList.filter(video => course.videos?.includes(video.id));
-            let totalLikes = 0;
-            let totalComments = 0;
+      setAllUsers(usersList);
+      setAllCourses(coursesList);
+      setAllVideos(videosList);
+      setAllQuizzes(quizzesList);
+      setAllCampuses(campusesList);
 
-            for (const video of videosInCourse) {
-                 const likesQuery = query(collection(db, 'Contents', video.id, 'likes'));
-                 const commentsQuery = query(collection(db, 'Contents', video.id, 'comments'));
-                 const [likesSnapshot, commentsSnapshot] = await Promise.all([
-                    getCountFromServer(likesQuery),
-                    getCountFromServer(commentsQuery)
-                 ]);
-                 totalLikes += likesSnapshot.data().count;
-                 totalComments += commentsSnapshot.data().count;
-            }
+      const quizReport = quizResultsList.map(result => {
+        const user = usersList.find(u => u.id === result.userId);
+        const course = coursesList.find(c => c.id === result.courseId);
+        const quiz = quizzesList.find(q => q.id === result.quizId);
+        return {
+          resultId: result.id,
+          userId: result.userId,
+          userName: user?.displayName || 'Unknown User',
+          courseId: result.courseId,
+          courseTitle: course?.title || 'Unknown Course',
+          quizId: result.quizId,
+          quizTitle: quiz?.title || 'Unknown Quiz',
+          score: result.score,
+          passed: result.passed,
+          attemptedAt: result.attemptedAt.toDate(),
+        };
+      });
+      setQuizReportData(quizReport);
 
-            return {
-                courseId: course.id,
-                courseTitle: course.title,
-                enrollments: course.enrollmentCount || 0,
-                likes: totalLikes,
-                comments: totalComments,
-            };
-        });
-        
-        const courseData = await Promise.all(courseDataPromises);
-        setCourseEngagementData(courseData);
-        
-        return { usersList, coursesList, videosList, campusesList };
+      const socialDataPromises = postsList.map(async (post) => {
+        const repliesQuery = query(collection(db, 'communityPosts', post.id, 'replies'));
+        const repliesSnapshot = await getCountFromServer(repliesQuery);
+        return {
+          postId: post.id,
+          postContent: post.content,
+          authorName: post.authorName,
+          likes: post.likeCount || 0,
+          shares: post.shareCount || 0,
+          reposts: post.repostCount || 0,
+          comments: repliesSnapshot.data().count,
+        };
+      });
+      const socialInteractionData = await Promise.all(socialDataPromises);
+      setSocialData(socialInteractionData);
+
+      const courseDataPromises = coursesList.map(async (course) => {
+        const videosInCourse = videosList.filter(video => course.videos?.includes(video.id));
+        let totalLikes = 0;
+        let totalComments = 0;
+
+        for (const video of videosInCourse) {
+          const likesQuery = query(collection(db, 'Contents', video.id, 'likes'));
+          const commentsQuery = query(collection(db, 'Contents', video.id, 'comments'));
+          const [likesSnapshot, commentsSnapshot] = await Promise.all([
+            getCountFromServer(likesQuery),
+            getCountFromServer(commentsQuery)
+          ]);
+          totalLikes += likesSnapshot.data().count;
+          totalComments += commentsSnapshot.data().count;
+        }
+
+        return {
+          courseId: course.id,
+          courseTitle: course.title,
+          enrollments: course.enrollmentCount || 0,
+          likes: totalLikes,
+          comments: totalComments,
+        };
+      });
+
+      const courseData = await Promise.all(courseDataPromises);
+      setCourseEngagementData(courseData);
+
+      return {
+        usersList,
+        coursesList,
+        videosList,
+        campusesList
+      };
     } catch (error) {
-        console.error("Failed to fetch static analytics data:", error);
-        return { usersList: [], coursesList: [], videosList: [], campusesList: [] };
+      console.error("Failed to fetch static analytics data:", error);
+      return {
+        usersList: [],
+        coursesList: [],
+        videosList: [],
+        campusesList: []
+      };
     } finally {
       setLoading(false);
     }
   }, [db]);
-  
+
   const fetchProgressData = useCallback(async () => {
-      try {
-        let progressQuery = query(collection(db, 'userVideoProgress'));
-        if (selectedUser !== 'all') {
-            progressQuery = query(progressQuery, where('userId', '==', selectedUser));
-        }
-        if (selectedCourse !== 'all') {
-            progressQuery = query(progressQuery, where('courseId', '==', selectedCourse));
-        }
-        const progressSnapshot = await getDocs(progressQuery);
-        
-        const enrollmentQuery = query(collection(db, 'enrollments'));
-        const enrollmentSnapshot = await getDocs(enrollmentQuery);
-        const enrollmentsMap = new Map(enrollmentSnapshot.docs.map(doc => [`${doc.data().userId}_${doc.data().courseId}`, doc.data() as Enrollment]));
-
-        let progressList = progressSnapshot.docs.map(doc => {
-             const data = doc.data() as Omit<UserProgressType, 'totalProgress'>;
-             const course = allCourses.find(c => c.id === data.courseId);
-             
-             const publishedVideoIds = course?.videos?.filter(vid => allVideos.some(v => v.id === vid && v.status === 'published')) || [];
-             const totalVideos = publishedVideoIds.length;
-
-             const completedCount = data.videoProgress?.filter(vp => vp.completed && publishedVideoIds.includes(vp.videoId)).length || 0;
-             const totalProgress = totalVideos > 0 ? Math.round((completedCount / totalVideos) * 100) : 0;
-             
-             const enrollment = enrollmentsMap.get(`${data.userId}_${data.courseId}`);
-
-             return { ...data, totalProgress, enrollment };
-        });
-
-        if (selectedCampus !== 'all') {
-            const campus = allCampuses.find(c => c.id === selectedCampus);
-            if (campus) {
-                const userIdsInCampus = new Set(allUsers.filter(u => u.campus === campus["Campus Name"]).map(u => u.id));
-                progressList = progressList.filter(p => userIdsInCampus.has(p.userId));
-            }
-        }
-        setUserProgressData(progressList);
-      } catch (error) {
-          console.error("Error fetching progress data:", error);
-          setUserProgressData([]);
+    try {
+      let progressQuery = query(collection(db, 'userVideoProgress'));
+      if (selectedUser !== 'all') {
+        progressQuery = query(progressQuery, where('userId', '==', selectedUser));
       }
+      if (selectedCourse !== 'all') {
+        progressQuery = query(progressQuery, where('courseId', '==', selectedCourse));
+      }
+      const progressSnapshot = await getDocs(progressQuery);
+
+      const enrollmentQuery = query(collection(db, 'enrollments'));
+      const enrollmentSnapshot = await getDocs(enrollmentQuery);
+      const enrollmentsMap = new Map(enrollmentSnapshot.docs.map(doc => [`${doc.data().userId}_${doc.data().courseId}`, doc.data() as Enrollment]));
+
+      let progressList = progressSnapshot.docs.map(doc => {
+        const data = doc.data() as Omit < UserProgressType, 'totalProgress' > ;
+        const course = allCourses.find(c => c.id === data.courseId);
+
+        const publishedVideoIds = course?.videos?.filter(vid => allVideos.some(v => v.id === vid && v.status === 'published')) || [];
+        const totalVideos = publishedVideoIds.length;
+
+        const completedCount = data.videoProgress?.filter(vp => vp.completed && publishedVideoIds.includes(vp.videoId)).length || 0;
+        const totalProgress = totalVideos > 0 ? Math.round((completedCount / totalVideos) * 100) : 0;
+
+        const enrollment = enrollmentsMap.get(`${data.userId}_${data.courseId}`);
+
+        return {
+          ...data,
+          totalProgress,
+          enrollment
+        };
+      });
+
+      if (selectedCampus !== 'all') {
+        const campus = allCampuses.find(c => c.id === selectedCampus);
+        if (campus) {
+          const userIdsInCampus = new Set(allUsers.filter(u => u.campus === campus["Campus Name"]).map(u => u.id));
+          progressList = progressList.filter(p => userIdsInCampus.has(p.userId));
+        }
+      }
+      setUserProgressData(progressList);
+    } catch (error) {
+      console.error("Error fetching progress data:", error);
+      setUserProgressData([]);
+    }
   }, [db, selectedUser, selectedCourse, selectedCampus, allUsers, allCourses, allCampuses, allVideos]);
 
   useEffect(() => {
@@ -277,99 +366,109 @@ export default function AnalyticsDashboard() {
     let filtered = [...userProgressData];
 
     if (dateRange?.from) {
-        const start = startOfDay(dateRange.from);
-        filtered = filtered.filter(p => p.enrollment?.enrolledAt && p.enrollment.enrolledAt.toDate() >= start);
+      const start = startOfDay(dateRange.from);
+      filtered = filtered.filter(p => p.enrollment?.enrolledAt && p.enrollment.enrolledAt.toDate() >= start);
     }
 
     if (dateRange?.to) {
-        const end = endOfDay(dateRange.to);
-        filtered = filtered.filter(p => p.enrollment?.completedAt && p.enrollment.completedAt.toDate() <= end);
+      const end = endOfDay(dateRange.to);
+      filtered = filtered.filter(p => p.enrollment?.completedAt && p.enrollment.completedAt.toDate() <= end);
     }
 
     if (sortConfig !== null) {
-        filtered.sort((a, b) => {
-            const userA = allUsers.find(u => u.id === a.userId);
-            const userB = allUsers.find(u => u.id === b.userId);
-            const courseA = allCourses.find(c => c.id === a.courseId);
-            const courseB = allCourses.find(c => c.id === b.courseId);
-            
-            let valA, valB;
+      filtered.sort((a, b) => {
+        const userA = allUsers.find(u => u.id === a.userId);
+        const userB = allUsers.find(u => u.id === b.userId);
+        const courseA = allCourses.find(c => c.id === a.courseId);
+        const courseB = allCourses.find(c => c.id === b.courseId);
 
-            switch(sortConfig.key) {
-                case 'user':
-                    valA = userA?.displayName;
-                    valB = userB?.displayName;
-                    break;
-                case 'course':
-                    valA = courseA?.title;
-                    valB = courseB?.title;
-                    break;
-                case 'startDate':
-                    valA = a.enrollment?.enrolledAt?.seconds || 0;
-                    valB = b.enrollment?.enrolledAt?.seconds || 0;
-                    break;
-                case 'completionDate':
-                    valA = a.enrollment?.completedAt?.seconds || 0;
-                    valB = b.enrollment?.completedAt?.seconds || 0;
-                    break;
-                default:
-                    valA = '';
-                    valB = '';
-            }
+        let valA,
+          valB;
 
-            if (valA === undefined || valA === null) valA = sortConfig.direction === 'asc' ? Infinity : -Infinity;
-            if (valB === undefined || valB === null) valB = sortConfig.direction === 'asc' ? Infinity : -Infinity;
+        switch (sortConfig.key) {
+          case 'user':
+            valA = userA?.displayName;
+            valB = userB?.displayName;
+            break;
+          case 'course':
+            valA = courseA?.title;
+            valB = courseB?.title;
+            break;
+          case 'startDate':
+            valA = a.enrollment?.enrolledAt?.seconds || 0;
+            valB = b.enrollment?.enrolledAt?.seconds || 0;
+            break;
+          case 'completionDate':
+            valA = a.enrollment?.completedAt?.seconds || 0;
+            valB = b.enrollment?.completedAt?.seconds || 0;
+            break;
+          default:
+            valA = '';
+            valB = '';
+        }
 
-            if (typeof valA === 'string' && typeof valB === 'string') {
-                return sortConfig.direction === 'asc' ? valA.localeCompare(valB) : valB.localeCompare(valA);
-            }
-            if (typeof valA === 'number' && typeof valB === 'number') {
-                return sortConfig.direction === 'asc' ? valA - valB : valB - valA;
-            }
-            
-            return 0;
-        });
+        if (valA === undefined || valA === null) valA = sortConfig.direction === 'asc' ? Infinity : -Infinity;
+        if (valB === undefined || valB === null) valB = sortConfig.direction === 'asc' ? Infinity : -Infinity;
+
+        if (typeof valA === 'string' && typeof valB === 'string') {
+          return sortConfig.direction === 'asc' ? valA.localeCompare(valB) : valB.localeCompare(valA);
+        }
+        if (typeof valA === 'number' && typeof valB === 'number') {
+          return sortConfig.direction === 'asc' ? valA - valB : valB - valA;
+        }
+
+        return 0;
+      });
     }
 
     return filtered;
-}, [userProgressData, sortConfig, allUsers, allCourses, dateRange]);
+  }, [userProgressData, sortConfig, allUsers, allCourses, dateRange]);
 
   const engagementChartData = useMemo(() => {
     return allCourses.map(course => {
-        const timeSpent = sortedAndFilteredProgress
-          .filter(p => p.courseId === course.id)
-          .reduce((total, p) => total + (p.videoProgress || []).reduce((sum, vp) => sum + vp.timeSpent, 0), 0);
-        return {
-          course: course.title,
-          timeSpent: Math.round(timeSpent / 60) // in minutes
-        };
-      }).filter(d => d.timeSpent > 0);
+      const timeSpent = sortedAndFilteredProgress
+        .filter(p => p.courseId === course.id)
+        .reduce((total, p) => total + (p.videoProgress || []).reduce((sum, vp) => sum + vp.timeSpent, 0), 0);
+      return {
+        course: course.title,
+        timeSpent: Math.round(timeSpent / 60) // in minutes
+      };
+    }).filter(d => d.timeSpent > 0);
   }, [allCourses, sortedAndFilteredProgress]);
 
   const campusProgressChartData = useMemo(() => {
-      const data = allCampuses.map(campus => {
-          const campusUsers = allUsers.filter(u => u.campus === campus["Campus Name"]);
-          const campusUserIds = new Set(campusUsers.map(u => u.id));
-          const progressForCampus = userProgressData.filter(p => campusUserIds.has(p.userId));
-          
-          if (progressForCampus.length === 0) {
-              return { campus: campus["Campus Name"], averageProgress: 0 };
-          }
-          
-          const totalProgressSum = progressForCampus.reduce((acc, p) => acc + p.totalProgress, 0);
-          const averageProgress = Math.round(totalProgressSum / progressForCampus.length);
-          
-          return { campus: campus["Campus Name"], averageProgress };
-      }).filter(d => d.averageProgress > 0);
-      return data;
+    const data = allCampuses.map(campus => {
+      const campusUsers = allUsers.filter(u => u.campus === campus["Campus Name"]);
+      const campusUserIds = new Set(campusUsers.map(u => u.id));
+      const progressForCampus = userProgressData.filter(p => campusUserIds.has(p.userId));
+
+      if (progressForCampus.length === 0) {
+        return {
+          campus: campus["Campus Name"],
+          averageProgress: 0
+        };
+      }
+
+      const totalProgressSum = progressForCampus.reduce((acc, p) => acc + p.totalProgress, 0);
+      const averageProgress = Math.round(totalProgressSum / progressForCampus.length);
+
+      return {
+        campus: campus["Campus Name"],
+        averageProgress
+      };
+    }).filter(d => d.averageProgress > 0);
+    return data;
   }, [allCampuses, allUsers, userProgressData]);
-  
+
   const handleSort = (key: SortKey) => {
     let direction: SortDirection = 'asc';
     if (sortConfig && sortConfig.key === key && sortConfig.direction === 'asc') {
       direction = 'desc';
     }
-    setSortConfig({ key, direction });
+    setSortConfig({
+      key,
+      direction
+    });
   };
 
   const handleExportCSV = () => {
@@ -379,41 +478,41 @@ export default function AnalyticsDashboard() {
     const rows: (string | number)[][] = [headers];
 
     sortedAndFilteredProgress.forEach(progress => {
-        const user = allUsers.find(u => u.id === progress.userId);
-        const course = allCourses.find(c => c.id === progress.courseId);
+      const user = allUsers.find(u => u.id === progress.userId);
+      const course = allCourses.find(c => c.id === progress.courseId);
 
-        if (!user || !course || !course.videos) return;
+      if (!user || !course || !course.videos) return;
 
-        (progress.videoProgress || []).forEach(videoProgress => {
-            if (videoProgress.timeSpent > 0 || videoProgress.completed) {
-                 const video = allVideos.find(v => v.id === videoProgress.videoId);
-                 const startDate = progress.enrollment?.enrolledAt?.toDate ? format(progress.enrollment.enrolledAt.toDate(), 'yyyy-MM-dd') : 'N/A';
-                 const completionDate = progress.enrollment?.completedAt?.toDate ? format(progress.enrollment.completedAt.toDate(), 'yyyy-MM-dd') : 'N/A';
+      (progress.videoProgress || []).forEach(videoProgress => {
+        if (videoProgress.timeSpent > 0 || videoProgress.completed) {
+          const video = allVideos.find(v => v.id === videoProgress.videoId);
+          const startDate = progress.enrollment?.enrolledAt?.toDate ? format(progress.enrollment.enrolledAt.toDate(), 'yyyy-MM-dd') : 'N/A';
+          const completionDate = progress.enrollment?.completedAt?.toDate ? format(progress.enrollment.completedAt.toDate(), 'yyyy-MM-dd') : 'N/A';
 
-                 const row = [
-                    `"${user.displayName}"`,
-                    `"${user.campus || 'N/A'}"`,
-                    `"${course.title}"`,
-                    `"${video?.title || 'N/A'}"`,
-                    videoProgress.completed ? "Completed" : "In Progress",
-                    `"${formatDuration(videoProgress.timeSpent || 0)}"`,
-                    `"${startDate}"`,
-                    `"${completionDate}"`
-                ];
-                rows.push(row);
-            }
-        });
+          const row = [
+            `"${user.displayName}"`,
+            `"${user.campus || 'N/A'}"`,
+            `"${course.title}"`,
+            `"${video?.title || 'N/A'}"`,
+            videoProgress.completed ? "Completed" : "In Progress",
+            `"${formatDuration(videoProgress.timeSpent || 0)}"`,
+            `"${startDate}"`,
+            `"${completionDate}"`
+          ];
+          rows.push(row);
+        }
+      });
     });
 
     if (rows.length <= 1) {
-        alert("No data with progress to export.");
-        return;
+      alert("No data with progress to export.");
+      return;
     }
-    
+
     let csvContent = "data:text/csv;charset=utf-8,";
     rows.forEach(rowArray => {
-        let row = rowArray.join(",");
-        csvContent += row + "\r\n";
+      let row = rowArray.join(",");
+      csvContent += row + "\r\n";
     });
 
     const encodedUri = encodeURI(csvContent);
@@ -425,16 +524,18 @@ export default function AnalyticsDashboard() {
     document.body.removeChild(link);
   }
 
-  const handleExportPDF = (ref: React.RefObject<HTMLDivElement>) => {
+  const handleExportPDF = (ref: React.RefObject < HTMLDivElement > ) => {
     const input = ref.current;
     if (input) {
-      html2canvas(input, { scale: 2 }).then((canvas) => {
+      html2canvas(input, {
+        scale: 2
+      }).then((canvas) => {
         const imgData = canvas.toDataURL("image/png");
         const pdf = new jsPDF({
           orientation: "p",
           unit: "px",
           format: "a4",
-          putOnlyUsedFonts:true,
+          putOnlyUsedFonts: true,
           floatPrecision: 16
         });
         const pdfWidth = pdf.internal.pageSize.getWidth();
@@ -445,11 +546,11 @@ export default function AnalyticsDashboard() {
         const finalHeight = canvasHeight / ratio;
 
         if (finalHeight > pdfHeight) {
-            const ratioHeight = canvasHeight / pdfHeight;
-            const finalWidth = canvasWidth / ratioHeight;
-            pdf.addImage(imgData, 'PNG', 0, 0, finalWidth, pdfHeight);
+          const ratioHeight = canvasHeight / pdfHeight;
+          const finalWidth = canvasWidth / ratioHeight;
+          pdf.addImage(imgData, 'PNG', 0, 0, finalWidth, pdfHeight);
         } else {
-           pdf.addImage(imgData, "PNG", 0, 0, pdfWidth, finalHeight);
+          pdf.addImage(imgData, "PNG", 0, 0, pdfWidth, finalHeight);
         }
 
         pdf.save(`analytics_report_${new Date().toISOString().split('T')[0]}.pdf`);
@@ -459,13 +560,15 @@ export default function AnalyticsDashboard() {
 
   const handleExportCourseEngagementCSV = () => {
     const dataToExport = courseEngagementData.map(item => ({
-        "Course": item.courseTitle,
-        "Enrollments": item.enrollments,
-        "Likes": item.likes,
-        "Comments": item.comments,
+      "Course": item.courseTitle,
+      "Enrollments": item.enrollments,
+      "Likes": item.likes,
+      "Comments": item.comments,
     }));
     const csv = Papa.unparse(dataToExport);
-    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+    const blob = new Blob([csv], {
+      type: "text/csv;charset=utf-8;"
+    });
     const link = document.createElement("a");
     const url = URL.createObjectURL(blob);
     link.setAttribute("href", url);
@@ -474,35 +577,89 @@ export default function AnalyticsDashboard() {
     link.click();
     document.body.removeChild(link);
   };
-  
-    const courseEngagementTotalPages = Math.ceil(courseEngagementData.length / courseEngagementPageSize);
-    const currentCourseEngagementData = courseEngagementData.slice(
-        (courseEngagementPage - 1) * courseEngagementPageSize,
-        courseEngagementPage * courseEngagementPageSize
-    );
+
+  const courseEngagementTotalPages = Math.ceil(courseEngagementData.length / courseEngagementPageSize);
+  const currentCourseEngagementData = courseEngagementData.slice(
+    (courseEngagementPage - 1) * courseEngagementPageSize,
+    courseEngagementPage * courseEngagementPageSize
+  );
 
   const socialDataTotalPages = Math.ceil(socialData.length / socialDataPageSize);
   const currentSocialData = socialData.slice(
-      (socialDataPage - 1) * socialDataPageSize,
-      socialDataPage * socialDataPageSize
+    (socialDataPage - 1) * socialDataPageSize,
+    socialDataPage * socialDataPageSize
+  );
+
+  const filteredQuizReportData = useMemo(() => {
+    let filtered = [...quizReportData];
+
+    if (selectedUser !== 'all') {
+      filtered = filtered.filter(r => r.userId === selectedUser);
+    }
+    if (selectedCourse !== 'all') {
+      filtered = filtered.filter(r => r.courseId === selectedCourse);
+    }
+    if (selectedCampus !== 'all') {
+      const campus = allCampuses.find(c => c.id === selectedCampus);
+      if (campus) {
+        const userIdsInCampus = new Set(allUsers.filter(u => u.campus === campus["Campus Name"]).map(u => u.id));
+        filtered = filtered.filter(r => userIdsInCampus.has(r.userId));
+      }
+    }
+    if (dateRange?.from) {
+      filtered = filtered.filter(r => r.attemptedAt >= startOfDay(dateRange.from!));
+    }
+    if (dateRange?.to) {
+      filtered = filtered.filter(r => r.attemptedAt <= endOfDay(dateRange.to!));
+    }
+
+    return filtered;
+  }, [quizReportData, selectedUser, selectedCourse, selectedCampus, dateRange, allUsers, allCampuses]);
+
+  const handleExportQuizReportCSV = () => {
+    const dataToExport = filteredQuizReportData.map(item => ({
+      "User": item.userName,
+      "Course": item.courseTitle,
+      "Quiz": item.quizTitle,
+      "Score": item.score,
+      "Status": item.passed ? "Passed" : "Failed",
+      "Date": format(item.attemptedAt, 'yyyy-MM-dd HH:mm'),
+    }));
+    const csv = Papa.unparse(dataToExport);
+    const blob = new Blob([csv], {
+      type: "text/csv;charset=utf-8;"
+    });
+    const link = document.createElement("a");
+    const url = URL.createObjectURL(blob);
+    link.setAttribute("href", url);
+    link.setAttribute("download", "quiz_performance_report.csv");
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
+  const quizReportTotalPages = Math.ceil(filteredQuizReportData.length / quizReportPageSize);
+  const currentQuizReportData = filteredQuizReportData.slice(
+    (quizReportPage - 1) * quizReportPageSize,
+    quizReportPage * quizReportPageSize
   );
 
   const detailedReportTotalPages = Math.ceil(sortedAndFilteredProgress.length / detailedReportPageSize);
   const currentDetailedReportData = sortedAndFilteredProgress.slice(
-      (detailedReportPage - 1) * detailedReportPageSize,
-      detailedReportPage * detailedReportPageSize
+    (detailedReportPage - 1) * detailedReportPageSize,
+    detailedReportPage * detailedReportPageSize
   );
 
 
   if (!isClient) {
     return (
-        <div className="space-y-8">
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-                <Skeleton className="h-96 w-full" />
-                <Skeleton className="h-96 w-full" />
-            </div>
-            <Skeleton className="h-96 w-full" />
+      <div className="space-y-8">
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+          <Skeleton className="h-96 w-full" />
+          <Skeleton className="h-96 w-full" />
         </div>
+        <Skeleton className="h-96 w-full" />
+      </div>
     );
   }
 
@@ -510,282 +667,353 @@ export default function AnalyticsDashboard() {
     <div className="space-y-8" ref={dashboardRef}>
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
         <Card>
-            <CardHeader>
+          <CardHeader>
             <CardTitle>Course Engagement</CardTitle>
             <CardDescription>Total time spent per course in minutes.</CardDescription>
-            </CardHeader>
-            <CardContent>
+          </CardHeader>
+          <CardContent>
             <div className="space-y-4">
-                <div className="flex flex-col sm:flex-row items-center gap-4">
-                    <Select value={selectedUser} onValueChange={setSelectedUser}>
-                        <SelectTrigger className="w-full sm:w-[180px]">
-                        <SelectValue placeholder="Select User" />
-                        </SelectTrigger>
-                        <SelectContent>
-                        <SelectItem value="all">All Users</SelectItem>
-                        {allUsers.map((user) => (
-                            <SelectItem key={user.id} value={user.id}>
-                            {user.displayName}
-                            </SelectItem>
-                        ))}
-                        </SelectContent>
-                    </Select>
-                    <Select value={selectedCampus} onValueChange={setSelectedCampus}>
-                        <SelectTrigger className="w-full sm:w-[180px]">
-                        <SelectValue placeholder="Select Campus" />
-                        </SelectTrigger>
-                        <SelectContent>
-                        <SelectItem value="all">All Campuses</SelectItem>
-                        {campusesWithProgress.map((campus) => (
-                            <SelectItem key={campus.id} value={campus.id}>
-                                {campus["Campus Name"]}
-                            </SelectItem>
-                        ))}
-                        </SelectContent>
-                    </Select>
-                </div>
-                {loading ? (
-                    <Skeleton className="h-[300px] w-full" />
-                ) : (
-                    <ChartContainer config={engagementChartConfig} className="min-h-[200px] w-full">
-                        <BarChart data={engagementChartData} height={300}>
-                        <CartesianGrid vertical={false} />
-                        <XAxis dataKey="course" tickLine={false} tickMargin={10} axisLine={false} />
-                        <YAxis />
-                        <Tooltip content={<ChartTooltipContent />} />
-                        <Bar dataKey="timeSpent" fill="var(--color-timeSpent)" radius={4} />
-                        </BarChart>
-                    </ChartContainer>
-                )}
+              <div className="flex flex-col sm:flex-row items-center gap-4">
+                <Select value={selectedUser} onValueChange={setSelectedUser}>
+                  <SelectTrigger className="w-full sm:w-[180px]">
+                    <SelectValue placeholder="Select User" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Users</SelectItem>
+                    {allUsers.map((user) => (
+                      <SelectItem key={user.id} value={user.id}>{user.displayName}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <Select value={selectedCampus} onValueChange={setSelectedCampus}>
+                  <SelectTrigger className="w-full sm:w-[180px]">
+                    <SelectValue placeholder="Select Campus" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Campuses</SelectItem>
+                    {campusesWithProgress.map((campus) => (
+                      <SelectItem key={campus.id} value={campus.id}>{campus["Campus Name"]}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              {loading ? (
+                <Skeleton className="h-[300px] w-full" />
+              ) : (
+                <ChartContainer config={engagementChartConfig} className="min-h-[200px] w-full">
+                  <BarChart data={engagementChartData} height={300}>
+                    <CartesianGrid vertical={false} />
+                    <XAxis dataKey="course" tickLine={false} tickMargin={10} axisLine={false} />
+                    <YAxis />
+                    <Tooltip content={<ChartTooltipContent />} />
+                    <Bar dataKey="timeSpent" fill="var(--color-timeSpent)" radius={4} />
+                  </BarChart>
+                </ChartContainer>
+              )}
             </div>
-            </CardContent>
+          </CardContent>
         </Card>
         <Card>
-            <CardHeader>
-                <CardTitle>Campus Progress</CardTitle>
-                <CardDescription>Average course completion percentage by campus.</CardDescription>
-            </CardHeader>
-            <CardContent>
-                 {loading ? (
-                    <Skeleton className="h-[348px] w-full" />
-                 ) : (
-                    <ChartContainer config={progressChartConfig} className="min-h-[200px] w-full">
-                        <BarChart data={campusProgressChartData} height={348}>
-                            <CartesianGrid vertical={false} />
-                            <XAxis dataKey="campus" tickLine={false} tickMargin={10} axisLine={false} />
-                            <YAxis domain={[0, 100]} />
-                            <Tooltip content={<ChartTooltipContent />} />
-                            <Bar dataKey="averageProgress" fill="var(--color-averageProgress)" radius={4} />
-                        </BarChart>
-                    </ChartContainer>
-                 )}
-            </CardContent>
+          <CardHeader>
+            <CardTitle>Campus Progress</CardTitle>
+            <CardDescription>Average course completion percentage by campus.</CardDescription>
+          </CardHeader>
+          <CardContent>
+            {loading ? (
+              <Skeleton className="h-[348px] w-full" />
+            ) : (
+              <ChartContainer config={progressChartConfig} className="min-h-[200px] w-full">
+                <BarChart data={campusProgressChartData} height={348}>
+                  <CartesianGrid vertical={false} />
+                  <XAxis dataKey="campus" tickLine={false} tickMargin={10} axisLine={false} />
+                  <YAxis domain={[0, 100]} />
+                  <Tooltip content={<ChartTooltipContent />} />
+                  <Bar dataKey="averageProgress" fill="var(--color-averageProgress)" radius={4} />
+                </BarChart>
+              </ChartContainer>
+            )}
+          </CardContent>
         </Card>
       </div>
 
-       <Card ref={courseEngagementRef}>
-            <CardHeader className="flex-col md:flex-row md:items-center md:justify-between">
-                <div>
-                    <CardTitle>Course Engagement Report</CardTitle>
-                    <CardDescription>Enrollments, likes, and comments for each course.</CardDescription>
-                </div>
-                <div className="flex gap-2 mt-4 md:mt-0">
-                    <Button onClick={handleExportCourseEngagementCSV} variant="outline" disabled={courseEngagementData.length === 0}>
-                        <Download className="mr-2 h-4 w-4" />
-                        Export as CSV
-                    </Button>
-                    <Button onClick={() => handleExportPDF(courseEngagementRef)} variant="outline" disabled={loading}>
-                        <Download className="mr-2 h-4 w-4" />
-                        Export as PDF
-                    </Button>
-                </div>
-            </CardHeader>
-            <CardContent>
-                <div className="overflow-x-auto">
-                    <Table>
-                        <TableHeader>
-                            <TableRow>
-                                <TableHead>Course</TableHead>
-                                <TableHead className="text-center">Enrollments</TableHead>
-                                <TableHead className="text-center">Likes</TableHead>
-                                <TableHead className="text-center">Comments</TableHead>
-                            </TableRow>
-                        </TableHeader>
-                        <TableBody>
-                            {loading ? (
-                                Array.from({ length: 3 }).map((_, i) => (
-                                    <TableRow key={i}>
-                                        <TableCell><Skeleton className="h-4 w-48" /></TableCell>
-                                        <TableCell className="text-center"><Skeleton className="h-4 w-8 mx-auto" /></TableCell>
-                                        <TableCell className="text-center"><Skeleton className="h-4 w-8 mx-auto" /></TableCell>
-                                        <TableCell className="text-center"><Skeleton className="h-4 w-8 mx-auto" /></TableCell>
-                                    </TableRow>
-                                ))
-                            ) : (
-                                currentCourseEngagementData.map((item) => (
-                                    <TableRow key={item.courseId}>
-                                        <TableCell className="font-medium">{item.courseTitle}</TableCell>
-                                        <TableCell className="text-center">{item.enrollments}</TableCell>
-                                        <TableCell className="text-center">{item.likes}</TableCell>
-                                        <TableCell className="text-center">{item.comments}</TableCell>
-                                    </TableRow>
-                                ))
-                            )}
-                        </TableBody>
-                    </Table>
-                </div>
-                 {courseEngagementData.length === 0 && !loading && (
-                    <div className="text-center p-8 text-muted-foreground">
-                        No course engagement data available.
-                    </div>
+      <Card ref={courseEngagementRef}>
+        <CardHeader className="flex-col md:flex-row md:items-center md:justify-between">
+          <div>
+            <CardTitle>Course Engagement Report</CardTitle>
+            <CardDescription>Enrollments, likes, and comments for each course.</CardDescription>
+          </div>
+          <div className="flex gap-2 mt-4 md:mt-0">
+            <Button onClick={handleExportCourseEngagementCSV} variant="outline" disabled={courseEngagementData.length === 0}>
+              <Download className="mr-2 h-4 w-4" />
+              Export as CSV
+            </Button>
+            <Button onClick={() => handleExportPDF(courseEngagementRef)} variant="outline" disabled={loading}>
+              <Download className="mr-2 h-4 w-4" />
+              Export as PDF
+            </Button>
+          </div>
+        </CardHeader>
+        <CardContent>
+          <div className="overflow-x-auto">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Course</TableHead>
+                  <TableHead className="text-center">Enrollments</TableHead>
+                  <TableHead className="text-center">Likes</TableHead>
+                  <TableHead className="text-center">Comments</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {loading ? (
+                  Array.from({ length: 3 }).map((_, i) => (
+                    <TableRow key={i}>
+                      <TableCell><Skeleton className="h-4 w-48" /></TableCell>
+                      <TableCell className="text-center"><Skeleton className="h-4 w-8 mx-auto" /></TableCell>
+                      <TableCell className="text-center"><Skeleton className="h-4 w-8 mx-auto" /></TableCell>
+                      <TableCell className="text-center"><Skeleton className="h-4 w-8 mx-auto" /></TableCell>
+                    </TableRow>
+                  ))
+                ) : (
+                  currentCourseEngagementData.map((item) => (
+                    <TableRow key={item.courseId}>
+                      <TableCell className="font-medium">{item.courseTitle}</TableCell>
+                      <TableCell className="text-center">{item.enrollments}</TableCell>
+                      <TableCell className="text-center">{item.likes}</TableCell>
+                      <TableCell className="text-center">{item.comments}</TableCell>
+                    </TableRow>
+                  ))
                 )}
-            </CardContent>
-             {courseEngagementTotalPages > 1 && (
-                <CardFooter className="flex justify-end items-center gap-4">
-                    <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                        <span>Rows per page</span>
-                        <Select
-                            value={`${courseEngagementPageSize}`}
-                            onValueChange={(value) => {
-                                setCourseEngagementPageSize(Number(value));
-                                setCourseEngagementPage(1);
-                            }}
-                        >
-                            <SelectTrigger className="w-[70px]">
-                                <SelectValue placeholder={`${courseEngagementPageSize}`} />
-                            </SelectTrigger>
-                            <SelectContent>
-                                {[10, 25, 50, 100].map(size => (
-                                    <SelectItem key={size} value={`${size}`}>{size}</SelectItem>
-                                ))}
-                            </SelectContent>
-                        </Select>
-                    </div>
-                    <span className="text-sm text-muted-foreground">
-                        Page {courseEngagementPage} of {courseEngagementTotalPages}
-                    </span>
-                    <div className="flex items-center gap-2">
-                        <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => setCourseEngagementPage(prev => Math.max(prev - 1, 1))}
-                            disabled={courseEngagementPage === 1}
-                        >
-                            <ChevronLeft className="h-4 w-4" />
-                            Previous
-                        </Button>
-                        <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => setCourseEngagementPage(prev => Math.min(prev + 1, courseEngagementTotalPages))}
-                            disabled={courseEngagementPage === courseEngagementTotalPages}
-                        >
-                            Next
-                            <ChevronRight className="h-4 w-4" />
-                        </Button>
-                    </div>
-                </CardFooter>
-            )}
-        </Card>
+              </TableBody>
+            </Table>
+          </div>
+          {courseEngagementData.length === 0 && !loading && (
+            <div className="text-center p-8 text-muted-foreground">
+              No course engagement data available.
+            </div>
+          )}
+        </CardContent>
+        {courseEngagementTotalPages > 1 && (
+          <CardFooter className="flex justify-end items-center gap-4">
+            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+              <span>Rows per page</span>
+              <Select
+                value={`${courseEngagementPageSize}`}
+                onValueChange={(value) => {
+                  setCourseEngagementPageSize(Number(value));
+                  setCourseEngagementPage(1);
+                }}
+              >
+                <SelectTrigger className="w-[70px]">
+                  <SelectValue placeholder={`${courseEngagementPageSize}`} />
+                </SelectTrigger>
+                <SelectContent>
+                  {[10, 25, 50, 100].map(size => (
+                    <SelectItem key={size} value={`${size}`}>{size}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <span className="text-sm text-muted-foreground">
+              Page {courseEngagementPage} of {courseEngagementTotalPages}
+            </span>
+            <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setCourseEngagementPage(prev => Math.max(prev - 1, 1))}
+                disabled={courseEngagementPage === 1}
+              >
+                <ChevronLeft className="h-4 w-4" />
+                Previous
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setCourseEngagementPage(prev => Math.min(prev + 1, courseEngagementTotalPages))}
+                disabled={courseEngagementPage === courseEngagementTotalPages}
+              >
+                Next
+                <ChevronRight className="h-4 w-4" />
+              </Button>
+            </div>
+          </CardFooter>
+        )}
+      </Card>
 
-       <Card>
-            <CardHeader>
-                <CardTitle>Social Engagement Report</CardTitle>
-                <CardDescription>Likes, shares, and comments for each community post.</CardDescription>
-            </CardHeader>
-            <CardContent>
-                <div className="overflow-x-auto">
-                    <Table>
-                        <TableHeader>
-                            <TableRow>
-                                <TableHead>Post</TableHead>
-                                <TableHead>Author</TableHead>
-                                <TableHead className="text-center">Likes</TableHead>
-                                <TableHead className="text-center">Comments</TableHead>
-                                <TableHead className="text-center">Reposts</TableHead>
-                                <TableHead className="text-center">Shares</TableHead>
-                            </TableRow>
-                        </TableHeader>
-                        <TableBody>
-                            {loading ? (
-                                Array.from({ length: 3 }).map((_, i) => (
-                                    <TableRow key={i}>
-                                        <TableCell><Skeleton className="h-4 w-48" /></TableCell>
-                                        <TableCell><Skeleton className="h-4 w-24" /></TableCell>
-                                        <TableCell className="text-center"><Skeleton className="h-4 w-8 mx-auto" /></TableCell>
-                                        <TableCell className="text-center"><Skeleton className="h-4 w-8 mx-auto" /></TableCell>
-                                        <TableCell className="text-center"><Skeleton className="h-4 w-8 mx-auto" /></TableCell>
-                                        <TableCell className="text-center"><Skeleton className="h-4 w-8 mx-auto" /></TableCell>
-                                    </TableRow>
-                                ))
-                            ) : (
-                                currentSocialData.map((item) => (
-                                    <TableRow key={item.postId}>
-                                        <TableCell className="max-w-xs truncate" title={item.postContent}>{item.postContent}</TableCell>
-                                        <TableCell>{item.authorName}</TableCell>
-                                        <TableCell className="text-center">{item.likes}</TableCell>
-                                        <TableCell className="text-center">{item.comments}</TableCell>
-                                        <TableCell className="text-center">{item.reposts}</TableCell>
-                                        <TableCell className="text-center">{item.shares}</TableCell>
-                                    </TableRow>
-                                ))
-                            )}
-                        </TableBody>
-                    </Table>
-                </div>
-                 {socialData.length === 0 && !loading && (
-                    <div className="text-center p-8 text-muted-foreground">
-                        No social interaction data available.
-                    </div>
+      <Card ref={quizReportRef}>
+        <CardHeader>
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+            <div>
+              <CardTitle>Quiz Performance Report</CardTitle>
+              <CardDescription>User scores and pass / fail status for all quiz attempts.</CardDescription>
+            </div>
+            <div className="flex gap-2">
+              <Button onClick={handleExportQuizReportCSV} variant="outline" disabled={filteredQuizReportData.length === 0}>
+                <Download className="mr-2 h-4 w-4" />
+                Export CSV
+              </Button>
+              <Button onClick={() => handleExportPDF(quizReportRef)} variant="outline" disabled={loading}>
+                <Download className="mr-2 h-4 w-4" />
+                Export PDF
+              </Button>
+            </div>
+          </div>
+          <div className="flex flex-col sm:flex-row items-center gap-4 mt-4 flex-wrap">
+            <Select value={selectedUser} onValueChange={setSelectedUser}>
+              <SelectTrigger className="w-full sm:w-auto flex-grow">
+                <SelectValue placeholder="Select User" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Users</SelectItem>
+                {allUsers.map((user) => (
+                  <SelectItem key={user.id} value={user.id}>{user.displayName}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Select value={selectedCourse} onValueChange={setSelectedCourse}>
+              <SelectTrigger className="w-full sm:w-auto flex-grow">
+                <SelectValue placeholder="Select Course" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Courses</SelectItem>
+                {allCourses.map((course) => (
+                  <SelectItem key={course.id} value={course.id}>{course.title}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Select value={selectedCampus} onValueChange={setSelectedCampus}>
+              <SelectTrigger className="w-full sm:w-auto flex-grow">
+                <SelectValue placeholder="Select Campus" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Campuses</SelectItem>
+                {campusesWithProgress.map((campus) => (
+                  <SelectItem key={campus.id} value={campus.id}>{campus["Campus Name"]}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Popover>
+              <PopoverTrigger asChild>
+                <Button id="date-quiz" variant={"outline"} className={cn("w-full sm:w-auto justify-start text-left font-normal", !dateRange && "text-muted-foreground")}>
+                  <CalendarIcon className="mr-2 h-4 w-4" />
+                  {dateRange?.from ? (
+                    dateRange.to ? (
+                      <>
+                        {format(dateRange.from, "LLL dd, y")} -{" "}
+                        {format(dateRange.to, "LLL dd, y")}
+                      </>
+                    ) : (
+                      format(dateRange.from, "LLL dd, y")
+                    )
+                  ) : (
+                    <span>Pick a date range</span>
+                  )}
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-auto p-0" align="start">
+                <Calendar initialFocus mode="range" defaultMonth={dateRange?.from} selected={dateRange} onSelect={setDateRange} numberOfMonths={2} />
+              </PopoverContent>
+            </Popover>
+            {dateRange && <Button variant="ghost" size="icon" onClick={() => setDateRange(undefined)}><XIcon className="h-4 w-4" /></Button>}
+          </div>
+        </CardHeader>
+        <CardContent>
+          <div className="overflow-x-auto">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>User</TableHead>
+                  <TableHead>Course</TableHead>
+                  <TableHead>Quiz</TableHead>
+                  <TableHead className="text-center">Score</TableHead>
+                  <TableHead className="text-center">Status</TableHead>
+                  <TableHead>Date</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {loading ? (
+                  Array.from({ length: 3 }).map((_, i) => (
+                    <TableRow key={i}>
+                      <TableCell><Skeleton className="h-4 w-24" /></TableCell>
+                      <TableCell><Skeleton className="h-4 w-32" /></TableCell>
+                      <TableCell><Skeleton className="h-4 w-24" /></TableCell>
+                      <TableCell className="text-center"><Skeleton className="h-4 w-12 mx-auto" /></TableCell>
+                      <TableCell className="text-center"><Skeleton className="h-6 w-20 mx-auto" /></TableCell>
+                      <TableCell><Skeleton className="h-4 w-20" /></TableCell>
+                    </TableRow>
+                  ))
+                ) : (
+                  currentQuizReportData.map((item) => (
+                    <TableRow key={item.resultId}>
+                      <TableCell className="font-medium">{item.userName}</TableCell>
+                      <TableCell>{item.courseTitle}</TableCell>
+                      <TableCell>{item.quizTitle}</TableCell>
+                      <TableCell className="text-center font-semibold">{item.score.toFixed(0)}%</TableCell>
+                      <TableCell className="text-center">
+                        <Badge variant={item.passed ? "default" : "destructive"} className="gap-1">
+                          {item.passed ? <CheckCircle className="h-3 w-3" /> : <XCircle className="h-3 w-3" />}
+                          {item.passed ? 'Passed' : 'Failed'}
+                        </Badge>
+                      </TableCell>
+                      <TableCell>{format(item.attemptedAt, 'MMM d, yyyy')}</TableCell>
+                    </TableRow>
+                  ))
                 )}
-            </CardContent>
-             {socialDataTotalPages > 1 && (
-                <CardFooter className="flex justify-end items-center gap-4">
-                    <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                        <span>Rows per page</span>
-                        <Select
-                            value={`${socialDataPageSize}`}
-                            onValueChange={(value) => {
-                                setSocialDataPageSize(Number(value));
-                                setSocialDataPage(1);
-                            }}
-                        >
-                            <SelectTrigger className="w-[70px]">
-                                <SelectValue placeholder={`${socialDataPageSize}`} />
-                            </SelectTrigger>
-                            <SelectContent>
-                                {[10, 25, 50, 100].map(size => (
-                                    <SelectItem key={size} value={`${size}`}>{size}</SelectItem>
-                                ))}
-                            </SelectContent>
-                        </Select>
-                    </div>
-                    <span className="text-sm text-muted-foreground">
-                        Page {socialDataPage} of {socialDataTotalPages}
-                    </span>
-                    <div className="flex items-center gap-2">
-                        <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => setSocialDataPage(prev => Math.max(prev - 1, 1))}
-                            disabled={socialDataPage === 1}
-                        >
-                            <ChevronLeft className="h-4 w-4" />
-                            Previous
-                        </Button>
-                        <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => setSocialDataPage(prev => Math.min(prev + 1, socialDataTotalPages))}
-                            disabled={socialDataPage === socialDataTotalPages}
-                        >
-                            Next
-                            <ChevronRight className="h-4 w-4" />
-                        </Button>
-                    </div>
-                </CardFooter>
-            )}
-        </Card>
+              </TableBody>
+            </Table>
+          </div>
+          {quizReportData.length === 0 && !loading && (
+            <div className="text-center p-8 text-muted-foreground">
+              No quiz attempts have been recorded yet.
+            </div>
+          )}
+        </CardContent>
+        {quizReportTotalPages > 1 && (
+          <CardFooter className="flex justify-end items-center gap-4">
+            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+              <span>Rows per page</span>
+              <Select
+                value={`${quizReportPageSize}`}
+                onValueChange={(value) => {
+                  setQuizReportPageSize(Number(value));
+                  setQuizReportPage(1);
+                }}
+              >
+                <SelectTrigger className="w-[70px]">
+                  <SelectValue placeholder={`${quizReportPageSize}`} />
+                </SelectTrigger>
+                <SelectContent>
+                  {[10, 25, 50, 100].map(size => (
+                    <SelectItem key={size} value={`${size}`}>{size}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <span className="text-sm text-muted-foreground">
+              Page {quizReportPage} of {quizReportTotalPages}
+            </span>
+            <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setQuizReportPage(prev => Math.max(prev - 1, 1))}
+                disabled={quizReportPage === 1}
+              >
+                <ChevronLeft className="h-4 w-4" /> Previous
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setQuizReportPage(prev => Math.min(prev + 1, quizReportTotalPages))}
+                disabled={quizReportPage === quizReportTotalPages}
+              >
+                Next <ChevronRight className="h-4 w-4" />
+              </Button>
+            </div>
+          </CardFooter>
+        )}
+      </Card>
 
       <Card>
         <CardHeader>
@@ -803,9 +1031,7 @@ export default function AnalyticsDashboard() {
               <SelectContent>
                 <SelectItem value="all">All Users</SelectItem>
                 {allUsers.map((user) => (
-                  <SelectItem key={user.id} value={user.id}>
-                    {user.displayName}
-                  </SelectItem>
+                  <SelectItem key={user.id} value={user.id}>{user.displayName}</SelectItem>
                 ))}
               </SelectContent>
             </Select>
@@ -816,66 +1042,51 @@ export default function AnalyticsDashboard() {
               <SelectContent>
                 <SelectItem value="all">All Courses</SelectItem>
                 {allCourses.map((course) => (
-                  <SelectItem key={course.id} value={course.id}>
-                    {course.title}
-                  </SelectItem>
+                  <SelectItem key={course.id} value={course.id}>{course.title}</SelectItem>
                 ))}
               </SelectContent>
             </Select>
-             <Select value={selectedCampus} onValueChange={setSelectedCampus}>
-                <SelectTrigger className="w-full sm:w-auto flex-grow">
-                    <SelectValue placeholder="Select Campus" />
-                </SelectTrigger>
-                <SelectContent>
-                    <SelectItem value="all">All Campuses</SelectItem>
-                    {campusesWithProgress.map((campus) => (
-                    <SelectItem key={campus.id} value={campus.id}>
-                        {campus["Campus Name"]}
-                    </SelectItem>
-                    ))}
-                </SelectContent>
+            <Select value={selectedCampus} onValueChange={setSelectedCampus}>
+              <SelectTrigger className="w-full sm:w-auto flex-grow">
+                <SelectValue placeholder="Select Campus" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Campuses</SelectItem>
+                {campusesWithProgress.map((campus) => (
+                  <SelectItem key={campus.id} value={campus.id}>{campus["Campus Name"]}</SelectItem>
+                ))}
+              </SelectContent>
             </Select>
             <Popover>
-                <PopoverTrigger asChild>
-                    <Button
-                        id="date"
-                        variant={"outline"}
-                        className={cn("w-full sm:w-auto justify-start text-left font-normal", !dateRange && "text-muted-foreground")}
-                    >
-                        <CalendarIcon className="mr-2 h-4 w-4" />
-                        {dateRange?.from ? (
-                            dateRange.to ? (
-                                <>
-                                {format(dateRange.from, "LLL dd, y")} -{" "}
-                                {format(dateRange.to, "LLL dd, y")}
-                                </>
-                            ) : (
-                                format(dateRange.from, "LLL dd, y")
-                            )
-                        ) : (
-                            <span>Pick a date range</span>
-                        )}
-                    </Button>
-                </PopoverTrigger>
-                <PopoverContent className="w-auto p-0" align="start">
-                    <Calendar
-                        initialFocus
-                        mode="range"
-                        defaultMonth={dateRange?.from}
-                        selected={dateRange}
-                        onSelect={setDateRange}
-                        numberOfMonths={2}
-                    />
-                </PopoverContent>
+              <PopoverTrigger asChild>
+                <Button id="date" variant={"outline"} className={cn("w-full sm:w-auto justify-start text-left font-normal", !dateRange && "text-muted-foreground")}>
+                  <CalendarIcon className="mr-2 h-4 w-4" />
+                  {dateRange?.from ? (
+                    dateRange.to ? (
+                      <>
+                        {format(dateRange.from, "LLL dd, y")} -{" "}
+                        {format(dateRange.to, "LLL dd, y")}
+                      </>
+                    ) : (
+                      format(dateRange.from, "LLL dd, y")
+                    )
+                  ) : (
+                    <span>Pick a date range</span>
+                  )}
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-auto p-0" align="start">
+                <Calendar initialFocus mode="range" defaultMonth={dateRange?.from} selected={dateRange} onSelect={setDateRange} numberOfMonths={2} />
+              </PopoverContent>
             </Popover>
             {dateRange && <Button variant="ghost" size="icon" onClick={() => setDateRange(undefined)}><XIcon className="h-4 w-4" /></Button>}
-             <Button onClick={handleExportCSV} variant="outline" disabled={sortedAndFilteredProgress.length === 0} className="w-full sm:w-auto">
-                <Download className="mr-2 h-4 w-4" />
-                Export as CSV
+            <Button onClick={handleExportCSV} variant="outline" disabled={sortedAndFilteredProgress.length === 0} className="w-full sm:w-auto">
+              <Download className="mr-2 h-4 w-4" />
+              Export as CSV
             </Button>
-             <Button onClick={() => handleExportPDF(dashboardRef)} variant="outline" disabled={loading} className="w-full sm:w-auto">
-                <Download className="mr-2 h-4 w-4" />
-                Export as PDF
+            <Button onClick={() => handleExportPDF(dashboardRef)} variant="outline" disabled={loading} className="w-full sm:w-auto">
+              <Download className="mr-2 h-4 w-4" />
+              Export as PDF
             </Button>
           </div>
           <div className="overflow-x-auto">
@@ -889,23 +1100,23 @@ export default function AnalyticsDashboard() {
                     </Button>
                   </TableHead>
                   <TableHead>
-                     <Button variant="ghost" onClick={() => handleSort('course')}>
-                        Course
-                        <ArrowUpDown className="ml-2 h-4 w-4" />
+                    <Button variant="ghost" onClick={() => handleSort('course')}>
+                      Course
+                      <ArrowUpDown className="ml-2 h-4 w-4" />
                     </Button>
                   </TableHead>
                   <TableHead>Progress</TableHead>
-                   <TableHead>Videos Watched</TableHead>
+                  <TableHead>Videos Watched</TableHead>
                   <TableHead>
                     <Button variant="ghost" onClick={() => handleSort('startDate')}>
-                        Start Date
-                        <ArrowUpDown className="ml-2 h-4 w-4" />
+                      Start Date
+                      <ArrowUpDown className="ml-2 h-4 w-4" />
                     </Button>
                   </TableHead>
                   <TableHead>
-                     <Button variant="ghost" onClick={() => handleSort('completionDate')}>
-                        Completion Date
-                        <ArrowUpDown className="ml-2 h-4 w-4" />
+                    <Button variant="ghost" onClick={() => handleSort('completionDate')}>
+                      Completion Date
+                      <ArrowUpDown className="ml-2 h-4 w-4" />
                     </Button>
                   </TableHead>
                   <TableHead>Time Spent</TableHead>
@@ -914,38 +1125,38 @@ export default function AnalyticsDashboard() {
               </TableHeader>
               <TableBody>
                 {loading ? (
-                    Array.from({ length: 3 }).map((_, i) => (
-                        <TableRow key={i}>
-                            <TableCell><Skeleton className="h-4 w-24" /></TableCell>
-                            <TableCell><Skeleton className="h-4 w-32" /></TableCell>
-                            <TableCell><Skeleton className="h-4 w-12" /></TableCell>
-                             <TableCell><Skeleton className="h-4 w-20" /></TableCell>
-                             <TableCell><Skeleton className="h-4 w-20" /></TableCell>
-                             <TableCell><Skeleton className="h-4 w-20" /></TableCell>
-                            <TableCell><Skeleton className="h-4 w-16" /></TableCell>
-                            <TableCell className="text-right"><Skeleton className="h-8 w-8 rounded-md" /></TableCell>
-                        </TableRow>
-                    ))
+                  Array.from({ length: 3 }).map((_, i) => (
+                    <TableRow key={i}>
+                      <TableCell><Skeleton className="h-4 w-24" /></TableCell>
+                      <TableCell><Skeleton className="h-4 w-32" /></TableCell>
+                      <TableCell><Skeleton className="h-4 w-12" /></TableCell>
+                      <TableCell><Skeleton className="h-4 w-20" /></TableCell>
+                      <TableCell><Skeleton className="h-4 w-20" /></TableCell>
+                      <TableCell><Skeleton className="h-4 w-20" /></TableCell>
+                      <TableCell><Skeleton className="h-4 w-16" /></TableCell>
+                      <TableCell className="text-right"><Skeleton className="h-8 w-8 rounded-md" /></TableCell>
+                    </TableRow>
+                  ))
                 ) : (
-                    currentDetailedReportData.map((progress) => {
+                  currentDetailedReportData.map((progress) => {
                     const user = allUsers.find(u => u.id === progress.userId);
                     const course = allCourses.find(c => c.id === progress.courseId);
                     const totalTimeSpent = (progress.videoProgress || []).reduce((acc, vp) => acc + vp.timeSpent, 0);
 
                     if (!user || !course) return null;
-                    if(totalTimeSpent === 0 && !progress.videoProgress?.some(vp => vp.completed)) return null;
+                    if (totalTimeSpent === 0 && !progress.videoProgress?.some(vp => vp.completed)) return null;
 
 
                     const startDate = progress.enrollment?.enrolledAt?.toDate ? format(progress.enrollment.enrolledAt.toDate(), 'yyyy-MM-dd') : 'N/A';
                     const completionDate = progress.enrollment?.completedAt?.toDate ? format(progress.enrollment.completedAt.toDate(), 'yyyy-MM-dd') : 'N/A';
-                    
+
                     const publishedVideoIds = course?.videos?.filter(vid => allVideos.some(v => v.id === vid && v.status === 'published')) || [];
                     const totalVideos = publishedVideoIds.length;
                     const completedVideos = (progress.videoProgress || []).filter(vp => vp.completed && publishedVideoIds.includes(vp.videoId)).length;
 
 
                     return (
-                        <TableRow key={`${progress.userId}-${progress.courseId}`}>
+                      <TableRow key={`${progress.userId}-${progress.courseId}`}>
                         <TableCell>({user.campus || 'N/A'}) {user.displayName}</TableCell>
                         <TableCell>{course.title}</TableCell>
                         <TableCell>{progress.totalProgress}%</TableCell>
@@ -954,72 +1165,167 @@ export default function AnalyticsDashboard() {
                         <TableCell>{completionDate}</TableCell>
                         <TableCell>{formatDuration(totalTimeSpent)}</TableCell>
                         <TableCell className="text-right">
-                            <Button 
-                                variant="ghost" 
-                                size="icon"
-                                onClick={() => setSelectedProgressDetail({ progress, user, course })}
-                            >
-                                <Eye className="h-4 w-4" />
-                            </Button>
+                          <Button variant="ghost" size="icon" onClick={() => setSelectedProgressDetail({ progress, user, course })}>
+                            <Eye className="h-4 w-4" />
+                          </Button>
                         </TableCell>
-                        </TableRow>
+                      </TableRow>
                     );
-                    })
+                  })
                 )}
               </TableBody>
             </Table>
           </div>
-           {sortedAndFilteredProgress.length === 0 && !loading && (
-             <div className="text-center p-8 text-muted-foreground">
-                No data available for the selected filters.
+          {sortedAndFilteredProgress.length === 0 && !loading && (
+            <div className="text-center p-8 text-muted-foreground">
+              No data available for the selected filters.
             </div>
-           )}
+          )}
         </CardContent>
         {detailedReportTotalPages > 1 && (
-            <CardFooter className="flex justify-end items-center gap-4">
-                <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                    <span>Rows per page</span>
-                    <Select
-                        value={`${detailedReportPageSize}`}
-                        onValueChange={(value) => {
-                            setDetailedReportPageSize(Number(value));
-                            setDetailedReportPage(1);
-                        }}
-                    >
-                        <SelectTrigger className="w-[70px]">
-                            <SelectValue placeholder={`${detailedReportPageSize}`} />
-                        </SelectTrigger>
-                        <SelectContent>
-                            {[10, 25, 50, 100].map(size => (
-                                <SelectItem key={size} value={`${size}`}>{size}</SelectItem>
-                            ))}
-                        </SelectContent>
-                    </Select>
-                </div>
-                <span className="text-sm text-muted-foreground">
-                    Page {detailedReportPage} of {detailedReportTotalPages}
-                </span>
-                <div className="flex items-center gap-2">
-                    <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => setDetailedReportPage(prev => Math.max(prev - 1, 1))}
-                        disabled={detailedReportPage === 1}
-                    >
-                        <ChevronLeft className="h-4 w-4" />
-                        Previous
-                    </Button>
-                    <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => setDetailedReportPage(prev => Math.min(prev + 1, detailedReportTotalPages))}
-                        disabled={detailedReportPage === detailedReportTotalPages}
-                    >
-                        Next
-                        <ChevronRight className="h-4 w-4" />
-                    </Button>
-                </div>
-            </CardFooter>
+          <CardFooter className="flex justify-end items-center gap-4">
+            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+              <span>Rows per page</span>
+              <Select
+                value={`${detailedReportPageSize}`}
+                onValueChange={(value) => {
+                  setDetailedReportPageSize(Number(value));
+                  setDetailedReportPage(1);
+                }}
+              >
+                <SelectTrigger className="w-[70px]">
+                  <SelectValue placeholder={`${detailedReportPageSize}`} />
+                </SelectTrigger>
+                <SelectContent>
+                  {[10, 25, 50, 100].map(size => (
+                    <SelectItem key={size} value={`${size}`}>{size}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <span className="text-sm text-muted-foreground">
+              Page {detailedReportPage} of {detailedReportTotalPages}
+            </span>
+            <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setDetailedReportPage(prev => Math.max(prev - 1, 1))}
+                disabled={detailedReportPage === 1}
+              >
+                <ChevronLeft className="h-4 w-4" />
+                Previous
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setDetailedReportPage(prev => Math.min(prev + 1, detailedReportTotalPages))}
+                disabled={detailedReportPage === detailedReportTotalPages}
+              >
+                Next
+                <ChevronRight className="h-4 w-4" />
+              </Button>
+            </div>
+          </CardFooter>
+        )}
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Social Engagement Report</CardTitle>
+          <CardDescription>Likes, shares, and comments for each community post.</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="overflow-x-auto">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Post</TableHead>
+                  <TableHead>Author</TableHead>
+                  <TableHead className="text-center">Likes</TableHead>
+                  <TableHead className="text-center">Comments</TableHead>
+                  <TableHead className="text-center">Reposts</TableHead>
+                  <TableHead className="text-center">Shares</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {loading ? (
+                  Array.from({ length: 3 }).map((_, i) => (
+                    <TableRow key={i}>
+                      <TableCell><Skeleton className="h-4 w-48" /></TableCell>
+                      <TableCell><Skeleton className="h-4 w-24" /></TableCell>
+                      <TableCell className="text-center"><Skeleton className="h-4 w-8 mx-auto" /></TableCell>
+                      <TableCell className="text-center"><Skeleton className="h-4 w-8 mx-auto" /></TableCell>
+                      <TableCell className="text-center"><Skeleton className="h-4 w-8 mx-auto" /></TableCell>
+                      <TableCell className="text-center"><Skeleton className="h-4 w-8 mx-auto" /></TableCell>
+                    </TableRow>
+                  ))
+                ) : (
+                  currentSocialData.map((item) => (
+                    <TableRow key={item.postId}>
+                      <TableCell className="max-w-xs truncate" title={item.postContent}>{item.postContent}</TableCell>
+                      <TableCell>{item.authorName}</TableCell>
+                      <TableCell className="text-center">{item.likes}</TableCell>
+                      <TableCell className="text-center">{item.comments}</TableCell>
+                      <TableCell className="text-center">{item.reposts}</TableCell>
+                      <TableCell className="text-center">{item.shares}</TableCell>
+                    </TableRow>
+                  ))
+                )}
+              </TableBody>
+            </Table>
+          </div>
+          {socialData.length === 0 && !loading && (
+            <div className="text-center p-8 text-muted-foreground">
+              No social interaction data available.
+            </div>
+          )}
+        </CardContent>
+        {socialDataTotalPages > 1 && (
+          <CardFooter className="flex justify-end items-center gap-4">
+            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+              <span>Rows per page</span>
+              <Select
+                value={`${socialDataPageSize}`}
+                onValueChange={(value) => {
+                  setSocialDataPageSize(Number(value));
+                  setSocialDataPage(1);
+                }}
+              >
+                <SelectTrigger className="w-[70px]">
+                  <SelectValue placeholder={`${socialDataPageSize}`} />
+                </SelectTrigger>
+                <SelectContent>
+                  {[10, 25, 50, 100].map(size => (
+                    <SelectItem key={size} value={`${size}`}>{size}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <span className="text-sm text-muted-foreground">
+              Page {socialDataPage} of {socialDataTotalPages}
+            </span>
+            <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setSocialDataPage(prev => Math.max(prev - 1, 1))}
+                disabled={socialDataPage === 1}
+              >
+                <ChevronLeft className="h-4 w-4" />
+                Previous
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setSocialDataPage(prev => Math.min(prev + 1, socialDataTotalPages))}
+                disabled={socialDataPage === socialDataTotalPages}
+              >
+                Next
+                <ChevronRight className="h-4 w-4" />
+              </Button>
+            </div>
+          </CardFooter>
         )}
       </Card>
 
@@ -1046,7 +1352,7 @@ export default function AnalyticsDashboard() {
                     {selectedProgressDetail.course.videos?.map(videoId => {
                       const video = allVideos.find(v => v.id === videoId);
                       const videoProgress = selectedProgressDetail.progress.videoProgress.find(vp => vp.videoId === videoId);
-                      
+
                       return (
                         <TableRow key={videoId}>
                           <TableCell>{video?.title || 'Unknown Video'}</TableCell>

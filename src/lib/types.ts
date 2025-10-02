@@ -7,6 +7,8 @@ export interface User {
   photoURL?: string | null;
   role?: 'admin' | 'user' | 'developer' | 'moderator';
   fullName?: string;
+  firstName?: string;
+  lastName?: string;
   campusId?: string;
   campusName?: string;
   maritalStatus?: string;
@@ -20,6 +22,8 @@ export interface User {
   commentCount?: number;
   hpNumber?: string;
   phoneNumber?: string;
+  facilitatorName?: string;
+  language?: string;
 }
 
 export interface Speaker {
@@ -46,6 +50,9 @@ export interface Quiz {
     questions: QuizQuestion[];
     createdAt: any;
     passThreshold?: number;
+    shuffleQuestions?: boolean;
+    timeLimitEnabled?: boolean;
+    timeLimitPerQuestion?: number; // in minutes
 }
 
 export interface Course {
@@ -75,6 +82,7 @@ export interface Course {
     id: string;
     title: string;
   };
+  language?: string;
 }
 
 export interface Video {
@@ -90,8 +98,11 @@ export interface Video {
   shareCount?: number;
   commentCount?: number;
   status?: 'published' | 'private';
+  transcodeStatus?: 'pending' | 'processing' | 'succeeded' | 'failed' | 'not_requested' | 'cancelled';
+  transcodeJobName?: string;
   errorMessage?: string;
-  type?: 'video' | 'quiz';
+  hlsUrl?: string;
+  type?: 'video' | 'quiz' | 'youtube';
   questions?: QuizQuestion[];
 }
 

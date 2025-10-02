@@ -27,7 +27,6 @@ import { Skeleton } from './ui/skeleton';
 import { getFirebaseFirestore } from '@/lib/firebase';
 import { collection, getDocs, query, where, documentId } from 'firebase/firestore';
 import type { Course, Video, Documentation, User } from '@/lib/types';
-import { ai } from '@/ai/genkit';
 
 
 const formSchema = z.object({
@@ -116,23 +115,22 @@ export default function AiAssistant() {
     reset();
 
     try {
-        const { output } = await globalSearch({ query: data.query, ...searchableData });
-        
-        if (!output || !output.results) {
-            throw new Error("No valid response from AI.");
-        }
-        
-        let assistantResponse = "Here's what I found:\n\n";
-        if (output.results.length === 0) {
-            assistantResponse = "I couldn't find any specific content matching your query, but I can try to answer based on my general knowledge. How can I help?";
-        } else {
-            output.results.forEach(result => {
-                assistantResponse += `- **[${result.title}](${result.url})** - (${result.type})\n`;
-            });
-        }
-        
-        const assistantMessage: Message = { role: 'assistant', content: assistantResponse };
-        setMessages((prev) => [...prev, assistantMessage]);
+      const output = await globalSearch({ query: data.query, ...searchableData });
+      if (!output || !output.results) {
+        throw new Error("No valid response from AI.");
+      }
+      
+      let assistantResponse = "Here is what I found based on your request:\n\n";
+      if (output.results.length === 0) {
+        assistantResponse = "I couldn't find any specific content matching your query on the platform. Is there anything else I can help you with?";
+      } else {
+        output.results.forEach(result => {
+          assistantResponse += `- **[${result.title}](${result.url})** - *${result.type}*\n`;
+        });
+      }
+      
+      const assistantMessage: Message = { role: 'assistant', content: assistantResponse };
+      setMessages((prev) => [...prev, assistantMessage]);
 
     } catch (e) {
       console.error(e);

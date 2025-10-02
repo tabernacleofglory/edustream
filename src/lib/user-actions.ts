@@ -1,3 +1,4 @@
+
 'use server';
 
 import { db } from './firebase-admin'; // Admin SDK Firestore (FirebaseFirestore.Firestore)
@@ -30,10 +31,10 @@ export async function checkAndPromoteUser(userId: string, currentLadder: string)
     return { status: 'last-ladder', promoted: false };
   }
 
-  // Courses that belong to this ladder name (your schema used "ladders")
+  // Courses that belong to this ladder name
   const coursesSnapshot = await db
     .collection('courses')
-    .where('ladders', 'array-contains', currentLadder)
+    .where('ladderIds', 'array-contains', currentLadderDoc.id)
     .get();
 
   const requiredCourses = coursesSnapshot.docs.map(

@@ -1,4 +1,5 @@
 
+
 "use client"
 
 import { ReactNode, useState, useEffect, useCallback } from "react";
@@ -31,6 +32,8 @@ import {
   UserCheck,
   Megaphone,
   FileQuestion,
+  Languages,
+  Church,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
@@ -147,6 +150,8 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
             { href: "/admin/content/certificates", label: "Certificates", icon: Award },
             { href: "/admin/content/documentation", label: "Documentation", icon: BookCopy },
             { href: "/admin/content/announcements", label: "Announcements", icon: Megaphone },
+            { href: "/admin/content/languages", label: "Languages", icon: Languages },
+            { href: "/admin/content/ministries", label: "Ministries", icon: Church },
           ],
         },
       ],
@@ -315,7 +320,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
                  {isMobile && <Logo />}
             </div>
             <div className="flex-1 px-4">
-               
+                <GlobalSearch />
             </div>
             <div className="ml-auto flex items-center gap-2">
                 <ThemeToggle />
@@ -328,5 +333,3 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     </div>
   );
 }
-
-    

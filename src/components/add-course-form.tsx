@@ -1,4 +1,5 @@
 
+
 "use client"
 
 import { useForm, useFieldArray, SubmitHandler, Controller } from 'react-hook-form';
@@ -18,17 +19,17 @@ import { Textarea } from '@/components/ui/textarea';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuCheckboxItem, DropdownMenuLabel, DropdownMenuSeparator } from '@/components/ui/dropdown-menu';
-import { Trash, PlusCircle, Loader2, Video, Link as LinkIcon, Library, Award, Settings2, ChevronDown, Image as ImageIcon, FileText, FileType, File as FileIcon, FileImage, X, Minus, GripVertical, FileQuestion } from 'lucide-react';
+import { Trash, PlusCircle, Loader2, Video, Link as LinkIcon, Library, Award, Settings2, ChevronDown, Image as ImageIcon, FileText, FileType, File as FileIcon, FileImage, X, Minus, GripVertical, FileQuestion, Youtube, FolderKanban } from 'lucide-react';
 import { useState, useEffect, useCallback, ChangeEvent, FormEvent } from 'react';
 import Image from 'next/image';
 import {
   Dialog,
   DialogContent,
   DialogDescription,
-  DialogFooter,
   DialogHeader,
   DialogTitle,
   DialogTrigger,
+  DialogFooter,
 } from "@/components/ui/dialog"
 import { useAuth } from '@/hooks/use-auth';
 import VideoLibrary from './video-library';
@@ -65,6 +66,7 @@ const resourceSchema = z.object({
 const courseSchema = z.object({
   title: z.string().min(5, "Title must be at least 5 characters"),
   description: z.string().min(20, "Description must be at least 20 characters"),
+  language: z.string().min(1, "Language is required"),
   Category: z.array(z.string()).min(1, "At least one Category is required"),
   ladderIds: z.array(z.string()).min(1, "At least one Class Ladder is required"),
   speakerId: z.string().optional(),
@@ -72,7 +74,9 @@ const courseSchema = z.object({
   videos: z.array(z.object({
     id: z.string(),
     title: z.string(),
-    Thumbnail: z.string().optional()
+    Thumbnail: z.string().optional(),
+    type: z.string().optional(),
+    url: z.string().optional()
   })).min(1, "At least one video is required."),
   attendanceLinks: z.array(attendanceLinkSchema).optional(),
   resources: z.array(resourceSchema).optional(),
@@ -156,49 +160,55 @@ const SpeakerManager = ({ speakers, onSpeakersUpdate }: { speakers: Speaker[], o
     }
 
     return (
-        <div className="space-y-4">
-            <h4 className="font-medium">Existing Speakers</h4>
-            <ScrollArea className="h-48 border rounded-md">
-                {speakers.map(speaker => (
-                    <div key={speaker.id} className="flex items-center justify-between p-2 border-b">
-                        <div className="flex items-center gap-2">
-                           <Image src={speaker.photoURL} alt={speaker.name} width={32} height={32} className="rounded-full" />
-                           <span>{speaker.name}</span>
+        <DialogContent>
+            <DialogHeader>
+                <DialogTitle>Manage Speakers</DialogTitle>
+                <DialogDescription>Add or remove course speakers from the list.</DialogDescription>
+            </DialogHeader>
+            <div className="space-y-4">
+                <h4 className="font-medium">Existing Speakers</h4>
+                <ScrollArea className="h-48 border rounded-md">
+                    {speakers.map(speaker => (
+                        <div key={speaker.id} className="flex items-center justify-between p-2 border-b">
+                            <div className="flex items-center gap-2">
+                            <Image src={speaker.photoURL} alt={speaker.name} width={32} height={32} className="rounded-full" />
+                            <span>{speaker.name}</span>
+                            </div>
+                            <AlertDialog>
+                            <AlertDialogTrigger asChild>
+                                <Button variant="ghost" size="icon"><Trash className="h-4 w-4 text-destructive" /></Button>
+                            </AlertDialogTrigger>
+                            <AlertDialogContent>
+                                <AlertDialogHeader>
+                                <AlertDialogTitle>Are you sure?</AlertDialogTitle>
+                                <AlertDialogDescription>This will permanently delete the speaker "{speaker.name}".</AlertDialogDescription>
+                                </AlertDialogHeader>
+                                <AlertDialogFooter>
+                                <AlertDialogCancel>Cancel</AlertDialogCancel>
+                                <AlertDialogAction onClick={() => handleDeleteSpeaker(speaker)}>Delete</AlertDialogAction>
+                                </AlertDialogFooter>
+                            </AlertDialogContent>
+                            </AlertDialog>
                         </div>
-                        <AlertDialog>
-                          <AlertDialogTrigger asChild>
-                            <Button variant="ghost" size="icon"><Trash className="h-4 w-4 text-destructive" /></Button>
-                          </AlertDialogTrigger>
-                          <AlertDialogContent>
-                            <AlertDialogHeader>
-                              <AlertDialogTitle>Are you sure?</AlertDialogTitle>
-                              <AlertDialogDescription>This will permanently delete the speaker "{speaker.name}".</AlertDialogDescription>
-                            </AlertDialogHeader>
-                            <AlertDialogFooter>
-                              <AlertDialogCancel>Cancel</AlertDialogCancel>
-                              <AlertDialogAction onClick={() => handleDeleteSpeaker(speaker)}>Delete</AlertDialogAction>
-                            </AlertDialogFooter>
-                          </AlertDialogContent>
-                        </AlertDialog>
+                    ))}
+                </ScrollArea>
+                <form onSubmit={handleAddSpeaker} className="space-y-4 pt-4 border-t">
+                    <h4 className="font-medium">Add New Speaker</h4>
+                    <div className="space-y-2">
+                        <Label htmlFor="new-speaker-name">Name</Label>
+                        <Input id="new-speaker-name" value={newSpeakerName} onChange={e => setNewSpeakerName(e.target.value)} disabled={isSubmitting} />
                     </div>
-                ))}
-            </ScrollArea>
-             <form onSubmit={handleAddSpeaker} className="space-y-4 pt-4 border-t">
-                 <h4 className="font-medium">Add New Speaker</h4>
-                 <div className="space-y-2">
-                    <Label htmlFor="new-speaker-name">Name</Label>
-                    <Input id="new-speaker-name" value={newSpeakerName} onChange={e => setNewSpeakerName(e.target.value)} disabled={isSubmitting} />
-                 </div>
-                 <div className="space-y-2">
-                    <Label htmlFor="new-speaker-photo">Photo</Label>
-                    <Input id="new-speaker-photo" type="file" accept="image/*" onChange={e => setNewSpeakerPhoto(e.target.files?.[0] || null)} disabled={isSubmitting} />
-                 </div>
-                 <Button type="submit" disabled={isSubmitting}>
-                    {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                    Add Speaker
-                 </Button>
-            </form>
-        </div>
+                    <div className="space-y-2">
+                        <Label htmlFor="new-speaker-photo">Photo</Label>
+                        <Input id="new-speaker-photo" type="file" accept="image/*" onChange={e => setNewSpeakerPhoto(e.target.files?.[0] || null)} disabled={isSubmitting} />
+                    </div>
+                    <Button type="submit" disabled={isSubmitting}>
+                        {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                        Add Speaker
+                    </Button>
+                </form>
+            </div>
+        </DialogContent>
     );
 };
 
@@ -214,6 +224,8 @@ export default function AddCourseForm({ allCourses, onCourseUpdated }: AddCourse
     const [categories, setCategories] = useState<StoredItem[]>([]);
     const [newCategory, setNewCategory] = useState('');
     const [isCategoryDialogOpen, setIsCategoryDialogOpen] = useState(false);
+    
+    const [languages, setLanguages] = useState<StoredItem[]>([]);
 
     const [levels, setLevels] = useState<Ladder[]>([]);
     const [speakers, setSpeakers] = useState<Speaker[]>([]);
@@ -225,6 +237,8 @@ export default function AddCourseForm({ allCourses, onCourseUpdated }: AddCourse
     const [isDocLibraryOpen, setIsDocLibraryOpen] = useState(false);
     const [isLogoLibraryOpen, setIsLogoLibraryOpen] = useState(false);
     const [isCertLibraryOpen, setIsCertLibraryOpen] = useState(false);
+    const [youTubeUrl, setYouTubeUrl] = useState('');
+    const [isYouTubeDialogOpen, setIsYouTubeDialogOpen] = useState(false);
 
     const db = getFirebaseFirestore();
     const storage = getFirebaseStorage();
@@ -248,11 +262,12 @@ export default function AddCourseForm({ allCourses, onCourseUpdated }: AddCourse
         fetchItems('courseCategories', setCategories);
         fetchItems('courseLevels', setLevels, 'order');
         fetchItems('speakers', setSpeakers, 'name');
+        fetchItems('languages', setLanguages, 'name');
     }, [fetchItems]);
     
      const fetchLibraryVideos = useCallback(async () => {
         try {
-            const q = query(collection(db, 'Contents'), where("Type", "==", "video"));
+            const q = query(collection(db, 'Contents'), where("Type", "in", ["video", "youtube", "googledrive"]));
             const querySnapshot = await getDocs(q);
             const videosList = querySnapshot.docs
                 .map(doc => ({ id: doc.id, ...doc.data() } as VideoType))
@@ -294,6 +309,7 @@ export default function AddCourseForm({ allCourses, onCourseUpdated }: AddCourse
         defaultValues: {
             title: '',
             description: '',
+            language: '',
             Category: [],
             ladderIds: [],
             speakerId: '',
@@ -352,7 +368,9 @@ export default function AddCourseForm({ allCourses, onCourseUpdated }: AddCourse
                         return {
                             id,
                             title: video?.title || 'Video',
-                            Thumbnail: video?.Thumbnail
+                            Thumbnail: video?.Thumbnail,
+                            type: video?.type,
+                            url: video?.url,
                         };
                     });
                 };
@@ -384,6 +402,7 @@ export default function AddCourseForm({ allCourses, onCourseUpdated }: AddCourse
                 reset({
                   title: isDuplicateMode ? `${courseData.title} (Copy)` : courseData.title,
                   description: courseData.description,
+                  language: courseData.language || '',
                   Category: Array.isArray(courseData.Category) ? courseData.Category : (courseData.Category ? [courseData.Category] : []),
                   ladderIds: courseData.ladderIds || [],
                   speakerId: courseData.speakerId || '',
@@ -408,7 +427,7 @@ export default function AddCourseForm({ allCourses, onCourseUpdated }: AddCourse
         }
     }, [editCourseId, reset, db, isDuplicateMode]);
 
-    const { fields: videoFields, replace: replaceVideos, remove: removeVideo } = useFieldArray({
+    const { fields: videoFields, append: appendVideo, remove: removeVideo, replace: replaceVideos } = useFieldArray({
         control,
         name: "videos"
     });
@@ -438,10 +457,75 @@ export default function AddCourseForm({ allCourses, onCourseUpdated }: AddCourse
     }
 
     const handleSelectVideos = (selectedVideos: VideoType[]) => {
-        const newVideos = selectedVideos.map(v => ({ id: v.id, title: v.title, Thumbnail: v.Thumbnail }));
+        const newVideos = selectedVideos.map(v => ({
+            id: v.id,
+            title: v.title,
+            Thumbnail: v.Thumbnail,
+            type: v.type || 'video',
+            url: v.url
+        }));
         replaceVideos(newVideos);
         setIsVideoLibraryOpen(false);
     }
+    
+    const handleAddYouTubeVideo = async () => {
+        if (!youTubeUrl) {
+            toast({ variant: 'destructive', title: 'Please enter a YouTube URL' });
+            return;
+        }
+    
+        setIsSubmitting(true);
+        try {
+            // Fetch video title from oEmbed endpoint
+            const response = await fetch(`https://www.youtube.com/oembed?url=${encodeURIComponent(youTubeUrl)}&format=json`);
+            if (!response.ok) {
+                throw new Error('Could not fetch video details. Check the URL.');
+            }
+            const videoData = await response.json();
+            const videoTitle = videoData.title || 'YouTube Video';
+    
+            const docRef = await addDoc(collection(db, 'Contents'), {
+                title: videoTitle,
+                url: youTubeUrl,
+                Type: "youtube",
+                status: 'published',
+                Thumbnail: videoData.thumbnail_url,
+                createdAt: serverTimestamp(),
+                uploaderId: user?.uid,
+            });
+    
+            const newVideo: VideoType = {
+                id: docRef.id,
+                title: videoTitle,
+                url: youTubeUrl,
+                Thumbnail: videoData.thumbnail_url || '',
+                duration: 0, // oEmbed doesn't provide duration
+                path: '',
+                thumbnailPath: '',
+                createdAt: new Date(),
+                type: 'youtube',
+            };
+    
+            appendVideo({
+                id: newVideo.id,
+                title: newVideo.title,
+                Thumbnail: newVideo.Thumbnail,
+                type: 'youtube',
+                url: newVideo.url
+            });
+    
+            toast({ title: "YouTube video added to course" });
+            fetchLibraryVideos(); // Refresh library
+            setYouTubeUrl('');
+            setIsYouTubeDialogOpen(false);
+        } catch (error: any) {
+            console.error("Error adding YouTube video:", error);
+            toast({ variant: 'destructive', title: "Failed to add YouTube video", description: error.message });
+        } finally {
+            setIsSubmitting(false);
+        }
+    };
+
 
     const handleSelectDocuments = (selectedDocs: any[]) => {
         const newResources = selectedDocs.map(d => ({
@@ -530,6 +614,7 @@ export default function AddCourseForm({ allCourses, onCourseUpdated }: AddCourse
             const courseData: Partial<Course> = {
                 title: data.title,
                 description: data.description,
+                language: data.language,
                 Category: data.Category,
                 ladders: ladderNames,
                 ladderIds: data.ladderIds,
@@ -621,7 +706,7 @@ export default function AddCourseForm({ allCourses, onCourseUpdated }: AddCourse
 
                     <Card>
                         <CardHeader>
-                            <CardTitle>Details, Status & Priority</CardTitle>
+                            <CardTitle>Details, Status &amp; Priority</CardTitle>
                         </CardHeader>
                         <CardContent className="space-y-4">
                              <div className="flex items-center space-x-2">
@@ -658,6 +743,28 @@ export default function AddCourseForm({ allCourses, onCourseUpdated }: AddCourse
                             </div>
                             <div className="space-y-4">
                                 <div>
+                                  <Label>Language</Label>
+                                  <Controller
+                                    name="language"
+                                    control={control}
+                                    render={({ field }) => (
+                                      <Select onValueChange={field.onChange} value={field.value}>
+                                        <SelectTrigger>
+                                          <SelectValue placeholder="Select a language" />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                          {languages.map((lang) => (
+                                            <SelectItem key={lang.id} value={lang.name}>
+                                              {lang.name}
+                                            </SelectItem>
+                                          ))}
+                                        </SelectContent>
+                                      </Select>
+                                    )}
+                                  />
+                                  {errors.language && <p className="text-sm text-destructive">{errors.language.message}</p>}
+                                </div>
+                                <div>
                                     <Label>Category</Label>
                                     <Controller
                                         name="Category"
@@ -693,6 +800,7 @@ export default function AddCourseForm({ allCourses, onCourseUpdated }: AddCourse
                                                     <DialogContent>
                                                         <DialogHeader>
                                                             <DialogTitle>Manage Categories</DialogTitle>
+                                                            <DialogDescription>Add new course categories.</DialogDescription>
                                                         </DialogHeader>
                                                         <div className="space-y-2">
                                                             <Label htmlFor="new-category">New Category Name</Label>
@@ -790,12 +898,7 @@ export default function AddCourseForm({ allCourses, onCourseUpdated }: AddCourse
                                             <DialogTrigger asChild>
                                                 <Button type="button" variant="outline" size="sm">Manage</Button>
                                             </DialogTrigger>
-                                            <DialogContent>
-                                                <DialogHeader>
-                                                    <DialogTitle>Manage Speakers</DialogTitle>
-                                                </DialogHeader>
-                                                <SpeakerManager speakers={speakers} onSpeakersUpdate={() => fetchItems('speakers', setSpeakers, 'name')} />
-                                            </DialogContent>
+                                            <SpeakerManager speakers={speakers} onSpeakersUpdate={() => fetchItems('speakers', setSpeakers, 'name')} />
                                         </Dialog>
                                     </div>
                                     {errors.speakerId && <p className="text-sm text-destructive">{errors.speakerId.message}</p>}
@@ -817,7 +920,17 @@ export default function AddCourseForm({ allCourses, onCourseUpdated }: AddCourse
                                     <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-4">
                                         {videoFields.map((field, index) => (
                                             <div key={field.id} className="group relative aspect-video">
-                                                <Image src={field.Thumbnail || "https://placehold.co/600x400.png"} alt={field.title} fill style={{objectFit:"cover"}} className="rounded-md" />
+                                                {field.type === 'youtube' ? (
+                                                    <div className="w-full h-full bg-black rounded-md flex items-center justify-center">
+                                                        <Youtube className="h-12 w-12 text-red-500" />
+                                                    </div>
+                                                ) : field.type === 'googledrive' ? (
+                                                     <div className="w-full h-full bg-black rounded-md flex items-center justify-center">
+                                                        <FolderKanban className="h-12 w-12 text-blue-500" />
+                                                    </div>
+                                                ) : (
+                                                    <Image src={field.Thumbnail || "https://placehold.co/600x400.png"} alt={field.title} fill style={{objectFit:"cover"}} className="rounded-md" />
+                                                )}
                                                 <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
                                                     <Button type="button" variant="destructive" size="icon" onClick={() => removeVideo(index)}>
                                                         <Trash className="h-4 w-4" />
@@ -827,21 +940,48 @@ export default function AddCourseForm({ allCourses, onCourseUpdated }: AddCourse
                                         ))}
                                     </div>
                                 )}
-                                <Dialog open={isVideoLibraryOpen} onOpenChange={setIsVideoLibraryOpen}>
-                                    <DialogTrigger asChild>
-                                        <Button type="button" variant="outline" className="w-full">
-                                            <Library className="mr-2 h-4 w-4" />
-                                            {videoFields.length > 0 ? 'Edit Videos' : 'Select Videos from Library'}
-                                        </Button>
-                                    </DialogTrigger>
-                                    <DialogContent className="max-w-7xl h-[90vh] flex flex-col p-0">
-                                        <VideoLibrary 
-                                            videos={libraryVideos}
-                                            onSelectVideos={handleSelectVideos} 
-                                            initialSelectedVideos={videoFields} 
-                                        />
-                                    </DialogContent>
-                                </Dialog>
+                                <div className="flex gap-2">
+                                    <Dialog open={isVideoLibraryOpen} onOpenChange={setIsVideoLibraryOpen}>
+                                        <DialogTrigger asChild>
+                                            <Button type="button" variant="outline" className="w-full">
+                                                <Library className="mr-2 h-4 w-4" />
+                                                {videoFields.length > 0 ? 'Edit Videos' : 'Select Videos from Library'}
+                                            </Button>
+                                        </DialogTrigger>
+                                        <DialogContent className="max-w-7xl h-[90vh] flex flex-col p-0">
+                                            <VideoLibrary 
+                                                videos={libraryVideos}
+                                                onSelectVideos={handleSelectVideos} 
+                                                initialSelectedVideos={videoFields} 
+                                            />
+                                        </DialogContent>
+                                    </Dialog>
+                                     <Dialog open={isYouTubeDialogOpen} onOpenChange={setIsYouTubeDialogOpen}>
+                                        <DialogTrigger asChild>
+                                            <Button type="button" variant="outline" className="w-full">
+                                                <Youtube className="mr-2 h-4 w-4" />
+                                                Add YouTube Video
+                                            </Button>
+                                        </DialogTrigger>
+                                        <DialogContent>
+                                            <DialogHeader>
+                                                <DialogTitle>Add YouTube Video</DialogTitle>
+                                                <DialogDescription>Paste the full YouTube video URL below.</DialogDescription>
+                                            </DialogHeader>
+                                            <div className="space-y-2">
+                                                <Label htmlFor="youtube-url">YouTube URL</Label>
+                                                <Input id="youtube-url" value={youTubeUrl} onChange={e => setYouTubeUrl(e.target.value)} placeholder="https://www.youtube.com/watch?v=..." />
+                                            </div>
+                                            <DialogFooter>
+                                                <Button type="button" variant="secondary" onClick={() => setIsYouTubeDialogOpen(false)}>Cancel</Button>
+                                                <Button type="button" onClick={handleAddYouTubeVideo} disabled={isSubmitting}>
+                                                    {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                                                    Add to Course
+                                                </Button>
+                                            </DialogFooter>
+                                        </DialogContent>
+                                    </Dialog>
+                                </div>
                             </div>
                             {errors.videos && <p className="text-sm text-destructive mt-2">{errors.videos.message || errors.videos.root?.message}</p>}
                         </CardContent>
@@ -920,9 +1060,7 @@ export default function AddCourseForm({ allCourses, onCourseUpdated }: AddCourse
                                                     Select Documents
                                                 </Button>
                                             </DialogTrigger>
-                                            <DialogContent className="max-w-4xl h-[90vh] flex flex-col p-0">
-                                                <DocumentLibrary onSelectDocuments={handleSelectDocuments} initialSelectedDocs={resourceFields} />
-                                            </DialogContent>
+                                            <DocumentLibrary onSelectDocuments={handleSelectDocuments} initialSelectedDocs={resourceFields} />
                                         </Dialog>
                                     </div>
                                 </div>
@@ -956,6 +1094,10 @@ export default function AddCourseForm({ allCourses, onCourseUpdated }: AddCourse
                                                 <Button type="button" variant="outline">Select</Button>
                                             </DialogTrigger>
                                             <DialogContent className="max-w-4xl h-[90vh] flex flex-col p-0">
+                                                <DialogHeader className="p-6 pb-2">
+                                                    <DialogTitle>Certificate Background Library</DialogTitle>
+                                                    <DialogDescription>Select a background for the course certificate.</DialogDescription>
+                                                </DialogHeader>
                                                 <CertificateBackgroundLibrary
                                                 onSelectCertificate={handleSelectCertificate} 
                                                 selectedCertificateUrl={watchCertificateUrl}
@@ -975,6 +1117,10 @@ export default function AddCourseForm({ allCourses, onCourseUpdated }: AddCourse
                                                 <Button type="button" variant="outline">Select</Button>
                                             </DialogTrigger>
                                             <DialogContent className="max-w-4xl h-[90vh] flex flex-col p-0">
+                                                <DialogHeader className="p-6 pb-2">
+                                                    <DialogTitle>Logo Library</DialogTitle>
+                                                    <DialogDescription>Select a logo to appear on the certificate.</DialogDescription>
+                                                </DialogHeader>
                                                 <LogoLibrary 
                                                 onSelectLogo={handleSelectLogo}
                                                 selectedLogoUrl={watchLogoUrl}

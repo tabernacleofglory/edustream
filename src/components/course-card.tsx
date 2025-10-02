@@ -1,3 +1,4 @@
+
 "use client";
 
 import Link from "next/link";
@@ -146,6 +147,12 @@ export function CourseCard({
       });
       return;
     }
+    
+    // If there are no videos, don't enroll, go to the course page
+    if (publishedVideoCount === 0) {
+        router.push(`/courses`);
+        return;
+    }
 
     setIsEnrolling(true);
     try {
@@ -272,7 +279,8 @@ export function CourseCard({
 
   const resumeTargetId = course.lastWatchedVideoId || firstPublishedVideoId || "";
   const canResume = !!resumeTargetId;
-  const resumeLink = `/courses/${course.id}/video/${resumeTargetId}`;
+  const resumeLink = canResume ? `/courses/${course.id}/video/${resumeTargetId}` : `/courses`;
+
 
   return (
     <>
@@ -431,7 +439,7 @@ export function CourseCard({
                     <Progress value={progressPercentage} className="w-full h-2 [&>div]:bg-gradient-to-r from-pink-500 to-orange-400" />
                     <div className="flex w-full gap-2 mt-4">
                       <Button asChild className="flex-1" disabled={!canResume}>
-                        <Link href={canResume ? resumeLink : "#"}>
+                        <Link href={resumeLink}>
                           <PlayCircle className="mr-2 h-4 w-4" />
                           Resume
                         </Link>

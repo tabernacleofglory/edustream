@@ -1,6 +1,7 @@
+
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import {
   Dialog,
@@ -27,17 +28,18 @@ import { useAuth } from "@/hooks/use-auth";
 
 /* -------------------- Local helpers (no external deps) -------------------- */
 
-// Lightweight debounce hook (replaces 'use-debounce' package)
-function useDebounce<T>(value: T, delay = 300): [T] {
-  const [debounced, setDebounced] = useState(value);
+// Lightweight debounce hook
+function useDebounce<T>(value: T, delay = 200): T {
+  const [debouncedValue, setDebouncedValue] = useState<T>(value);
   useEffect(() => {
-    const t = setTimeout(() => setDebounced(value), delay);
-    return () => clearTimeout(t);
+    const timer = setTimeout(() => setDebouncedValue(value), delay);
+    return () => clearTimeout(timer);
   }, [value, delay]);
-  return [debounced];
+  return debouncedValue;
 }
 
-// Local DocType (since '@/lib/types' doesn't export it)
+
+// Local DocType
 type DocType = {
   id: string;
   title?: string;
@@ -151,7 +153,7 @@ function localSearch(
         id: d.id,
         type: "document",
         title: title || "Untitled document",
-        url: `/docs/${d.id}`,
+        url: `/documentation#${d.id}`,
         score,
       });
     }
@@ -169,7 +171,7 @@ function localSearch(
         id: u.id,
         type: "user",
         title: name || email || "User",
-        url: `/admin/users/${u.id}`,
+        url: `/admin/users`, // Link to main user page for now
         score,
       });
     }
@@ -184,7 +186,7 @@ function localSearch(
 export default function GlobalSearch() {
   const [isOpen, setIsOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
-  const [debouncedQuery] = useDebounce(searchQuery, 300);
+  const debouncedQuery = useDebounce(searchQuery, 200);
   const [results, setResults] = useState<LocalResult[]>([]);
   const [isLoading, setIsLoading] = useState(false);
 
@@ -201,24 +203,21 @@ export default function GlobalSearch() {
   } | null>(null);
 
   // Preload searchable data
-  useEffect(() => {
-    const fetchAllData = async () => {
-      try {
-        // Courses
+  const preloadData = useCallback(async () => {
+    if (searchableData) return;
+    setIsLoading(true);
+    try {
         const coursesQuery = firestoreQuery(collection(db, "courses"));
         const coursesSnapshot = await getDocs(coursesQuery);
         const courses = coursesSnapshot.docs.map((doc) =>
           convertTimestamps({ id: doc.id, ...(doc.data() as Course) })
         );
 
-        // Videos for those courses (chunked: Firestore 'in' max 10 IDs)
         const allVideoIds = courses.flatMap((course) => course.videos || []);
-        let videos:
-          | { id: string; title: any; courseId: any; courseTitle: any }[]
-          | [] = [];
+        let videos: { id: string; title: any; courseId: any; courseTitle: any }[] = [];
 
         if (allVideoIds.length > 0) {
-          const chunkSize = 10;
+          const chunkSize = 30;
           const chunks: string[][] = [];
           for (let i = 0; i < allVideoIds.length; i += chunkSize) {
             chunks.push(allVideoIds.slice(i, i + chunkSize));
@@ -253,20 +252,15 @@ export default function GlobalSearch() {
               }
               return null;
             })
-            .filter(
-              (v): v is { id: string; title: any; courseId: any; courseTitle: any } =>
-                v !== null
-            );
+            .filter((v): v is { id: string; title: any; courseId: any; courseTitle: any } => v !== null);
         }
 
-        // Documentation
         const docsQuery = firestoreQuery(collection(db, "documentation"));
         const docsSnapshot = await getDocs(docsQuery);
         const documentation = docsSnapshot.docs.map((doc) =>
           convertTimestamps({ id: doc.id, ...(doc.data() as DocType) })
         );
 
-        // Users (permission-gated)
         let users: User[] = [];
         if (hasPermission("manageUsers")) {
           const usersQuery = firestoreQuery(collection(db, "users"));
@@ -276,79 +270,70 @@ export default function GlobalSearch() {
           ) as any;
         }
 
-        setSearchableData({
-          courses,
-          videos: videos as any[],
-          documentation,
-          users,
-        });
-      } catch (error) {
+        setSearchableData({ courses, videos, documentation, users });
+    } catch (error) {
         console.error("Failed to fetch searchable data:", error);
-      }
-    };
-
-    fetchAllData();
-  }, [db, hasPermission]);
+    } finally {
+        setIsLoading(false);
+    }
+  }, [db, hasPermission, searchableData]);
 
   // Run local search
   useEffect(() => {
-    if (debouncedQuery.length > 2 && searchableData) {
-      setIsLoading(true);
-      try {
-        const res = localSearch(debouncedQuery, searchableData);
-        setResults(res);
-      } finally {
-        setIsLoading(false);
-      }
+    if (debouncedQuery.length > 1 && searchableData) {
+      const res = localSearch(debouncedQuery, searchableData);
+      setResults(res);
     } else {
       setResults([]);
     }
   }, [debouncedQuery, searchableData]);
+  
+  const handleOpenChange = (open: boolean) => {
+    setIsOpen(open);
+    if(open && !searchableData) {
+        preloadData();
+    }
+  }
 
   // ⌘K / Ctrl+K toggle
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === "k" && (e.metaKey || e.ctrlKey)) {
         e.preventDefault();
-        setIsOpen((open) => !open);
+        handleOpenChange(!isOpen);
       }
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, []);
+  }, [isOpen, handleOpenChange]);
 
   const handleSelectResult = (url: string) => {
     router.push(url);
-    setIsOpen(false);
+    handleOpenChange(false);
     setSearchQuery("");
   };
 
   const getIcon = (type: ResultType) => {
     switch (type) {
-      case "course":
-        return <BookOpen className="h-5 w-5 text-muted-foreground" />;
-      case "video":
-        return <Video className="h-5 w-5 text-muted-foreground" />;
-      case "document":
-        return <FileText className="h-5 w-5 text-muted-foreground" />;
-      case "user":
-        return <Users className="h-5 w-5 text-muted-foreground" />;
-      default:
-        return null;
+      case "course": return <BookOpen className="h-5 w-5 text-muted-foreground" />;
+      case "video": return <Video className="h-5 w-5 text-muted-foreground" />;
+      case "document": return <FileText className="h-5 w-5 text-muted-foreground" />;
+      case "user": return <Users className="h-5 w-5 text-muted-foreground" />;
+      default: return null;
     }
   };
 
   return (
     <>
-      {useIsMobile() ? (
-        <Button variant="ghost" size="icon" onClick={() => setIsOpen(true)}>
+      {isMobile ? (
+        <Button variant="ghost" size="icon" onClick={() => handleOpenChange(true)}>
           <Search className="h-5 w-5" />
         </Button>
       ) : (
         <Button
           variant="outline"
           className="relative w-full justify-start text-muted-foreground"
-          onClick={() => setIsOpen(true)}
+          onClick={() => handleOpenChange(true)}
         >
           <Search className="h-4 w-4 mr-2" />
           Search...
@@ -358,7 +343,7 @@ export default function GlobalSearch() {
         </Button>
       )}
 
-      <Dialog open={isOpen} onOpenChange={setIsOpen}>
+      <Dialog open={isOpen} onOpenChange={handleOpenChange}>
         <DialogContent className="sm:max-w-2xl p-0">
           <DialogHeader className="sr-only">
             <DialogTitle>Global Search</DialogTitle>
@@ -372,18 +357,10 @@ export default function GlobalSearch() {
             <Input
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Search for courses, videos, documents..."
+              placeholder="Search courses, videos, docs, users..."
               className="flex h-12 w-full rounded-md bg-transparent py-3 text-sm outline-none border-0 focus-visible:ring-0 focus-visible:ring-offset-0 disabled:cursor-not-allowed disabled:opacity-50"
             />
             {isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={() => setIsOpen(false)}
-              className="ml-2"
-            >
-              <X className="h-4 w-4" />
-            </Button>
           </div>
 
           <div className="p-2">
@@ -407,7 +384,7 @@ export default function GlobalSearch() {
               </div>
             ) : (
               !isLoading &&
-              debouncedQuery.length > 2 && (
+              debouncedQuery.length > 1 && (
                 <div className="text-center p-8 text-muted-foreground">
                   No results found for "{debouncedQuery}".
                 </div>
@@ -418,6 +395,11 @@ export default function GlobalSearch() {
                 Start typing to search.
               </div>
             )}
+             {isLoading && (
+                 <div className="text-center p-8 text-muted-foreground">
+                    <Loader2 className="h-6 w-6 animate-spin mx-auto" />
+                </div>
+             )}
           </div>
         </DialogContent>
       </Dialog>

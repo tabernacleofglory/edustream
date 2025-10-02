@@ -1,7 +1,7 @@
 
 "use client";
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { useForm, Controller } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
@@ -10,7 +10,7 @@ import { RadioGroup, RadioGroupItem } from './ui/radio-group';
 import { Label } from './ui/label';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from './ui/card';
 import { Alert, AlertDescription, AlertTitle } from './ui/alert';
-import { CheckCircle2, XCircle, Trophy, FileQuestion, Loader2, Repeat } from 'lucide-react';
+import { CheckCircle2, XCircle, Trophy, FileQuestion, Loader2, Repeat, Clock } from 'lucide-react';
 import { useAuth } from '@/hooks/use-auth';
 import type { Quiz as QuizData, UserQuizResult, QuizQuestion, SiteSettings } from '@/lib/types';
 import { collection, addDoc, serverTimestamp, doc, getDoc } from 'firebase/firestore';
@@ -20,6 +20,7 @@ import Confetti from 'react-confetti';
 import { Textarea } from './ui/textarea';
 import { Checkbox } from './ui/checkbox';
 import { cn } from '@/lib/utils';
+import { Badge } from './ui/badge';
 
 
 interface QuizPanelProps {
@@ -64,6 +65,42 @@ export default function QuizPanel({ quizData, courseId, onQuizComplete }: QuizPa
   const [results, setResults] = useState<AnswerResult[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [passThreshold, setPassThreshold] = useState(70); // Default threshold
+  
+  const [timeLeft, setTimeLeft] = useState<number | null>(null);
+  const timerRef = useRef<NodeJS.Timeout | null>(null);
+
+  const shuffledQuestions = useMemo(() => {
+    if (quizData.shuffleQuestions) {
+        return [...(quizData.questions || [])].sort(() => Math.random() - 0.5);
+    }
+    return quizData.questions || [];
+  }, [quizData]);
+
+  const timeLimitInSeconds = useMemo(() => {
+    if (!quizData.timeLimitEnabled || !quizData.timeLimitPerQuestion) return null;
+    return (quizData.timeLimitPerQuestion || 0) * (quizData.questions?.length || 0) * 60;
+  }, [quizData]);
+  
+  useEffect(() => {
+    if (timeLimitInSeconds !== null && !submitted) {
+      setTimeLeft(timeLimitInSeconds);
+      timerRef.current = setInterval(() => {
+        setTimeLeft(prev => {
+          if (prev !== null && prev > 1) {
+            return prev - 1;
+          }
+          if (timerRef.current) clearInterval(timerRef.current);
+          handleSubmit(onSubmit)(); // Auto-submit when time is up
+          return 0;
+        });
+      }, 1000);
+    }
+    return () => {
+      if (timerRef.current) clearInterval(timerRef.current);
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [timeLimitInSeconds, submitted]);
+
 
   useEffect(() => {
     const fetchSettings = async () => {
@@ -82,7 +119,7 @@ export default function QuizPanel({ quizData, courseId, onQuizComplete }: QuizPa
 
   const quizSchema = createQuizSchema(quizData);
 
-  const { control, handleSubmit, formState: { errors }, reset } = useForm({
+  const { control, handleSubmit, formState: { errors }, reset, getValues } = useForm({
     resolver: zodResolver(quizSchema)
   });
 
@@ -91,7 +128,7 @@ export default function QuizPanel({ quizData, courseId, onQuizComplete }: QuizPa
     let correctAnswers = 0;
     const answerResults: AnswerResult[] = [];
 
-    (quizData.questions || []).forEach((q) => {
+    shuffledQuestions.forEach((q) => {
         const userAnswer = data[`question_${q.id}`];
         let isCorrect = false;
 
@@ -123,6 +160,7 @@ export default function QuizPanel({ quizData, courseId, onQuizComplete }: QuizPa
     setResults(answerResults);
     setPassed(hasPassed);
     setSubmitted(true);
+    if (timerRef.current) clearInterval(timerRef.current);
     
 
     if (user) {
@@ -156,8 +194,14 @@ export default function QuizPanel({ quizData, courseId, onQuizComplete }: QuizPa
     setResults([]);
     reset();
   };
+  
+  const formatTime = (seconds: number) => {
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${mins}:${secs < 10 ? '0' : ''}${secs}`;
+  }
 
-  if (!quizData.questions || quizData.questions.length === 0) {
+  if (!shuffledQuestions || shuffledQuestions.length === 0) {
     return (
       <div className="flex items-center justify-center h-full bg-muted">
         <p>This quiz has no questions yet.</p>
@@ -234,14 +278,22 @@ export default function QuizPanel({ quizData, courseId, onQuizComplete }: QuizPa
     <div className="p-4 md:p-8 h-full bg-background overflow-y-auto">
       <Card className="max-w-3xl mx-auto">
         <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <FileQuestion /> {quizData.title}
+          <CardTitle className="flex items-center justify-between">
+            <div className='flex items-center gap-2'>
+              <FileQuestion /> {quizData.title}
+            </div>
+            {timeLeft !== null && (
+                 <Badge variant={timeLeft < 60 ? 'destructive' : 'outline'} className="flex items-center gap-2">
+                    <Clock className="h-4 w-4" />
+                    <span>{formatTime(timeLeft)}</span>
+                </Badge>
+            )}
           </CardTitle>
           <CardDescription>Complete the quiz to finalize the course.</CardDescription>
         </CardHeader>
         <form onSubmit={handleSubmit(onSubmit)}>
           <CardContent className="space-y-6">
-            {(quizData.questions || []).map((q, index) => (
+            {shuffledQuestions.map((q, index) => (
               <div key={q.id}>
                 <p className="font-semibold mb-2">
                   {index + 1}. {q.questionText}

@@ -18,7 +18,7 @@ import { Label } from "@/components/ui/label";
 import { Logo } from "@/components/logo";
 import { useToast } from "@/hooks/use-toast";
 import { Loader2 } from "lucide-react";
-import { doc, setDoc, getDoc, collection, query, where, getDocs } from "firebase/firestore";
+import { doc, setDoc, getDoc, collection, query, where, getDocs, orderBy, limit } from "firebase/firestore";
 import type { Ladder } from "@/lib/types";
 
 const getDefaultLadderId = async (db: any): Promise<string | null> => {
@@ -40,7 +40,6 @@ const getDefaultLadderId = async (db: any): Promise<string | null> => {
 export default function SignupPage() {
     const router = useRouter();
     const { toast } = useToast();
-    const [fullName, setFullName] = useState("");
     const [email, setEmail] = useState("");
     const [password, setPassword] = useState("");
     const [isLoading, setIsLoading] = useState(false);
@@ -56,8 +55,10 @@ export default function SignupPage() {
             const userCredential = await createUserWithEmailAndPassword(auth, email, password);
             const user = userCredential.user;
             
+            const generatedDisplayName = email.split('@')[0];
+
             await updateProfile(user, {
-                displayName: fullName,
+                displayName: generatedDisplayName,
             });
 
             const userDocRef = doc(db, "users", user.uid);
@@ -66,8 +67,8 @@ export default function SignupPage() {
             await setDoc(userDocRef, {
                 uid: user.uid,
                 id: user.uid,
-                displayName: fullName,
-                fullName: fullName,
+                displayName: generatedDisplayName,
+                fullName: generatedDisplayName,
                 email: user.email,
                 photoURL: user.photoURL,
                 role: 'user',
@@ -80,9 +81,9 @@ export default function SignupPage() {
             
             toast({
                 title: "Account Created!",
-                description: "Welcome! Your profile is being set up.",
+                description: "Welcome! Please complete your profile.",
             });
-             router.push('/dashboard');
+             router.push('/settings');
         } catch (error: any) {
             toast({
                 variant: "destructive",
@@ -124,16 +125,17 @@ export default function SignupPage() {
                 });
                  toast({
                     title: "Account Created!",
-                    description: "Welcome!",
+                    description: "Welcome! Please complete your profile.",
                 });
+                 router.push('/settings');
             } else {
                  toast({
                     title: "Signed In!",
                     description: "Welcome back!",
                 });
+                 router.push('/dashboard');
             }
 
-            router.push('/dashboard');
         } catch (error: any) {
              toast({
                 variant: "destructive",
@@ -160,10 +162,6 @@ export default function SignupPage() {
         <CardContent>
           <form onSubmit={handleSignup} className="grid gap-4">
             <div className="grid gap-4">
-              <div className="grid gap-2">
-                <Label htmlFor="full-name">Full Name</Label>
-                <Input id="full-name" placeholder="John Doe" required value={fullName} onChange={(e) => setFullName(e.target.value)} disabled={isLoading || isGoogleLoading} />
-              </div>
               <div className="grid gap-2">
                 <Label htmlFor="email">Email</Label>
                 <Input id="email" type="email" placeholder="m@example.com" required value={email} onChange={(e) => setEmail(e.target.value)} disabled={isLoading || isGoogleLoading} />
