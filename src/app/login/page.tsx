@@ -3,7 +3,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { 
     GoogleAuthProvider, 
     sendSignInLinkToEmail, 
@@ -24,20 +24,22 @@ import { Loader2 } from "lucide-react";
 import React from "react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogTrigger } from "@/components/ui/dialog";
-import { doc, getDoc, setDoc, collection, query, where, getDocs, orderBy, limit } from "firebase/firestore";
+import { doc, getDoc, setDoc, collection, query, where, getDocs, orderBy, limit, serverTimestamp } from "firebase/firestore";
 
-const getDefaultLadderId = async (db: any): Promise<string | null> => {
+const getDefaultLadderId = async (db: any): Promise<{id: string, name: string} | null> => {
     const laddersRef = collection(db, "courseLevels");
     const q = query(laddersRef, where("name", "==", "New Member"), where("category", "==", "membership"));
     const querySnapshot = await getDocs(q);
     if (!querySnapshot.empty) {
-        return querySnapshot.docs[0].id;
+        const doc = querySnapshot.docs[0];
+        return { id: doc.id, name: doc.data().name };
     }
     // Fallback if "New Member" doesn't exist
     const fallbackQuery = query(laddersRef, orderBy("order"), limit(1));
     const fallbackSnapshot = await getDocs(fallbackQuery);
     if(!fallbackSnapshot.empty) {
-        return fallbackSnapshot.docs[0].id;
+        const doc = fallbackSnapshot.docs[0];
+        return { id: doc.id, name: doc.data().name };
     }
     return null;
 }
@@ -59,6 +61,31 @@ export default function LoginPage() {
     const auth = getFirebaseAuth();
     const db = getFirebaseFirestore();
     
+    const checkAndCreateUserDoc = useCallback(async (user: any) => {
+        const userDocRef = doc(db, "users", user.uid);
+        const userDoc = await getDoc(userDocRef);
+        if (!userDoc.exists()) {
+            const defaultLadder = await getDefaultLadderId(db);
+            await setDoc(userDocRef, {
+                uid: user.uid,
+                id: user.uid,
+                displayName: user.displayName || user.email?.split('@')[0],
+                fullName: user.displayName || user.email?.split('@')[0],
+                email: user.email,
+                photoURL: user.photoURL,
+                role: 'user',
+                charge: 'App User',
+                membershipStatus: 'Active',
+                classLadderId: defaultLadder?.id || null,
+                classLadder: defaultLadder?.name || 'New Member',
+                createdAt: serverTimestamp(),
+            });
+            return true; // Indicates new user
+        }
+        return false; // Indicates existing user
+    }, [db]);
+
+
     useEffect(() => {
         const handleSignInWithLink = async () => {
             if (isSignInWithEmailLink(auth, window.location.href)) {
@@ -72,28 +99,7 @@ export default function LoginPage() {
                         const result = await signInWithEmailLink(auth, emailFromStorage, window.location.href);
                         window.localStorage.removeItem('emailForSignIn');
                         
-                        const user = result.user;
-                        const userDocRef = doc(db, "users", user.uid);
-                        const userDoc = await getDoc(userDocRef);
-
-                        if (!userDoc.exists()) {
-                            // First time sign-in with email link
-                            const defaultLadderId = await getDefaultLadderId(db);
-                            await setDoc(userDocRef, {
-                                uid: user.uid,
-                                id: user.uid,
-                                displayName: user.displayName || user.email,
-                                fullName: user.displayName || user.email,
-                                email: user.email,
-                                photoURL: user.photoURL,
-                                role: 'user',
-                                charge: 'App User',
-                                membershipStatus: 'Active',
-                                classLadderId: defaultLadderId,
-                                classLadder: 'New Member',
-                                createdAt: new Date(),
-                            });
-                        }
+                        await checkAndCreateUserDoc(result.user);
                         
                         router.push('/dashboard');
                         router.refresh();
@@ -106,7 +112,7 @@ export default function LoginPage() {
             }
         };
         handleSignInWithLink();
-    }, [auth, router, db]);
+    }, [auth, router, db, checkAndCreateUserDoc]);
 
 
     const handleLogin = async (e: React.FormEvent) => {
@@ -168,27 +174,9 @@ export default function LoginPage() {
         const provider = new GoogleAuthProvider();
         try {
             const result = await signInWithPopup(auth, provider);
-            const user = result.user;
-            const userDocRef = doc(db, "users", user.uid);
-            const userDoc = await getDoc(userDocRef);
+            const isNewUser = await checkAndCreateUserDoc(result.user);
 
-            if (!userDoc.exists()) {
-                // First-time sign-in with Google, create their user document
-                const defaultLadderId = await getDefaultLadderId(db);
-                await setDoc(userDocRef, {
-                    uid: user.uid,
-                    id: user.uid,
-                    displayName: user.displayName,
-                    fullName: user.displayName,
-                    email: user.email,
-                    photoURL: user.photoURL,
-                    role: 'user',
-                    charge: 'App User',
-                    membershipStatus: 'Active',
-                    classLadderId: defaultLadderId,
-                    classLadder: 'New Member',
-                    createdAt: new Date(),
-                });
+            if (isNewUser) {
                 toast({ title: "Welcome!", description: "Your account has been created." });
             } else {
                  toast({ title: "Welcome back!" });

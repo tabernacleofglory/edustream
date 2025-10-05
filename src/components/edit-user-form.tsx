@@ -46,9 +46,9 @@ const profileSchema = z.object({
   classLadderId: z.string().optional(),
   role: z.string().optional(),
   membershipStatus: z.string().optional(),
-  maritalStatus: z.string().optional(),
-  ministry: z.string().optional(),
   charge: z.string().optional(),
+  gender: z.string().optional(),
+  ageRange: z.string().optional(),
 });
 
 type ProfileFormValues = z.infer<typeof profileSchema>;
@@ -95,14 +95,6 @@ export default function EditUserForm({ userToEdit, onUserUpdated }: EditUserForm
   
   const [statuses, setStatuses] = useState<StoredItem[]>([]);
   
-  const [maritalStatuses, setMaritalStatuses] = useState<StoredItem[]>([]);
-  const [isMaritalStatusDialogOpen, setIsMaritalStatusDialogOpen] = useState(false);
-  const [newMaritalStatusName, setNewMaritalStatusName] = useState("");
-
-  const [ministries, setMinistries] = useState<StoredItem[]>([]);
-  const [isMinistryDialogOpen, setIsMinistryDialogOpen] = useState(false);
-  const [newMinistryName, setNewMinistryName] = useState("");
-
   const [charges, setCharges] = useState<StoredItem[]>([]);
   const [isChargeDialogOpen, setIsChargeDialogOpen] = useState(false);
   const [newChargeName, setNewChargeName] = useState("");
@@ -128,9 +120,9 @@ export default function EditUserForm({ userToEdit, onUserUpdated }: EditUserForm
         classLadderId: userToEdit.classLadderId || "",
         role: userToEdit.role || "user",
         membershipStatus: userToEdit.membershipStatus || "free",
-        maritalStatus: userToEdit.maritalStatus || "",
-        ministry: userToEdit.ministry || "",
         charge: userToEdit.charge || "",
+        gender: userToEdit.gender || "",
+        ageRange: userToEdit.ageRange || "",
     }
   });
   
@@ -209,8 +201,6 @@ export default function EditUserForm({ userToEdit, onUserUpdated }: EditUserForm
     fetchCampuses();
     fetchItems('courseLevels', setLadders, 'order');
     fetchItems('membershipStatuses', setStatuses);
-    fetchItems('maritalStatuses', setMaritalStatuses);
-    fetchItems('ministries', setMinistries);
     fetchItems('charges', setCharges);
   }, [fetchCampuses, fetchItems]);
 
@@ -226,9 +216,9 @@ export default function EditUserForm({ userToEdit, onUserUpdated }: EditUserForm
         classLadderId: userToEdit.classLadderId || "",
         role: userToEdit.role || "user",
         membershipStatus: userToEdit.membershipStatus || "free",
-        maritalStatus: userToEdit.maritalStatus || "",
-        ministry: userToEdit.ministry || "",
         charge: userToEdit.charge || "",
+        gender: userToEdit.gender || "",
+        ageRange: userToEdit.ageRange || "",
       });
     }
   }, [userToEdit, reset]);
@@ -266,12 +256,6 @@ export default function EditUserForm({ userToEdit, onUserUpdated }: EditUserForm
         }
     };
 
-    const handleAddMaritalStatus = () => handleAddItem('maritalStatuses', newMaritalStatusName, setMaritalStatuses, 'maritalStatus', setNewMaritalStatusName);
-    const handleRemoveMaritalStatus = (id: string) => handleRemoveItem('maritalStatuses', id, setMaritalStatuses, watch('maritalStatus'), 'maritalStatus');
-
-    const handleAddMinistry = () => handleAddItem('ministries', newMinistryName, setMinistries, 'ministry', setNewMinistryName);
-    const handleRemoveMinistry = (id: string) => handleRemoveItem('ministries', id, setMinistries, watch('ministry'), 'ministry');
-
     const handleAddCharge = () => handleAddItem('charges', newChargeName, setCharges, 'charge', setNewChargeName);
     const handleRemoveCharge = (id: string) => handleRemoveItem('charges', id, setCharges, watch('charge'), 'charge');
 
@@ -295,9 +279,9 @@ export default function EditUserForm({ userToEdit, onUserUpdated }: EditUserForm
         classLadderId: data.classLadderId,
         role: data.role?.toLowerCase() as AppUser['role'],
         membershipStatus: data.membershipStatus,
-        maritalStatus: data.maritalStatus,
-        ministry: data.ministry,
         charge: data.charge,
+        gender: data.gender,
+        ageRange: data.ageRange,
       };
 
       await updateDoc(userDocRef, firestoreData);
@@ -478,6 +462,47 @@ export default function EditUserForm({ userToEdit, onUserUpdated }: EditUserForm
             </p>
             )}
         </div>
+         <div className="space-y-2">
+            <Label>Gender</Label>
+                <Controller
+                name="gender"
+                control={control}
+                render={({ field }) => (
+                    <Select onValueChange={field.onChange} value={field.value} disabled={isSubmitting}>
+                        <SelectTrigger><SelectValue placeholder="Select gender" /></SelectTrigger>
+                        <SelectContent>
+                            <SelectItem value="male">Male</SelectItem>
+                            <SelectItem value="female">Female</SelectItem>
+                            <SelectItem value="other">Other</SelectItem>
+                            <SelectItem value="prefer-not-to-say">Prefer not to say</SelectItem>
+                        </SelectContent>
+                    </Select>
+                )}
+            />
+             {errors.gender && <p className="text-sm text-destructive">{errors.gender.message}</p>}
+        </div>
+        <div className="space-y-2">
+            <Label>Age Range</Label>
+            <Controller
+                name="ageRange"
+                control={control}
+                render={({ field }) => (
+                    <Select onValueChange={field.onChange} value={field.value} disabled={isSubmitting}>
+                        <SelectTrigger><SelectValue placeholder="Select age range" /></SelectTrigger>
+                        <SelectContent>
+                            <SelectItem value="18-24">18-24</SelectItem>
+                            <SelectItem value="25-34">25-34</SelectItem>
+                            <SelectItem value="35-44">35-44</SelectItem>
+                            <SelectItem value="45-54">45-54</SelectItem>
+                            <SelectItem value="55-64">55-64</SelectItem>
+                            <SelectItem value="65+">65+</SelectItem>
+                            <SelectItem value="prefer-not-to-say">Prefer not to say</SelectItem>
+                        </SelectContent>
+                    </Select>
+                )}
+            />
+            {errors.ageRange && <p className="text-sm text-destructive">{errors.ageRange.message}</p>}
+        </div>
         <div className="space-y-2">
             <Label htmlFor="phoneNumber">Phone Number</Label>
             <Input
@@ -558,8 +583,6 @@ export default function EditUserForm({ userToEdit, onUserUpdated }: EditUserForm
         </div>
 
         {renderField('charge', 'Charge', charges, handleAddCharge, handleRemoveCharge, newChargeName, setNewChargeName, isChargeDialogOpen, setIsChargeDialogOpen)}
-        {renderField('ministry', 'Ministry', ministries, handleAddMinistry, handleRemoveMinistry, newMinistryName, setNewMinistryName, isMinistryDialogOpen, setIsMinistryDialogOpen)}
-        {renderField('maritalStatus', 'Marital Status', maritalStatuses, handleAddMaritalStatus, handleRemoveMaritalStatus, newMaritalStatusName, setNewMaritalStatusName, isMaritalStatusDialogOpen, setIsMaritalStatusDialogOpen)}
         
         {isCurrentUserAdmin && renderField('role', 'Role', roles, () => {}, () => {}, '', () => {}, isChargeDialogOpen, setIsChargeDialogOpen)}
         {isCurrentUserAdmin && renderField('membershipStatus', 'Membership Status', statuses, () => {}, () => {}, '', () => {}, isChargeDialogOpen, setIsChargeDialogOpen)}
@@ -575,3 +598,5 @@ export default function EditUserForm({ userToEdit, onUserUpdated }: EditUserForm
     </form>
   );
 }
+
+    

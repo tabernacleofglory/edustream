@@ -3,7 +3,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useState, useEffect } from "react";
+import { useState, useCallback } from "react";
 import { 
     createUserWithEmailAndPassword, 
     GoogleAuthProvider, 
@@ -18,21 +18,22 @@ import { Label } from "@/components/ui/label";
 import { Logo } from "@/components/logo";
 import { useToast } from "@/hooks/use-toast";
 import { Loader2 } from "lucide-react";
-import { doc, setDoc, getDoc, collection, query, where, getDocs, orderBy, limit } from "firebase/firestore";
-import type { Ladder } from "@/lib/types";
+import { doc, setDoc, getDoc, collection, query, where, getDocs, orderBy, limit, serverTimestamp } from "firebase/firestore";
 
-const getDefaultLadderId = async (db: any): Promise<string | null> => {
+const getDefaultLadderId = async (db: any): Promise<{id: string, name: string} | null> => {
     const laddersRef = collection(db, "courseLevels");
     const q = query(laddersRef, where("name", "==", "New Member"), where("category", "==", "membership"));
     const querySnapshot = await getDocs(q);
     if (!querySnapshot.empty) {
-        return querySnapshot.docs[0].id;
+        const doc = querySnapshot.docs[0];
+        return { id: doc.id, name: doc.data().name };
     }
     // Fallback if "New Member" doesn't exist
     const fallbackQuery = query(laddersRef, orderBy("order"), limit(1));
     const fallbackSnapshot = await getDocs(fallbackQuery);
     if(!fallbackSnapshot.empty) {
-        return fallbackSnapshot.docs[0].id;
+        const doc = fallbackSnapshot.docs[0];
+        return { id: doc.id, name: doc.data().name };
     }
     return null;
 }
@@ -46,6 +47,31 @@ export default function SignupPage() {
     const [isGoogleLoading, setIsGoogleLoading] = useState(false);
     const auth = getFirebaseAuth();
     const db = getFirebaseFirestore();
+
+    const checkAndCreateUserDoc = useCallback(async (user: any) => {
+        const userDocRef = doc(db, "users", user.uid);
+        const userDoc = await getDoc(userDocRef);
+        if (!userDoc.exists()) {
+            const defaultLadder = await getDefaultLadderId(db);
+            await setDoc(userDocRef, {
+                uid: user.uid,
+                id: user.uid,
+                displayName: user.displayName || user.email?.split('@')[0],
+                fullName: user.displayName || user.email?.split('@')[0],
+                email: user.email,
+                photoURL: user.photoURL,
+                role: 'user',
+                charge: 'App User',
+                membershipStatus: 'Active',
+                classLadderId: defaultLadder?.id || null,
+                classLadder: defaultLadder?.name || 'New Member',
+                createdAt: serverTimestamp(),
+            });
+            return true; // Indicates new user
+        }
+        return false; // Indicates existing user
+    }, [db]);
+
 
     const handleSignup = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -61,23 +87,7 @@ export default function SignupPage() {
                 displayName: generatedDisplayName,
             });
 
-            const userDocRef = doc(db, "users", user.uid);
-            const defaultLadderId = await getDefaultLadderId(db);
-
-            await setDoc(userDocRef, {
-                uid: user.uid,
-                id: user.uid,
-                displayName: generatedDisplayName,
-                fullName: generatedDisplayName,
-                email: user.email,
-                photoURL: user.photoURL,
-                role: 'user',
-                charge: 'App User',
-                membershipStatus: 'Active',
-                classLadderId: defaultLadderId,
-                classLadder: 'New Member',
-                createdAt: new Date(),
-            });
+            await checkAndCreateUserDoc(user);
             
             toast({
                 title: "Account Created!",
@@ -103,26 +113,9 @@ export default function SignupPage() {
             const result = await signInWithPopup(auth, provider);
             const user = result.user;
 
-            const userDocRef = doc(db, "users", user.uid);
-            const userDoc = await getDoc(userDocRef);
+            const isNewUser = await checkAndCreateUserDoc(user);
 
-            if (!userDoc.exists()) {
-                const defaultLadderId = await getDefaultLadderId(db);
-                // This is a new user
-                await setDoc(userDocRef, {
-                    uid: user.uid,
-                    id: user.uid,
-                    displayName: user.displayName,
-                    fullName: user.displayName,
-                    email: user.email,
-                    photoURL: user.photoURL,
-                    role: 'user',
-                    charge: 'App User',
-                    membershipStatus: 'Active',
-                    classLadderId: defaultLadderId,
-                    classLadder: 'New Member',
-                    createdAt: new Date(),
-                });
+            if (isNewUser) {
                  toast({
                     title: "Account Created!",
                     description: "Welcome! Please complete your profile.",

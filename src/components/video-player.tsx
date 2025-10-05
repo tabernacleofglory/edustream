@@ -54,8 +54,9 @@ import {
   DialogHeader,
   DialogTitle,
   DialogTrigger,
+  DialogDescription,
+  DialogFooter,
 } from "@/components/ui/dialog";
-import CertificatePrint from "@/components/certificate-print";
 import {
   Accordion,
   AccordionContent,
@@ -87,6 +88,7 @@ interface PlaylistAndResourcesProps {
   onRelatedChange: () => void;
   quizzes: Quiz[];
   quizResults: UserQuizResult[];
+  lastVideoCompleted: boolean;
 }
 
 const PlaylistAndResources = ({
@@ -98,6 +100,7 @@ const PlaylistAndResources = ({
   onRelatedChange,
   quizzes,
   quizResults = [],
+  lastVideoCompleted
 }: PlaylistAndResourcesProps) => {
   let lastUnlockedIndex = -1;
   courseVideos.forEach((video, index) => {
@@ -164,19 +167,25 @@ const PlaylistAndResources = ({
                 Quizzes
             </AccordionTrigger>
             <AccordionContent className="px-4 space-y-2">
-                 {quizzes.map((quiz) => {
+                 {quizzes.map((quiz, index) => {
+                    const prevQuizId = index > 0 ? quizzes[index-1].id : null;
+                    const prevQuizPassed = prevQuizId ? quizResults.some(r => r.quizId === prevQuizId && r.passed) : true;
+                    const isQuizLocked = !lastVideoCompleted || !prevQuizPassed;
                     const result = quizResults.find(r => r.quizId === quiz.id);
                     const isCompleted = !!result && result.passed;
                     
                     return (
                         <Link
                             key={quiz.id}
-                            href={`/courses/${course.id}/quiz/${quiz.id}`}
-                            className="block p-3 rounded-md hover:bg-muted"
+                            href={!isQuizLocked ? `/courses/${course.id}/quiz/${quiz.id}` : '#'}
+                            onClick={(e) => isQuizLocked && e.preventDefault()}
+                            className={cn("block p-3 rounded-md hover:bg-muted", isQuizLocked && "opacity-50 cursor-not-allowed")}
                         >
                              <div className="flex items-start gap-3">
                                 {isCompleted ? (
                                     <CheckCircle2 className="h-5 w-5 text-green-500 mt-0.5" />
+                                ) : isQuizLocked ? (
+                                    <Lock className="h-5 w-5 text-muted-foreground mt-0.5" />
                                 ) : (
                                     <FileQuestion className="h-5 w-5 text-muted-foreground mt-0.5" />
                                 )}
@@ -285,7 +294,7 @@ export default function VideoPlayerClient({
   const functions = getFunctions(getFirebaseApp());
   const isMobile = useIsMobile();
 
-  const [isPlaying, setIsPlaying] = useState(true);
+  const [isPlaying, setIsPlaying] = useState(false);
   const [isLooping, setIsLooping] = useState(false);
   const [isAutoNextEnabled, setIsAutoNextEnabled] = useState(true);
   const [progress, setProgress] = useState(0);
@@ -305,6 +314,9 @@ export default function VideoPlayerClient({
   const [shareCount, setShareCount] = useState(currentVideo.shareCount || 0);
   const [quizzes, setQuizzes] = useState<Quiz[]>([]);
   const [quizResults, setQuizResults] = useState<UserQuizResult[]>([]);
+  const [isStillWatchingPromptVisible, setIsStillWatchingPromptVisible] = useState(false);
+  const promptCheckpointsRef = useRef(new Set<number>());
+  const [showEndOverlay, setShowEndOverlay] = useState(false);
 
   const isYouTube = currentVideo.type === 'youtube' || (currentVideo.url && (currentVideo.url.includes('youtube.com') || currentVideo.url.includes('youtu.be')));
   const isGoogleDrive = currentVideo.type === 'googledrive';
@@ -338,7 +350,7 @@ export default function VideoPlayerClient({
             const q = query(collection(db, 'quizzes'), where(documentId(), 'in', course.quizIds));
             const snapshot = await getDocs(q);
             const fetchedQuizzes = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Quiz));
-            setQuizzes(fetchedQuizzes);
+            setQuizzes(fetchedQuizzes.sort((a,b) => (a.createdAt?.seconds || 0) - (b.createdAt?.seconds || 0)));
 
             if(user) {
                 const resultsQuery = query(
@@ -395,6 +407,11 @@ export default function VideoPlayerClient({
       return;
     }
     setIsLoadingEnrollment(true);
+    promptCheckpointsRef.current.clear(); // Reset checkpoints for new video
+    setShowEndOverlay(false); // Reset for new video
+    setIsPlaying(false); // Ensure video starts paused
+    setCurrentTime(0); // Reset time for new video load
+    setProgress(0);
 
     const enrollmentRef = doc(db, "enrollments", `${user.uid}_${course.id}`);
     const unsubscribeEnrollment = onSnapshot(enrollmentRef, (d) => {
@@ -402,6 +419,9 @@ export default function VideoPlayerClient({
       setIsEnrolled(enrolled);
       setIsCompleted(!!d.data()?.completedAt);
       setIsLoadingEnrollment(false);
+      if(enrolled) {
+        setIsPlaying(true); // Autoplay if enrolled
+      }
     });
 
     const progressRef = doc(db, "userVideoProgress", `${user.uid}_${course.id}`);
@@ -421,7 +441,7 @@ export default function VideoPlayerClient({
       unsubscribeEnrollment();
       unsubscribeProgress();
     };
-  }, [user, course.id, db]);
+  }, [user, course.id, db, currentVideo.id]);
 
   useEffect(() => {
     const videoElement = playerRef.current;
@@ -477,16 +497,6 @@ export default function VideoPlayerClient({
 
     videoElement.addEventListener("play", handlePlay);
     videoElement.addEventListener("pause", handlePause);
-
-    const tryAutoplay = async () => {
-      if (!isEnrolled) return;
-      try {
-        await videoElement.play();
-      } catch {
-        setIsPlaying(false);
-      }
-    };
-    tryAutoplay();
 
     if (currentVideo.duration) {
       setDuration(currentVideo.duration);
@@ -678,6 +688,7 @@ export default function VideoPlayerClient({
     }
     setIsPlaying(false);
     setProgress(100);
+    setShowEndOverlay(true);
 
     const currentDuration = (isYouTube || isGoogleDrive) ? reactPlayerRef.current?.getDuration() ?? 0 : playerRef.current?.duration ?? duration;
     if (user && currentDuration > 0) {
@@ -826,10 +837,30 @@ export default function VideoPlayerClient({
     const pct = d > 0 ? (t / d) * 100 : 0;
     setProgress(pct);
     setCurrentTime(t);
-    
+
     if (user && isEnrolled) {
         saveProgressToFirestore(farthestTimeWatchedRef.current, false, false);
     }
+    
+    // "Are you still watching?" logic
+    if (currentVideo.enableStillWatchingPrompt && d > 0) {
+        const checkpoints = [25, 50, 75];
+        checkpoints.forEach(checkpoint => {
+            if (pct >= checkpoint && !promptCheckpointsRef.current.has(checkpoint)) {
+                setIsPlaying(false);
+                setIsStillWatchingPromptVisible(true);
+                promptCheckpointsRef.current.add(checkpoint);
+            }
+        });
+    }
+    
+     // Video end overlay logic
+    if (d > 0 && d - t <= 2) {
+        setShowEndOverlay(true);
+    } else {
+        setShowEndOverlay(false);
+    }
+
   };
   
   const handlePlayerSeek = (seconds: number) => {
@@ -838,6 +869,9 @@ export default function VideoPlayerClient({
         toast({ title: "Fast-forwarding is disabled", description: "You must watch the video to proceed." });
     }
   };
+
+  const lastVideoId = courseVideos[courseVideos.length - 1]?.id;
+  const lastVideoCompleted = watchedVideos.has(lastVideoId);
 
   return (
     <div
@@ -854,6 +888,7 @@ export default function VideoPlayerClient({
             )}
           >
             {isYouTube || isGoogleDrive ? (
+                currentVideo.url && (
                 <div className="relative w-full h-full">
                     <ReactPlayer
                         ref={reactPlayerRef}
@@ -885,20 +920,14 @@ export default function VideoPlayerClient({
                     />
                     {/* Click Interceptor Overlay */}
                     <div className="absolute inset-0" onClick={togglePlayPause} />
-                    {(isYouTube || isGoogleDrive) && showGradientOverlay && (
+                    {showGradientOverlay && (
                       <>
                         <div className="absolute top-0 left-0 right-0 h-1/5 bg-gradient-to-b from-black/95 via-black/80 to-transparent pointer-events-none transition-opacity duration-300" />
-                        <div className="absolute bottom-0 left-0 right-0 h-1/5 bg-gradient-to-t from-black/95 via-black/80 to-transparent pointer-events-none transition-opacity duration-300" />
+                        <div className="absolute bottom-0 left-0 right-0 h-[30%] bg-gradient-to-t from-black from-50% to-transparent pointer-events-none transition-opacity duration-300" />
                       </>
                     )}
-                    {!isPlaying && (
-                        <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-                            <Button variant="ghost" size="icon" className="h-20 w-20 bg-black/50 text-white hover:bg-black/70 hover:text-white">
-                                <Play className="h-12 w-12" />
-                            </Button>
-                        </div>
-                    )}
                 </div>
+                )
             ) : (
                 <video
                     ref={playerRef}
@@ -913,6 +942,26 @@ export default function VideoPlayerClient({
                       setProgress(pct);
                       setCurrentTime(t);
                       if (user && isEnrolled) saveProgressToFirestore(farthestTimeWatchedRef.current, false, false);
+                      
+                       // "Are you still watching?" logic for native video
+                        if (currentVideo.enableStillWatchingPrompt && d > 0) {
+                            const checkpoints = [25, 50, 75];
+                            checkpoints.forEach(checkpoint => {
+                                if (pct >= checkpoint && !promptCheckpointsRef.current.has(checkpoint)) {
+                                    setIsPlaying(false);
+                                    setIsStillWatchingPromptVisible(true);
+                                    promptCheckpointsRef.current.add(checkpoint);
+                                }
+                            });
+                        }
+                        
+                         // Video end overlay logic
+                        if (d > 0 && d - t <= 2) {
+                            setShowEndOverlay(true);
+                        } else {
+                            setShowEndOverlay(false);
+                        }
+
                     }}
                     onLoadedMetadata={(e) => {
                       const dur = (e.target as HTMLVideoElement).duration;
@@ -922,6 +971,19 @@ export default function VideoPlayerClient({
                     playsInline
                     preload="metadata"
                 />
+            )}
+             <div className={cn(
+                "absolute inset-0 bg-black transition-opacity duration-500 pointer-events-none",
+                !isPlaying || showEndOverlay ? "opacity-100" : "opacity-0"
+             )} />
+
+
+            {!isPlaying && !showEndOverlay && (
+                <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                    <Button variant="ghost" size="icon" className="h-20 w-20 bg-black/50 text-white hover:bg-black/70 hover:text-white pointer-events-auto" onClick={togglePlayPause}>
+                        <Play className="h-12 w-12" />
+                    </Button>
+                </div>
             )}
 
             {!isEnrolled && !isLoadingEnrollment && (
@@ -937,7 +999,7 @@ export default function VideoPlayerClient({
 
             <div
             className={cn(
-                "video-controls absolute bottom-0 left-0 right-0 p-2 md:p-4 bg-gradient-to-t from-black/50 to-transparent transition-opacity",
+                "video-controls absolute bottom-0 left-0 right-0 p-2 md:p-4 bg-gradient-to-t from-black from-10% via-black/70 to-transparent transition-opacity",
                 showControls ? "opacity-100" : "opacity-0"
             )}
             >
@@ -994,11 +1056,11 @@ export default function VideoPlayerClient({
                     variant="ghost"
                     size="icon"
                     className="text-white hover:text-white hover:bg-white/20"
-                    disabled={videoIndex === courseVideos.length - 1}
+                    disabled={videoIndex === courseVideos.length - 1 || !watchedVideos.has(currentVideo.id)}
                 >
                     <Link
                     href={
-                        videoIndex < courseVideos.length - 1
+                        videoIndex < courseVideos.length - 1 && watchedVideos.has(currentVideo.id)
                         ? `/courses/${course.id}/video/${courseVideos[videoIndex + 1].id}`
                         : "#"
                     }
@@ -1090,26 +1152,12 @@ export default function VideoPlayerClient({
                       </p>
                     </div>
                   </div>
-                  <Dialog>
-                    <DialogTrigger asChild>
-                      <Button
-                        variant="default"
-                        className="bg-green-600 hover:bg-green-700 text-white flex-shrink-0"
-                      >
+                  <Button asChild className="bg-green-600 hover:bg-green-700 text-white flex-shrink-0">
+                    <Link href={`/certificate/${course.id}`}>
                         <Award className="mr-2 h-4 w-4" />
                         View Certificate
-                      </Button>
-                    </DialogTrigger>
-                    <DialogContent className="max-w-4xl">
-                      <DialogHeader>
-                        <DialogTitle>Certificate of Completion</DialogTitle>
-                      </DialogHeader>
-                      <CertificatePrint
-                        userName={user?.displayName || "Valued Student"}
-                        course={course}
-                      />
-                    </DialogContent>
-                  </Dialog>
+                    </Link>
+                  </Button>
                 </div>
               )}
 
@@ -1123,9 +1171,7 @@ export default function VideoPlayerClient({
                     <p className="font-semibold">
                       {speaker?.name || "Glory Training Hub"}
                     </p>
-                    <p className="text-sm text-muted-foreground">
-                      {course.enrollmentCount || 0} Learners
-                    </p>
+                    <p className="text-sm text-muted-foreground">{Math.max(0, course.enrollmentCount || 0)} Learners</p>
                   </div>
                 </div>
 
@@ -1169,13 +1215,14 @@ export default function VideoPlayerClient({
                   onRelatedChange={refresh}
                   quizzes={quizzes}
                   quizResults={quizResults}
+                  lastVideoCompleted={lastVideoCompleted}
                 />
               </div>
 
               <CommentSection videoId={currentVideo.id} />
             </div>
           </ScrollArea>
-          {!isMobile && <CommentForm videoId={currentVideo.id} />}
+           <CommentForm videoId={currentVideo.id} />
         </div>
       </div>
 
@@ -1190,11 +1237,26 @@ export default function VideoPlayerClient({
             onRelatedChange={refresh}
             quizzes={quizzes}
             quizResults={quizResults}
+            lastVideoCompleted={lastVideoCompleted}
           />
         </ScrollArea>
       </div>
 
-      {isMobile && <CommentForm videoId={currentVideo.id} />}
+      <Dialog open={isStillWatchingPromptVisible} onOpenChange={setIsStillWatchingPromptVisible}>
+        <DialogContent onInteractOutside={(e) => e.preventDefault()}>
+            <DialogHeader>
+                <DialogTitle>Are you still watching?</DialogTitle>
+                <DialogDescription>
+                    Click the button below to continue watching the video.
+                </DialogDescription>
+            </DialogHeader>
+            <DialogFooter>
+                <Button onClick={() => { setIsStillWatchingPromptVisible(false); setIsPlaying(true); }}>
+                    Yes, I am
+                </Button>
+            </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

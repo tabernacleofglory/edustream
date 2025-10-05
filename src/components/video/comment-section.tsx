@@ -29,6 +29,35 @@ const getInitials = (name?: string | null) => {
     return names.map((n) => n[0]).join("").toUpperCase();
 };
 
+const EditFormComponent = ({ initialContent, onSave, onCancel, type = 'Post' }: { initialContent: string, onSave: (newContent: string) => Promise<void>, onCancel: () => void, type?: 'Post' | 'Comment' }) => {
+    const [content, setContent] = useState(initialContent);
+    const [isSaving, setIsSaving] = useState(false);
+
+    const handleSave = async () => {
+        setIsSaving(true);
+        await onSave(content);
+        setIsSaving(false);
+    };
+
+    return (
+        <DialogContent>
+            <DialogHeader>
+                <DialogTitle>Edit {type}</DialogTitle>
+            </DialogHeader>
+            <div className="py-4">
+                <Textarea value={content} onChange={(e) => setContent(e.target.value)} rows={5} />
+            </div>
+            <DialogFooter>
+                <Button variant="ghost" onClick={onCancel}>Cancel</Button>
+                <Button onClick={handleSave} disabled={isSaving}>
+                    {isSaving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                    Save Changes
+                </Button>
+            </DialogFooter>
+        </DialogContent>
+    );
+};
+
 const ReplyFormComponent = ({ parentComment, videoId, onReplyPosted, onCancel }: { parentComment: Comment, videoId: string, onReplyPosted: () => void, onCancel: () => void }) => {
     const [replyText, setReplyText] = useState("");
     const [isSubmitting, setIsSubmitting] = useState(false);
@@ -209,7 +238,6 @@ export const CommentForm = ({ videoId }: { videoId: string }) => {
     const [newComment, setNewComment] = useState('');
     const [isSubmitting, setIsSubmitting] = useState(false);
     const { toast } = useToast();
-    const isMobile = useIsMobile();
     const [isDialogOpen, setIsDialogOpen] = useState(false);
     const db = getFirebaseFirestore();
 
@@ -230,7 +258,7 @@ export const CommentForm = ({ videoId }: { videoId: string }) => {
         try {
             await addDoc(collection(db, "Contents", videoId, "comments"), commentData);
             setNewComment('');
-            setIsDialogOpen(false); // Close dialog on mobile after post
+            setIsDialogOpen(false);
         } catch(err) {
             console.error("Error posting comment: ", err);
             toast({ variant: 'destructive', title: 'Failed to post comment.' });
@@ -240,83 +268,53 @@ export const CommentForm = ({ videoId }: { videoId: string }) => {
     };
     
     if (!user) return null;
-
-    if (isMobile) {
-        return (
-             <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-                <div className="fixed bottom-0 left-0 right-0 bg-background border-t p-2 z-20">
-                    <Card>
-                        <CardContent className="p-2 flex items-center gap-2">
-                             <Avatar className="h-9 w-9">
-                                <AvatarImage src={user.photoURL || undefined} />
-                                <AvatarFallback>{getInitials(user.displayName)}</AvatarFallback>
-                            </Avatar>
-                            <DialogTrigger asChild>
-                                <div className="flex-1 h-10 rounded-full bg-muted hover:bg-muted/80 cursor-pointer flex items-center px-4 text-muted-foreground text-sm">
-                                    Add a comment...
-                                </div>
-                            </DialogTrigger>
-                            <Button onClick={() => setIsDialogOpen(true)} size="icon"><Send className="h-4 w-4" /></Button>
-                        </CardContent>
-                    </Card>
+    
+    const DialogBody = (
+        <DialogContent>
+            <DialogHeader>
+                <DialogTitle>Add a comment</DialogTitle>
+            </DialogHeader>
+             <form onSubmit={handleCommentSubmit}>
+                <div className="py-4">
+                    <Textarea 
+                        placeholder="Share your thoughts..."
+                        value={newComment}
+                        onChange={(e) => setNewComment(e.target.value)}
+                        rows={5}
+                    />
                 </div>
-                <DialogContent>
-                    <DialogHeader>
-                        <DialogTitle>Add a comment</DialogTitle>
-                    </DialogHeader>
-                     <form onSubmit={handleCommentSubmit}>
-                        <div className="py-4">
-                            <Textarea 
-                                placeholder="Share your thoughts..."
-                                value={newComment}
-                                onChange={(e) => setNewComment(e.target.value)}
-                                rows={5}
-                            />
-                        </div>
-                        <DialogFooter>
-                            <Button type="submit" disabled={isSubmitting || !newComment.trim()} className="w-full">
-                                {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                                Comment
-                            </Button>
-                        </DialogFooter>
-                    </form>
-                </DialogContent>
-            </Dialog>
-        )
-    }
-
-    return (
-        <form onSubmit={handleCommentSubmit} className="flex items-start gap-2 sticky bottom-0 bg-background p-4 border-t">
-            <Avatar className="h-9 w-9">
-                <AvatarImage src={user?.photoURL || undefined} />
-                <AvatarFallback>{getInitials(user?.displayName)}</AvatarFallback>
-            </Avatar>
-            <div className="flex-1">
-                <Textarea
-                    placeholder="Add a comment..."
-                    value={newComment}
-                    onChange={(e) => setNewComment(e.target.value)}
-                    className="w-full"
-                    disabled={isSubmitting}
-                />
-                <div className="flex justify-end items-center mt-2">
-                    <Popover>
-                        <PopoverTrigger asChild>
-                            <Button size="icon" variant="ghost" type="button"><Smile className="h-5 w-5 text-muted-foreground" /></Button>
-                        </PopoverTrigger>
-                        <PopoverContent className="w-auto p-0">
-                            <EmojiPicker onEmojiClick={(emojiData: EmojiClickData) => setNewComment(prev => prev + emojiData.emoji)} />
-                        </PopoverContent>
-                    </Popover>
-                    <Button type="submit" size="sm" disabled={isSubmitting || !newComment.trim()}>
+                <DialogFooter>
+                    <Button type="submit" disabled={isSubmitting || !newComment.trim()} className="w-full">
                         {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                         Comment
                     </Button>
-                </div>
-            </div>
-        </form>
+                </DialogFooter>
+            </form>
+        </DialogContent>
     );
-};
+
+    return (
+        <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+            <div className="sticky bottom-0 left-0 right-0 bg-background border-t p-2 z-20">
+                <Card>
+                    <CardContent className="p-2 flex items-center gap-2">
+                         <Avatar className="h-9 w-9">
+                            <AvatarImage src={user.photoURL || undefined} />
+                            <AvatarFallback>{getInitials(user.displayName)}</AvatarFallback>
+                        </Avatar>
+                        <DialogTrigger asChild>
+                            <div className="flex-1 h-10 rounded-full bg-muted hover:bg-muted/80 cursor-pointer flex items-center px-4 text-muted-foreground text-sm">
+                                Add a comment...
+                            </div>
+                        </DialogTrigger>
+                        <Button onClick={() => setIsDialogOpen(true)} size="icon"><Send className="h-4 w-4" /></Button>
+                    </CardContent>
+                </Card>
+            </div>
+            {DialogBody}
+        </Dialog>
+    )
+}
 
 export default function CommentSection({ videoId }: { videoId: string }) {
   const { user } = useAuth();
@@ -399,7 +397,7 @@ export default function CommentSection({ videoId }: { videoId: string }) {
         <MessageCircle />
         Live Chat ({comments.length})
       </h2>
-      <div className="space-y-4 lg:mb-24">
+      <div className="space-y-4">
         {pinnedComment && <SingleComment comment={pinnedComment} replies={[]} isPinned onDelete={handleDeleteComment} onPin={handleTogglePin} isModerator={isModerator} isAdmin={isAdmin} videoId={videoId}/>}
         {commentTree.map(comment => (
             comment.id !== pinnedComment?.id && <SingleComment key={comment.id} comment={comment} replies={comment.replies} onDelete={handleDeleteComment} onPin={handleTogglePin} isModerator={isModerator} isAdmin={isAdmin} videoId={videoId}/>

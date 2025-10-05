@@ -1,7 +1,6 @@
-
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useAuth } from "@/hooks/use-auth";
@@ -29,7 +28,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
-import { LayoutDashboard, BookOpen, UserCog, Settings, LogOut, Tv, Music, MessageSquare, BookCopy, Shield, Menu } from "lucide-react";
+import { LayoutDashboard, BookOpen, UserCog, Settings, LogOut, Tv, Music, MessageSquare, BookCopy, Shield, Menu, Award } from "lucide-react";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { getFirebaseAuth, getFirebaseFirestore } from "@/lib/firebase";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -40,12 +39,15 @@ import { useIsMobile } from "@/hooks/use-is-mobile";
 import type { Ladder } from '@/lib/types';
 import { onSnapshot, doc } from "firebase/firestore";
 import DynamicIcon from "@/components/dynamic-icon";
-import { Providers } from "@/components/providers";
+import { Alert, AlertTitle, AlertDescription } from "@/components/ui/alert";
+import { Lock } from 'lucide-react';
+import GlobalSearch from "@/components/global-search";
 
 
 const navItems = [
   { href: "/dashboard", icon: LayoutDashboard, label: "Dashboard", permission: "viewDashboard" },
   { href: "/courses", icon: BookOpen, label: "All Courses", permission: "viewCoursesPage" },
+  { href: "/my-certificates", icon: Award, label: "My Certificates", permission: "viewDashboard" },
   { href: "/live", icon: Tv, label: "Live", permission: "viewLivePage" },
   { href: "/music", icon: Music, label: "Music", permission: "viewMusicPage" },
   { href: "/community", icon: MessageSquare, label: "Community", permission: "viewCommunityPage" },
@@ -117,6 +119,12 @@ const UserProfile = () => {
                 </DropdownMenuLabel>
                 <DropdownMenuSeparator />
                 <DropdownMenuItem asChild>
+                  <Link href="/dashboard">
+                    <LayoutDashboard className="mr-2 h-4 w-4" />
+                    <span>Dashboard</span>
+                  </Link>
+                </DropdownMenuItem>
+                <DropdownMenuItem asChild>
                   <Link href="/settings">
                     <Settings className="mr-2 h-4 w-4" />
                     <span>Settings</span>
@@ -173,7 +181,7 @@ const HeaderContent = () => {
         {!isVideoPage && (
             <>
                 <div className="hidden md:flex flex-1 justify-center px-4">
-                    {/* Placeholder for future global search */}
+                    <GlobalSearch />
                 </div>
                  <div className="ml-auto flex items-center gap-2">
                     
@@ -317,9 +325,5 @@ function AppContentInternal({ children }: { children: React.ReactNode }) {
 }
 
 export default function AppContent({ children }: { children: React.ReactNode }) {
-  return (
-    <Providers>
-        <AppContentInternal>{children}</AppContentInternal>
-    </Providers>
-  )
+  return <AppContentInternal>{children}</AppContentInternal>;
 }

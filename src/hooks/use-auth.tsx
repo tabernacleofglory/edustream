@@ -1,12 +1,11 @@
 
-
 "use client";
 
 import React, { createContext, useContext, useEffect, useState, useCallback } from 'react';
 import { onAuthStateChanged, User as FirebaseUser } from 'firebase/auth';
 import { getFirebaseAuth, getFirebaseFirestore } from '@/lib/firebase';
 import { doc, getDoc, onSnapshot, collection, query, where, updateDoc, limit, orderBy, getDocs } from 'firebase/firestore';
-import type { User as AppUser, RolePermission, Ladder } from '@/lib/types';
+import type { AppUser, RolePermission, Ladder } from '@/lib/types';
 import { usePathname, useRouter } from 'next/navigation';
 
 interface AuthContextType {
@@ -38,7 +37,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   const pathname = usePathname();
   const isCurrentUserAdmin = user?.role === 'admin' || user?.role === 'developer';
   
-  const isProfileComplete = !!user?.firstName && !!user?.lastName && !!user.email && !!user.language && !!user.phoneNumber && !!user.campus && !!user.hpNumber && !!user.classLadderId && !!user.charge && !!user.role && !!user.facilitatorName;
+  const isProfileComplete = !!user?.isInHpGroup;
 
   useEffect(() => {
     const fetchDefaultLadder = async () => {
@@ -125,6 +124,8 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
             setUserPermissions([]);
         }
       } else {
+        // This case handles users who signed up but their Firestore doc creation failed or is pending.
+        // It's a temporary state.
         const tempUser: AppUser = { 
           uid: firebaseUser.uid, 
           id: firebaseUser.uid,
@@ -175,22 +176,24 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   useEffect(() => {
     if (loading) return;
 
-    // Unauthenticated user on protected page -> redirect to login
-    if (!user && pathname !== '/login' && pathname !== '/signup' && pathname !== '/') {
-        router.push('/login');
-        return;
-    }
-    
-    // Authenticated user with incomplete profile on any page other than settings -> redirect to settings
-    if (user && !isProfileComplete && pathname !== '/settings') {
+    const publicPaths = ['/login', '/signup'];
+    const isPublicPage = publicPaths.includes(pathname);
+    const isHomePage = pathname === '/';
+    const isSettingsPage = pathname === '/settings';
+    const isAdminPage = pathname.startsWith('/admin');
+
+    if (user) {
+      // User is logged in
+      if (!isProfileComplete && !isSettingsPage && !isAdminPage) {
         router.push('/settings');
-        return;
-    }
-    
-    // Authenticated user on login/signup page -> redirect to dashboard
-    if (user && (pathname === '/login' || pathname === '/signup')) {
+      } else if (isPublicPage || (isProfileComplete && isHomePage)) {
         router.push('/dashboard');
-        return;
+      }
+    } else {
+      // User is not logged in
+      if (!isPublicPage && !isHomePage) {
+        router.push('/login');
+      }
     }
   }, [user, loading, pathname, router, isProfileComplete]);
 

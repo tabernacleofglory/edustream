@@ -13,7 +13,7 @@ import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useToast } from "@/hooks/use-toast";
 import { getFirebaseFirestore } from "@/lib/firebase";
-import { doc, setDoc, updateDoc, getDoc, deleteDoc, serverTimestamp, collection, query, where, getDocs } from "firebase/firestore";
+import { doc, setDoc, updateDoc, getDoc, deleteDoc, serverTimestamp, collection, query, where, getDocs, increment } from "firebase/firestore";
 import {
   Dialog,
   DialogContent,
@@ -34,7 +34,6 @@ import {
 } from "@/components/ui/alert-dialog";
 import CoursePreview from "./course-preview";
 import { Progress } from "./ui/progress";
-import CertificatePrint from "./certificate-print";
 import { unenrollUserFromCourse } from "@/lib/user-actions";
 import { Avatar, AvatarFallback, AvatarImage } from "./ui/avatar";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "./ui/tooltip";
@@ -158,12 +157,19 @@ export function CourseCard({
     try {
       const enrollmentId = `${user.uid}_${course.id}`;
       const enrollmentRef = doc(db, "enrollments", enrollmentId);
+      const courseRef = doc(db, "courses", course.id);
 
       await setDoc(enrollmentRef, {
         userId: user.uid,
         courseId: course.id,
         enrolledAt: serverTimestamp(),
       });
+      
+      // Atomically increment the enrollment count on the course
+      await updateDoc(courseRef, {
+        enrollmentCount: increment(1)
+      });
+
 
       // Optional immediate-complete check: only consider PUBLISHED videos.
       // Aggregate user's completed video IDs across progress docs.
@@ -199,6 +205,10 @@ export function CourseCard({
         toast({ title: "Course Completed", description: `You've already finished all videos for ${course.title}.` });
       } else {
         toast({ title: "Enrolled", description: `You can now start ${course.title}.` });
+        const videoIdToRedirect = course.lastWatchedVideoId || firstPublishedVideoId;
+        if(videoIdToRedirect) {
+            router.push(`/courses/${course.id}/video/${videoIdToRedirect}`);
+        }
       }
 
       // Notify parent to refresh if provided; else refresh auth snapshot
@@ -253,10 +263,12 @@ export function CourseCard({
         <TooltipProvider>
           <Tooltip>
             <TooltipTrigger asChild>
-              <Button disabled className="w-full">
-                <Lock className="mr-2 h-4 w-4" />
-                Locked
-              </Button>
+              <div className="w-full">
+                <Button disabled className="w-full">
+                  <Lock className="mr-2 h-4 w-4" />
+                  Locked
+                </Button>
+              </div>
             </TooltipTrigger>
             <TooltipContent>
               <p>
@@ -417,19 +429,11 @@ export function CourseCard({
                     <EnrollButton />
                   </div>
                 ) : isCompleted ? (
-                  <Dialog>
-                    <DialogTrigger asChild>
-                      <Button className="w-full" variant="outline" onClick={(e) => e.stopPropagation()}>
+                  <Button asChild className="w-full" variant="outline">
+                    <Link href={`/certificate/${course.id}`}>
                         View Certificate
-                      </Button>
-                    </DialogTrigger>
-                    <DialogContent className="max-w-4xl">
-                      <DialogHeader>
-                        <DialogTitle>Certificate of Completion</DialogTitle>
-                      </DialogHeader>
-                      <CertificatePrint userName={user?.displayName || "Valued Student"} course={course} />
-                    </DialogContent>
-                  </Dialog>
+                    </Link>
+                  </Button>
                 ) : isInProgress ? (
                   <div className="w-full">
                     <div className="flex justify-between items-center mb-2">

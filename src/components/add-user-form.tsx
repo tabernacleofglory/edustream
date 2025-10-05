@@ -37,9 +37,9 @@ const addUserSchema = z.object({
   phoneNumber: z.string().optional(),
   hpNumber: z.string().optional(),
   facilitatorName: z.string().optional(),
-  maritalStatus: z.string().optional(),
-  ministry: z.string().optional(),
   charge: z.string().optional(),
+  gender: z.string().optional(),
+  ageRange: z.string().optional(),
 });
 
 type AddUserFormValues = z.infer<typeof addUserSchema>;
@@ -76,12 +76,6 @@ export default function AddUserForm({ onUserAdded, ladders }: AddUserFormProps) 
   const [campuses, setCampuses] = useState<Campus[]>([]);
   const [isCampusDialogOpen, setIsCampusDialogOpen] = useState(false);
   const [newCampusName, setNewCampusName] = useState("");
-  const [maritalStatuses, setMaritalStatuses] = useState<StoredItem[]>([]);
-  const [isMaritalStatusDialogOpen, setIsMaritalStatusDialogOpen] = useState(false);
-  const [newMaritalStatusName, setNewMaritalStatusName] = useState("");
-  const [ministries, setMinistries] = useState<StoredItem[]>([]);
-  const [isMinistryDialogOpen, setIsMinistryDialogOpen] = useState(false);
-  const [newMinistryName, setNewMinistryName] = useState("");
   const [charges, setCharges] = useState<StoredItem[]>([]);
   const [isChargeDialogOpen, setIsChargeDialogOpen] = useState(false);
   const [newChargeName, setNewChargeName] = useState("");
@@ -112,24 +106,6 @@ export default function AddUserForm({ onUserAdded, ladders }: AddUserFormProps) 
             });
         }
     };
-    const fetchMaritalStatuses = async () => {
-        try {
-            const querySnapshot = await getDocs(query(collection(db, "maritalStatuses"), orderBy("name")));
-            const statusesList = querySnapshot.docs.map(doc => ({ id: doc.id, name: doc.data().name } as StoredItem));
-            setMaritalStatuses(statusesList);
-        } catch (error) {
-            toast({ variant: "destructive", title: "Error fetching marital statuses" });
-        }
-    };
-    const fetchMinistries = async () => {
-        try {
-            const querySnapshot = await getDocs(query(collection(db, "ministries"), orderBy("name")));
-            const ministriesList = querySnapshot.docs.map(doc => ({ id: doc.id, name: doc.data().name } as StoredItem));
-            setMinistries(ministriesList);
-        } catch (error) {
-            toast({ variant: "destructive", title: "Error fetching ministries" });
-        }
-    };
     const fetchCharges = async () => {
         try {
             const querySnapshot = await getDocs(query(collection(db, "charges"), orderBy("name")));
@@ -140,8 +116,6 @@ export default function AddUserForm({ onUserAdded, ladders }: AddUserFormProps) 
         }
     };
     fetchCampuses();
-    fetchMaritalStatuses();
-    fetchMinistries();
     fetchCharges();
   }, [toast, db]);
 
@@ -164,9 +138,9 @@ export default function AddUserForm({ onUserAdded, ladders }: AddUserFormProps) 
         phoneNumber: "",
         hpNumber: "",
         facilitatorName: "",
-        maritalStatus: "",
-        ministry: "",
         charge: "",
+        gender: "",
+        ageRange: "",
     }
   });
 
@@ -208,62 +182,6 @@ export default function AddUserForm({ onUserAdded, ladders }: AddUserFormProps) 
             toast({ title: "Campus Removed" });
         } catch (error) {
             toast({ variant: "destructive", title: "Error removing campus" });
-        }
-    };
-
-    const handleAddMaritalStatus = async () => {
-        if (!newMaritalStatusName.trim()) return;
-        try {
-            const docRef = await addDoc(collection(db, "maritalStatuses"), { name: newMaritalStatusName.trim() });
-            const newItem = { id: docRef.id, name: newMaritalStatusName.trim() };
-            setMaritalStatuses(prev => [...prev, newItem].sort((a,b) => a.name.localeCompare(b.name)));
-            setValue('maritalStatus', newItem.name, { shouldValidate: true });
-            setNewMaritalStatusName("");
-            toast({ title: "Marital Status Added" });
-        } catch (error) {
-            toast({ variant: "destructive", title: "Error adding marital status" });
-        }
-    };
-
-    const handleRemoveMaritalStatus = async (itemId: string) => {
-        try {
-            await deleteDoc(doc(db, "maritalStatuses", itemId));
-            const updatedItems = maritalStatuses.filter(item => item.id !== itemId);
-            setMaritalStatuses(updatedItems);
-            if (watch('maritalStatus') === maritalStatuses.find(item => item.id === itemId)?.name) {
-                setValue('maritalStatus', updatedItems.length > 0 ? updatedItems[0].name : "");
-            }
-            toast({ title: "Marital Status Removed" });
-        } catch (error) {
-            toast({ variant: "destructive", title: "Error removing marital status" });
-        }
-    };
-
-    const handleAddMinistry = async () => {
-        if (!newMinistryName.trim()) return;
-        try {
-            const docRef = await addDoc(collection(db, "ministries"), { name: newMinistryName.trim() });
-            const newItem = { id: docRef.id, name: newMinistryName.trim() };
-            setMinistries(prev => [...prev, newItem].sort((a,b) => a.name.localeCompare(b.name)));
-            setValue('ministry', newItem.name, { shouldValidate: true });
-            setNewMinistryName("");
-            toast({ title: "Ministry Added" });
-        } catch (error) {
-            toast({ variant: "destructive", title: "Error adding ministry" });
-        }
-    };
-
-    const handleRemoveMinistry = async (itemId: string) => {
-        try {
-            await deleteDoc(doc(db, "ministries", itemId));
-            const updatedItems = ministries.filter(item => item.id !== itemId);
-            setMinistries(updatedItems);
-            if (watch('ministry') === ministries.find(item => item.id === itemId)?.name) {
-                setValue('ministry', updatedItems.length > 0 ? updatedItems[0].name : "");
-            }
-            toast({ title: "Ministry Removed" });
-        } catch (error) {
-            toast({ variant: "destructive", title: "Error removing ministry" });
         }
     };
 
@@ -322,9 +240,9 @@ export default function AddUserForm({ onUserAdded, ladders }: AddUserFormProps) 
         phoneNumber: data.phoneNumber,
         hpNumber: data.hpNumber,
         facilitatorName: data.facilitatorName,
-        maritalStatus: data.maritalStatus,
-        ministry: data.ministry,
         charge: data.charge,
+        gender: data.gender,
+        ageRange: data.ageRange,
       };
 
       await setDoc(doc(db, "users", user.uid), newUser);
@@ -372,6 +290,47 @@ export default function AddUserForm({ onUserAdded, ladders }: AddUserFormProps) 
         <Input id="password" type="password" {...register("password")} disabled={isSubmitting} />
         {errors.password && <p className="text-sm text-destructive">{errors.password.message}</p>}
       </div>
+
+       <div className="space-y-2">
+            <Label>Gender</Label>
+                <Controller
+                name="gender"
+                control={control}
+                render={({ field }) => (
+                    <Select onValueChange={field.onChange} value={field.value} disabled={isSubmitting}>
+                        <SelectTrigger><SelectValue placeholder="Select gender" /></SelectTrigger>
+                        <SelectContent>
+                            <SelectItem value="male">Male</SelectItem>
+                            <SelectItem value="female">Female</SelectItem>
+                            <SelectItem value="other">Other</SelectItem>
+                            <SelectItem value="prefer-not-to-say">Prefer not to say</SelectItem>
+                        </SelectContent>
+                    </Select>
+                )}
+            />
+        </div>
+
+        <div className="space-y-2">
+            <Label>Age Range</Label>
+            <Controller
+                name="ageRange"
+                control={control}
+                render={({ field }) => (
+                    <Select onValueChange={field.onChange} value={field.value} disabled={isSubmitting}>
+                        <SelectTrigger><SelectValue placeholder="Select age range" /></SelectTrigger>
+                        <SelectContent>
+                            <SelectItem value="18-24">18-24</SelectItem>
+                            <SelectItem value="25-34">25-34</SelectItem>
+                            <SelectItem value="35-44">35-44</SelectItem>
+                            <SelectItem value="45-54">45-54</SelectItem>
+                            <SelectItem value="55-64">55-64</SelectItem>
+                            <SelectItem value="65+">65+</SelectItem>
+                            <SelectItem value="prefer-not-to-say">Prefer not to say</SelectItem>
+                        </SelectContent>
+                    </Select>
+                )}
+            />
+        </div>
 
       <div className="space-y-2">
         <Label htmlFor="phoneNumber">Phone Number</Label>
@@ -469,74 +428,6 @@ export default function AddUserForm({ onUserAdded, ladders }: AddUserFormProps) 
         </div>
         {errors.classLadderId && <p className="text-sm text-destructive">{errors.classLadderId.message}</p>}
       </div>
-
-        <div className="space-y-2">
-            <Label htmlFor="maritalStatus">Marital Status</Label>
-            <div className="flex gap-2">
-                 <Controller
-                    name="maritalStatus"
-                    control={control}
-                    render={({ field }) => (
-                        <Select onValueChange={field.onChange} value={field.value} disabled={isSubmitting}>
-                            <SelectTrigger><SelectValue placeholder="Select marital status" /></SelectTrigger>
-                            <SelectContent>
-                                {maritalStatuses.map((s) => (<SelectItem key={s.id} value={s.name}>{s.name}</SelectItem>))}
-                            </SelectContent>
-                        </Select>
-                    )}
-                />
-                <Dialog open={isMaritalStatusDialogOpen} onOpenChange={setIsMaritalStatusDialogOpen}>
-                    <DialogTrigger asChild><Button type="button" variant="outline">Manage</Button></DialogTrigger>
-                    <DialogContent className="sm:max-w-[425px]">
-                        <DialogHeader><DialogTitle>Manage Marital Statuses</DialogTitle></DialogHeader>
-                        <div className="space-y-4 py-4">
-                            <div className="space-y-2"><Label>Existing Statuses</Label>
-                                <div className="space-y-2 rounded-md border p-2 max-h-48 overflow-y-auto">
-                                    {maritalStatuses.map(s => (<div key={s.id} className="flex items-center justify-between"><span>{s.name}</span><Button type="button" variant="ghost" size="icon" onClick={() => handleRemoveMaritalStatus(s.id)}><Trash className="h-4 w-4" /></Button></div>))}
-                                </div>
-                            </div>
-                            <div className="grid grid-cols-4 items-center gap-4"><Label htmlFor="new-marital-status" className="text-right">New</Label><Input id="new-marital-status" value={newMaritalStatusName} onChange={(e) => setNewMaritalStatusName(e.target.value)} className="col-span-3" /></div>
-                        </div>
-                        <DialogFooter><Button type="button" variant="secondary" onClick={() => setIsMaritalStatusDialogOpen(false)}>Close</Button><Button type="button" onClick={handleAddMaritalStatus}>Save New Status</Button></DialogFooter>
-                    </DialogContent>
-                </Dialog>
-            </div>
-            {errors.maritalStatus && <p className="text-sm text-destructive">{errors.maritalStatus.message}</p>}
-        </div>
-
-        <div className="space-y-2">
-            <Label htmlFor="ministry">Ministry</Label>
-            <div className="flex gap-2">
-                 <Controller
-                    name="ministry"
-                    control={control}
-                    render={({ field }) => (
-                        <Select onValueChange={field.onChange} value={field.value} disabled={isSubmitting}>
-                            <SelectTrigger><SelectValue placeholder="Select ministry" /></SelectTrigger>
-                            <SelectContent>
-                                {ministries.map((m) => (<SelectItem key={m.id} value={m.name}>{m.name}</SelectItem>))}
-                            </SelectContent>
-                        </Select>
-                    )}
-                />
-                <Dialog open={isMinistryDialogOpen} onOpenChange={setIsMinistryDialogOpen}>
-                    <DialogTrigger asChild><Button type="button" variant="outline">Manage</Button></DialogTrigger>
-                    <DialogContent className="sm:max-w-[425px]">
-                        <DialogHeader><DialogTitle>Manage Ministries</DialogTitle></DialogHeader>
-                        <div className="space-y-4 py-4">
-                            <div className="space-y-2"><Label>Existing Ministries</Label>
-                                <div className="space-y-2 rounded-md border p-2 max-h-48 overflow-y-auto">
-                                    {ministries.map(m => (<div key={m.id} className="flex items-center justify-between"><span>{m.name}</span><Button type="button" variant="ghost" size="icon" onClick={() => handleRemoveMinistry(m.id)}><Trash className="h-4 w-4" /></Button></div>))}
-                                </div>
-                            </div>
-                            <div className="grid grid-cols-4 items-center gap-4"><Label htmlFor="new-ministry" className="text-right">New</Label><Input id="new-ministry" value={newMinistryName} onChange={(e) => setNewMinistryName(e.target.value)} className="col-span-3" /></div>
-                        </div>
-                        <DialogFooter><Button type="button" variant="secondary" onClick={() => setIsMinistryDialogOpen(false)}>Close</Button><Button type="button" onClick={handleAddMinistry}>Save New Ministry</Button></DialogFooter>
-                    </DialogContent>
-                </Dialog>
-            </div>
-            {errors.ministry && <p className="text-sm text-destructive">{errors.ministry.message}</p>}
-        </div>
 
       <div className="space-y-2">
         <Label htmlFor="charge">Charge</Label>

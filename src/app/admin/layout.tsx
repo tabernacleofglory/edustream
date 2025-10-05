@@ -34,6 +34,8 @@ import {
   FileQuestion,
   Languages,
   Church,
+  UserPlus,
+  Globe,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
@@ -128,6 +130,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
             { href: "/admin/ladders", label: "Ladders", icon: Shield, permission: 'manageUsers' },
             { href: "/admin/speakers", label: "Speakers", icon: UserRound, permission: 'manageContent' },
             { href: "/admin/promotions", label: "Promotion Requests", icon: UserCheck, permission: 'managePromotions'},
+            { href: "/admin/users/hp-requests", label: "HP Requests", icon: UserPlus, permission: 'manageHpRequests' },
           ],
         },
       ],
@@ -161,6 +164,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
       items: [
         { href: "/admin/campus", label: "Campus", icon: Building, permission: 'viewCampusManagement' },
         { href: "/admin/live", label: "Live", icon: Tv, permission: 'viewLiveManagement' },
+        { href: "/my-certificates", label: "My Certificates", icon: Award, permission: 'viewDashboard' },
         {
           label: "Developer",
           icon: Code,
@@ -171,6 +175,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
               { href: "/admin/links", label: "Links", icon: Link2 },
               { href: "/admin/permissions", label: "Permissions", icon: Shield },
               { href: "/admin/developer/ai-tools", label: "AI Tools", icon: Shield },
+              { href: "/admin/developer/localization", label: "Localization", icon: Globe },
           ]
         },
       ],

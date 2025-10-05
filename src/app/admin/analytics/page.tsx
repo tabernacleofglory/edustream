@@ -29,13 +29,13 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { Button } from "@/components/ui/button";
 import { Bar, BarChart, CartesianGrid, XAxis, YAxis, Tooltip, ResponsiveContainer } from "recharts";
 import { ChartConfig, ChartContainer, ChartTooltipContent } from "@/components/ui/chart";
-import { collection, getDocs, query, where, getCountFromServer, documentId, orderBy } from "firebase/firestore";
+import { collection, getDocs, query, where, getCountFromServer, documentId, orderBy, writeBatch, doc } from "firebase/firestore";
 import { getFirebaseFirestore } from "@/lib/firebase";
-import type { User, Course, UserProgress as UserProgressType, Video, Enrollment, Post, Quiz, UserQuizResult } from "@/lib/types";
+import type { User, Course, UserProgress as UserProgressType, Video, Enrollment, Post, Quiz, UserQuizResult, QuizQuestion } from "@/lib/types";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Eye, Download, ArrowUpDown, MessageSquare, ThumbsUp, Share2, ChevronLeft, ChevronRight, Repeat2, Calendar as CalendarIcon, X as XIcon, CheckCircle, XCircle } from "lucide-react";
+import { Eye, Download, ArrowUpDown, MessageSquare, ThumbsUp, Share2, ChevronLeft, ChevronRight, Repeat2, Calendar as CalendarIcon, X as XIcon, CheckCircle, XCircle, Trash2 } from "lucide-react";
 import jsPDF from "jspdf";
-import html2canvas from "html2canvas";
+import autoTable from "jspdf-autotable";
 import Papa from 'papaparse';
 import { format, isValid, startOfDay, endOfDay, addDays } from "date-fns";
 import { DateRange } from "react-day-picker";
@@ -43,6 +43,10 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Calendar } from "@/components/ui/calendar";
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
+import { useToast } from "@/hooks/use-toast";
+import { Checkbox } from "@/components/ui/checkbox";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import { Label } from "@/components/ui/label";
 
 
 interface Campus {
@@ -62,6 +66,20 @@ const progressChartConfig = {
         label: "Average Progress (%)",
         color: "hsl(var(--chart-2))",
     }
+} satisfies ChartConfig;
+
+const userRoleChartConfig = {
+    users: {
+        label: "Users",
+        color: "hsl(var(--chart-3))",
+    },
+} satisfies ChartConfig;
+
+const hpRequestChartConfig = {
+    requests: {
+        label: "Requests",
+        color: "hsl(var(--chart-4))",
+    },
 } satisfies ChartConfig;
 
 
@@ -100,6 +118,8 @@ interface QuizReportData {
     score: number;
     passed: boolean;
     attemptedAt: Date;
+    answers: Record<string, any>;
+    quizData?: Quiz;
 }
 
 
@@ -132,9 +152,12 @@ export default function AnalyticsDashboard() {
   const [socialData, setSocialData] = useState<SocialInteractionData[]>([]);
   const [courseEngagementData, setCourseEngagementData] = useState<CourseEngagementData[]>([]);
   const [quizReportData, setQuizReportData] = useState<QuizReportData[]>([]);
+  const [userRoleData, setUserRoleData] = useState<{ name: string; users: number }[]>([]);
+  const [hpRequestData, setHpRequestData] = useState<{ day: string; requests: number }[]>([]);
   const [loading, setLoading] = useState(true);
   const [isClient, setIsClient] = useState(false);
   const [selectedProgressDetail, setSelectedProgressDetail] = useState<ProgressDetail | null>(null);
+  const [viewingQuizResult, setViewingQuizResult] = useState<QuizReportData | null>(null);
   const dashboardRef = useRef<HTMLDivElement>(null);
   const courseEngagementRef = useRef<HTMLDivElement>(null);
   const quizReportRef = useRef<HTMLDivElement>(null);
@@ -152,6 +175,8 @@ export default function AnalyticsDashboard() {
   const [quizReportPageSize, setQuizReportPageSize] = useState(10);
   const [detailedReportPage, setDetailedReportPage] = useState(1);
   const [detailedReportPageSize, setDetailedReportPageSize] = useState(10);
+  const [selectedQuizResults, setSelectedQuizResults] = useState<string[]>([]);
+  const { toast } = useToast();
   const db = getFirebaseFirestore();
 
   useEffect(() => {
@@ -214,6 +239,31 @@ export default function AnalyticsDashboard() {
       setAllQuizzes(quizzesList);
       setAllCampuses(campusesList);
 
+      const rolesCount = usersList.reduce((acc, user) => {
+        const role = user.role || 'user';
+        acc[role] = (acc[role] || 0) + 1;
+        return acc;
+      }, {} as { [key: string]: number });
+      
+      const roleData = Object.entries(rolesCount).map(([name, count]) => ({
+        name: name.charAt(0).toUpperCase() + name.slice(1),
+        users: count,
+      }));
+      setUserRoleData(roleData);
+
+      const hpRequestingUsers = usersList.filter(u => 
+        (u.isInHpGroup === false || u.isInHpGroup === undefined || u.isInHpGroup === null) && u.hpAvailabilityDay
+      );
+      const hpRequestsByDay = hpRequestingUsers.reduce((acc, user) => {
+        const day = user.hpAvailabilityDay!; // We've already filtered for this
+        acc[day] = (acc[day] || 0) + 1;
+        return acc;
+      }, {} as { [key: string]: number });
+      
+      const hpChartData = Object.entries(hpRequestsByDay).map(([day, count]) => ({ day, requests: count }));
+      setHpRequestData(hpChartData);
+
+
       const quizReport = quizResultsList.map(result => {
         const user = usersList.find(u => u.id === result.userId);
         const course = coursesList.find(c => c.id === result.courseId);
@@ -229,9 +279,11 @@ export default function AnalyticsDashboard() {
           score: result.score,
           passed: result.passed,
           attemptedAt: result.attemptedAt.toDate(),
+          answers: result.answers,
+          quizData: quiz
         };
       });
-      setQuizReportData(quizReport);
+      setQuizReportData(quizReport as QuizReportData[]);
 
       const socialDataPromises = postsList.map(async (post) => {
         const repliesQuery = query(collection(db, 'communityPosts', post.id, 'replies'));
@@ -459,6 +511,9 @@ export default function AnalyticsDashboard() {
     }).filter(d => d.averageProgress > 0);
     return data;
   }, [allCampuses, allUsers, userProgressData]);
+  
+  const totalHpRequests = useMemo(() => hpRequestData.reduce((sum, item) => sum + item.requests, 0), [hpRequestData]);
+
 
   const handleSort = (key: SortKey) => {
     let direction: SortDirection = 'asc';
@@ -524,7 +579,7 @@ export default function AnalyticsDashboard() {
     document.body.removeChild(link);
   }
 
-  const handleExportPDF = (ref: React.RefObject < HTMLDivElement > ) => {
+  const handleExportPDF = (ref: React.RefObject < HTMLDivElement > , filename: string) => {
     const input = ref.current;
     if (input) {
       html2canvas(input, {
@@ -553,7 +608,7 @@ export default function AnalyticsDashboard() {
           pdf.addImage(imgData, "PNG", 0, 0, pdfWidth, finalHeight);
         }
 
-        pdf.save(`analytics_report_${new Date().toISOString().split('T')[0]}.pdf`);
+        pdf.save(`${filename}_${new Date().toISOString().split('T')[0]}.pdf`);
       });
     }
   };
@@ -637,6 +692,29 @@ export default function AnalyticsDashboard() {
     link.click();
     document.body.removeChild(link);
   };
+  
+    const handleDeleteSelectedQuizResults = async () => {
+        if (selectedQuizResults.length === 0) {
+            toast({ variant: 'destructive', title: 'No records selected' });
+            return;
+        }
+
+        const batch = writeBatch(db);
+        selectedQuizResults.forEach(resultId => {
+            const docRef = doc(db, 'userQuizResults', resultId);
+            batch.delete(docRef);
+        });
+
+        try {
+            await batch.commit();
+            toast({ title: `${selectedQuizResults.length} records deleted successfully` });
+            setQuizReportData(prev => prev.filter(r => !selectedQuizResults.includes(r.resultId)));
+            setSelectedQuizResults([]);
+        } catch (error) {
+            toast({ variant: 'destructive', title: 'Failed to delete records' });
+        }
+    };
+
 
   const quizReportTotalPages = Math.ceil(filteredQuizReportData.length / quizReportPageSize);
   const currentQuizReportData = filteredQuizReportData.slice(
@@ -662,11 +740,67 @@ export default function AnalyticsDashboard() {
       </div>
     );
   }
+  
+    const renderQuizResponses = (result: QuizReportData) => {
+        if (!result.quizData || !result.answers) return <p>No response data available.</p>;
+
+        return result.quizData.questions.map((q, index) => {
+            const userAnswer = result.answers[`question_${q.id}`];
+            let isCorrect = false;
+            if (q.type === 'multiple-choice') {
+                isCorrect = Number(userAnswer) === q.correctAnswerIndex;
+            } else if (q.type === 'multiple-select') {
+                const correct = new Set(q.correctAnswerIndexes);
+                const answered = new Set(userAnswer);
+                isCorrect = correct.size === answered.size && [...correct].every(idx => answered.has(idx));
+            } else if (q.type === 'free-text') {
+                isCorrect = true; // Manually graded
+            }
+
+            return (
+                <div key={q.id} className="mb-4 p-3 border rounded-md">
+                    <p className="font-semibold">{index + 1}. {q.questionText}</p>
+                    {q.type === 'multiple-choice' && (
+                        <RadioGroup value={String(userAnswer)} disabled className="mt-2 space-y-1">
+                            {q.options.map((opt, i) => (
+                                <div key={i} className={cn("flex items-center space-x-2 p-2 rounded-md", 
+                                    i === q.correctAnswerIndex && "bg-green-100 dark:bg-green-900",
+                                    i === Number(userAnswer) && i !== q.correctAnswerIndex && "bg-red-100 dark:bg-red-900"
+                                )}>
+                                    <RadioGroupItem value={String(i)} id={`${q.id}-${i}`} />
+                                    <Label htmlFor={`${q.id}-${i}`}>{opt}</Label>
+                                </div>
+                            ))}
+                        </RadioGroup>
+                    )}
+                     {q.type === 'multiple-select' && (
+                        <div className="mt-2 space-y-1">
+                            {q.options.map((opt, i) => (
+                                 <div key={i} className={cn("flex items-center space-x-2 p-2 rounded-md", 
+                                    q.correctAnswerIndexes?.includes(i) && "bg-green-100 dark:bg-green-900",
+                                    userAnswer?.includes(i) && !q.correctAnswerIndexes?.includes(i) && "bg-red-100 dark:bg-red-900"
+                                )}>
+                                    <Checkbox checked={userAnswer?.includes(i)} disabled />
+                                    <Label>{opt}</Label>
+                                </div>
+                            ))}
+                        </div>
+                    )}
+                    {q.type === 'free-text' && (
+                        <div className="mt-2 p-2 bg-muted rounded-md text-sm">
+                            <p className="font-semibold">User's Answer:</p>
+                            <p>{userAnswer || '(No answer provided)'}</p>
+                        </div>
+                    )}
+                </div>
+            );
+        });
+    }
 
   return (
     <div className="space-y-8" ref={dashboardRef}>
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-        <Card>
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+        <Card className="lg:col-span-1">
           <CardHeader>
             <CardTitle>Course Engagement</CardTitle>
             <CardDescription>Total time spent per course in minutes.</CardDescription>
@@ -713,7 +847,7 @@ export default function AnalyticsDashboard() {
             </div>
           </CardContent>
         </Card>
-        <Card>
+        <Card className="lg:col-span-2">
           <CardHeader>
             <CardTitle>Campus Progress</CardTitle>
             <CardDescription>Average course completion percentage by campus.</CardDescription>
@@ -736,6 +870,51 @@ export default function AnalyticsDashboard() {
         </Card>
       </div>
 
+       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+        <Card className="lg:col-span-1">
+          <CardHeader>
+            <CardTitle>User Overview</CardTitle>
+            <CardDescription>User counts by role.</CardDescription>
+          </CardHeader>
+          <CardContent>
+            {loading ? (
+              <Skeleton className="h-[348px] w-full" />
+            ) : (
+              <ChartContainer config={userRoleChartConfig} className="min-h-[200px] w-full">
+                <BarChart data={userRoleData} height={348} layout="vertical">
+                    <CartesianGrid horizontal={false} />
+                    <YAxis dataKey="name" type="category" tickLine={false} axisLine={false} />
+                    <XAxis type="number" hide />
+                    <Tooltip cursor={{fill: 'hsl(var(--muted))'}} content={<ChartTooltipContent />} />
+                    <Bar dataKey="users" fill="var(--color-users)" radius={4} />
+                </BarChart>
+              </ChartContainer>
+            )}
+          </CardContent>
+        </Card>
+         <Card className="lg:col-span-2">
+          <CardHeader>
+            <CardTitle>HP Requests by Day</CardTitle>
+            <CardDescription>A total of {totalHpRequests} pending HP placement requests by user availability.</CardDescription>
+          </CardHeader>
+          <CardContent>
+            {loading ? (
+              <Skeleton className="h-[348px] w-full" />
+            ) : (
+              <ChartContainer config={hpRequestChartConfig} className="min-h-[200px] w-full">
+                <BarChart data={hpRequestData} height={348}>
+                  <CartesianGrid vertical={false} />
+                  <XAxis dataKey="day" tickLine={false} tickMargin={10} axisLine={false} />
+                  <YAxis />
+                  <Tooltip content={<ChartTooltipContent />} />
+                  <Bar dataKey="requests" fill="var(--color-requests)" radius={4} />
+                </BarChart>
+              </ChartContainer>
+            )}
+          </CardContent>
+        </Card>
+      </div>
+
       <Card ref={courseEngagementRef}>
         <CardHeader className="flex-col md:flex-row md:items-center md:justify-between">
           <div>
@@ -747,7 +926,7 @@ export default function AnalyticsDashboard() {
               <Download className="mr-2 h-4 w-4" />
               Export as CSV
             </Button>
-            <Button onClick={() => handleExportPDF(courseEngagementRef)} variant="outline" disabled={loading}>
+            <Button onClick={() => handleExportPDF(courseEngagementRef, 'course_engagement_report')} variant="outline" disabled={loading}>
               <Download className="mr-2 h-4 w-4" />
               Export as PDF
             </Button>
@@ -848,12 +1027,18 @@ export default function AnalyticsDashboard() {
               <CardTitle>Quiz Performance Report</CardTitle>
               <CardDescription>User scores and pass / fail status for all quiz attempts.</CardDescription>
             </div>
-            <div className="flex gap-2">
+            <div className="flex flex-wrap gap-2">
+               {selectedQuizResults.length > 0 && (
+                <Button variant="destructive" onClick={handleDeleteSelectedQuizResults}>
+                    <Trash2 className="mr-2 h-4 w-4" />
+                    Delete Selected ({selectedQuizResults.length})
+                </Button>
+              )}
               <Button onClick={handleExportQuizReportCSV} variant="outline" disabled={filteredQuizReportData.length === 0}>
                 <Download className="mr-2 h-4 w-4" />
                 Export CSV
               </Button>
-              <Button onClick={() => handleExportPDF(quizReportRef)} variant="outline" disabled={loading}>
+              <Button onClick={() => handleExportPDF(quizReportRef, 'quiz_performance_report')} variant="outline" disabled={loading}>
                 <Download className="mr-2 h-4 w-4" />
                 Export PDF
               </Button>
@@ -923,29 +1108,56 @@ export default function AnalyticsDashboard() {
             <Table>
               <TableHeader>
                 <TableRow>
+                   <TableHead className="w-[50px]">
+                    <Checkbox
+                        checked={selectedQuizResults.length > 0 && selectedQuizResults.length === currentQuizReportData.length}
+                        onCheckedChange={(checked) => {
+                            if (checked) {
+                                setSelectedQuizResults(currentQuizReportData.map(r => r.resultId));
+                            } else {
+                                setSelectedQuizResults([]);
+                            }
+                        }}
+                    />
+                  </TableHead>
                   <TableHead>User</TableHead>
                   <TableHead>Course</TableHead>
                   <TableHead>Quiz</TableHead>
                   <TableHead className="text-center">Score</TableHead>
                   <TableHead className="text-center">Status</TableHead>
                   <TableHead>Date</TableHead>
+                  <TableHead className="text-right">Details</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {loading ? (
                   Array.from({ length: 3 }).map((_, i) => (
                     <TableRow key={i}>
+                        <TableCell><Skeleton className="h-4 w-4" /></TableCell>
                       <TableCell><Skeleton className="h-4 w-24" /></TableCell>
                       <TableCell><Skeleton className="h-4 w-32" /></TableCell>
                       <TableCell><Skeleton className="h-4 w-24" /></TableCell>
                       <TableCell className="text-center"><Skeleton className="h-4 w-12 mx-auto" /></TableCell>
                       <TableCell className="text-center"><Skeleton className="h-6 w-20 mx-auto" /></TableCell>
                       <TableCell><Skeleton className="h-4 w-20" /></TableCell>
+                       <TableCell className="text-right"><Skeleton className="h-8 w-8 rounded-md" /></TableCell>
                     </TableRow>
                   ))
                 ) : (
                   currentQuizReportData.map((item) => (
-                    <TableRow key={item.resultId}>
+                    <TableRow key={item.resultId} data-state={selectedQuizResults.includes(item.resultId) && "selected"}>
+                      <TableCell>
+                        <Checkbox
+                            checked={selectedQuizResults.includes(item.resultId)}
+                            onCheckedChange={(checked) => {
+                                if (checked) {
+                                    setSelectedQuizResults([...selectedQuizResults, item.resultId]);
+                                } else {
+                                    setSelectedQuizResults(selectedQuizResults.filter(id => id !== item.resultId));
+                                }
+                            }}
+                        />
+                      </TableCell>
                       <TableCell className="font-medium">{item.userName}</TableCell>
                       <TableCell>{item.courseTitle}</TableCell>
                       <TableCell>{item.quizTitle}</TableCell>
@@ -957,6 +1169,11 @@ export default function AnalyticsDashboard() {
                         </Badge>
                       </TableCell>
                       <TableCell>{format(item.attemptedAt, 'MMM d, yyyy')}</TableCell>
+                      <TableCell className="text-right">
+                        <Button variant="ghost" size="icon" onClick={() => setViewingQuizResult(item)}>
+                            <Eye className="h-4 w-4" />
+                        </Button>
+                      </TableCell>
                     </TableRow>
                   ))
                 )}
@@ -1009,6 +1226,110 @@ export default function AnalyticsDashboard() {
                 disabled={quizReportPage === quizReportTotalPages}
               >
                 Next <ChevronRight className="h-4 w-4" />
+              </Button>
+            </div>
+          </CardFooter>
+        )}
+      </Card>
+      
+      <Card>
+        <CardHeader>
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+                <div>
+                    <CardTitle>Social Engagement Report</CardTitle>
+                    <CardDescription>Likes, shares, and comments for each community post.</CardDescription>
+                </div>
+                 <Button onClick={() => handleExportPDF(dashboardRef, 'social_engagement_report')} variant="outline" disabled={loading} className="w-full sm:w-auto">
+                    <Download className="mr-2 h-4 w-4" />
+                    Export as PDF
+                </Button>
+            </div>
+        </CardHeader>
+        <CardContent>
+          <div className="overflow-x-auto">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Author</TableHead>
+                  <TableHead className="text-center">Likes</TableHead>
+                  <TableHead className="text-center">Comments</TableHead>
+                  <TableHead className="text-center">Reposts</TableHead>
+                  <TableHead className="text-center">Shares</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {loading ? (
+                  Array.from({ length: 3 }).map((_, i) => (
+                    <TableRow key={i}>
+                      <TableCell><Skeleton className="h-4 w-24" /></TableCell>
+                      <TableCell className="text-center"><Skeleton className="h-4 w-8 mx-auto" /></TableCell>
+                      <TableCell className="text-center"><Skeleton className="h-4 w-8 mx-auto" /></TableCell>
+                      <TableCell className="text-center"><Skeleton className="h-4 w-8 mx-auto" /></TableCell>
+                      <TableCell className="text-center"><Skeleton className="h-4 w-8 mx-auto" /></TableCell>
+                    </TableRow>
+                  ))
+                ) : (
+                  currentSocialData.map((item) => (
+                    <TableRow key={item.postId}>
+                      <TableCell>{item.authorName}</TableCell>
+                      <TableCell className="text-center">{item.likes}</TableCell>
+                      <TableCell className="text-center">{item.comments}</TableCell>
+                      <TableCell className="text-center">{item.reposts}</TableCell>
+                      <TableCell className="text-center">{item.shares}</TableCell>
+                    </TableRow>
+                  ))
+                )}
+              </TableBody>
+            </Table>
+          </div>
+          {socialData.length === 0 && !loading && (
+            <div className="text-center p-8 text-muted-foreground">
+              No social interaction data available.
+            </div>
+          )}
+        </CardContent>
+        {socialDataTotalPages > 1 && (
+          <CardFooter className="flex justify-end items-center gap-4">
+            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+              <span>Rows per page</span>
+              <Select
+                value={`${socialDataPageSize}`}
+                onValueChange={(value) => {
+                  setSocialDataPageSize(Number(value));
+                  setSocialDataPage(1);
+                }}
+              >
+                <SelectTrigger className="w-[70px]">
+                  <SelectValue placeholder={`${socialDataPageSize}`} />
+                </SelectTrigger>
+                <SelectContent>
+                  {[10, 25, 50, 100].map(size => (
+                    <SelectItem key={size} value={`${size}`}>{size}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <span className="text-sm text-muted-foreground">
+              Page {socialDataPage} of {socialDataTotalPages}
+            </span>
+            <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setSocialDataPage(prev => Math.max(prev - 1, 1))}
+                disabled={socialDataPage === 1}
+              >
+                <ChevronLeft className="h-4 w-4" />
+                Previous
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setSocialDataPage(prev => Math.min(prev + 1, socialDataTotalPages))}
+                disabled={socialDataPage === socialDataTotalPages}
+              >
+                Next
+                <ChevronRight className="h-4 w-4" />
               </Button>
             </div>
           </CardFooter>
@@ -1084,7 +1405,7 @@ export default function AnalyticsDashboard() {
               <Download className="mr-2 h-4 w-4" />
               Export as CSV
             </Button>
-            <Button onClick={() => handleExportPDF(dashboardRef)} variant="outline" disabled={loading} className="w-full sm:w-auto">
+            <Button onClick={() => handleExportPDF(dashboardRef, 'detailed_report')} variant="outline" disabled={loading} className="w-full sm:w-auto">
               <Download className="mr-2 h-4 w-4" />
               Export as PDF
             </Button>
@@ -1229,105 +1550,22 @@ export default function AnalyticsDashboard() {
           </CardFooter>
         )}
       </Card>
-
-      <Card>
-        <CardHeader>
-          <CardTitle>Social Engagement Report</CardTitle>
-          <CardDescription>Likes, shares, and comments for each community post.</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="overflow-x-auto">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Post</TableHead>
-                  <TableHead>Author</TableHead>
-                  <TableHead className="text-center">Likes</TableHead>
-                  <TableHead className="text-center">Comments</TableHead>
-                  <TableHead className="text-center">Reposts</TableHead>
-                  <TableHead className="text-center">Shares</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {loading ? (
-                  Array.from({ length: 3 }).map((_, i) => (
-                    <TableRow key={i}>
-                      <TableCell><Skeleton className="h-4 w-48" /></TableCell>
-                      <TableCell><Skeleton className="h-4 w-24" /></TableCell>
-                      <TableCell className="text-center"><Skeleton className="h-4 w-8 mx-auto" /></TableCell>
-                      <TableCell className="text-center"><Skeleton className="h-4 w-8 mx-auto" /></TableCell>
-                      <TableCell className="text-center"><Skeleton className="h-4 w-8 mx-auto" /></TableCell>
-                      <TableCell className="text-center"><Skeleton className="h-4 w-8 mx-auto" /></TableCell>
-                    </TableRow>
-                  ))
-                ) : (
-                  currentSocialData.map((item) => (
-                    <TableRow key={item.postId}>
-                      <TableCell className="max-w-xs truncate" title={item.postContent}>{item.postContent}</TableCell>
-                      <TableCell>{item.authorName}</TableCell>
-                      <TableCell className="text-center">{item.likes}</TableCell>
-                      <TableCell className="text-center">{item.comments}</TableCell>
-                      <TableCell className="text-center">{item.reposts}</TableCell>
-                      <TableCell className="text-center">{item.shares}</TableCell>
-                    </TableRow>
-                  ))
-                )}
-              </TableBody>
-            </Table>
-          </div>
-          {socialData.length === 0 && !loading && (
-            <div className="text-center p-8 text-muted-foreground">
-              No social interaction data available.
+      
+      <Dialog open={!!viewingQuizResult} onOpenChange={() => setViewingQuizResult(null)}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Quiz Attempt Details</DialogTitle>
+             <DialogDescription>
+              Viewing answers for {viewingQuizResult?.userName} in quiz "{viewingQuizResult?.quizTitle}".
+            </DialogDescription>
+          </DialogHeader>
+          {viewingQuizResult && (
+            <div className="max-h-[60vh] overflow-y-auto p-1 pr-4">
+                {renderQuizResponses(viewingQuizResult)}
             </div>
           )}
-        </CardContent>
-        {socialDataTotalPages > 1 && (
-          <CardFooter className="flex justify-end items-center gap-4">
-            <div className="flex items-center gap-2 text-sm text-muted-foreground">
-              <span>Rows per page</span>
-              <Select
-                value={`${socialDataPageSize}`}
-                onValueChange={(value) => {
-                  setSocialDataPageSize(Number(value));
-                  setSocialDataPage(1);
-                }}
-              >
-                <SelectTrigger className="w-[70px]">
-                  <SelectValue placeholder={`${socialDataPageSize}`} />
-                </SelectTrigger>
-                <SelectContent>
-                  {[10, 25, 50, 100].map(size => (
-                    <SelectItem key={size} value={`${size}`}>{size}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <span className="text-sm text-muted-foreground">
-              Page {socialDataPage} of {socialDataTotalPages}
-            </span>
-            <div className="flex items-center gap-2">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setSocialDataPage(prev => Math.max(prev - 1, 1))}
-                disabled={socialDataPage === 1}
-              >
-                <ChevronLeft className="h-4 w-4" />
-                Previous
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setSocialDataPage(prev => Math.min(prev + 1, socialDataTotalPages))}
-                disabled={socialDataPage === socialDataTotalPages}
-              >
-                Next
-                <ChevronRight className="h-4 w-4" />
-              </Button>
-            </div>
-          </CardFooter>
-        )}
-      </Card>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={!!selectedProgressDetail} onOpenChange={() => setSelectedProgressDetail(null)}>
         <DialogContent className="max-w-2xl">

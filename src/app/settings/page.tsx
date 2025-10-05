@@ -1,5 +1,4 @@
 
-
 "use client";
 
 import { useAuth } from "@/hooks/use-auth";
@@ -16,11 +15,12 @@ import { collection, doc, getDocs, query, updateDoc, orderBy, where } from "fire
 import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
 import { useToast } from "@/hooks/use-toast";
 import { useState, useEffect, useCallback } from "react";
-import { Loader2, AlertTriangle } from "lucide-react";
+import { Loader2, AlertTriangle, UserCheck } from "lucide-react";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import type { Ladder } from "@/lib/types";
 import { Alert, AlertTitle, AlertDescription } from "@/components/ui/alert";
+import { useRouter } from "next/navigation";
 
 
 interface StoredItem {
@@ -34,22 +34,47 @@ interface Campus {
     "Campus Name": string;
 }
 
-const settingsSchema = z.object({
-  firstName: z.string().min(1, "First name is required."),
-  lastName: z.string().min(1, "Last name is required."),
-  photoFile: z.any().optional(),
-  bio: z.string().max(200, "Bio cannot be more than 200 characters.").optional(),
-  phoneNumber: z.string().min(1, "Phone number is required."),
-  hpNumber: z.string().min(1, "HP Number is required."),
-  facilitatorName: z.string().min(1, "Facilitator's Full Name is required."),
-  campus: z.string().min(1, "Campus is required."),
-  maritalStatus: z.string().optional(),
-  ministry: z.string().optional(),
-  language: z.string().min(1, "Language is required."),
-  charge: z.string().min(1, "Charge is required."),
-  role: z.string(), // Not user-editable, but needed for form state
-  classLadderId: z.string().min(1, "Class Ladder is required."),
-});
+const settingsSchema = z.discriminatedUnion("isInHpGroup", [
+    z.object({
+        isInHpGroup: z.literal(true),
+        firstName: z.string().min(1, "First name is required."),
+        lastName: z.string().min(1, "Last name is required."),
+        photoFile: z.any().optional(),
+        gender: z.string().min(1, "Gender is required."),
+        ageRange: z.string().min(1, "Age range is required."),
+        bio: z.string().max(200, "Bio cannot be more than 200 characters.").optional(),
+        phoneNumber: z.string().min(1, "Phone number is required."),
+        hpNumber: z.string().min(1, "HP Number is required."),
+        facilitatorName: z.string().min(1, "Facilitator's name is required."),
+        campus: z.string().min(1, "Campus is required."),
+        language: z.string().min(1, "Language is required."),
+        charge: z.string().optional(),
+        role: z.string(),
+        classLadderId: z.string().optional(),
+        hpAvailabilityDay: z.string().optional(),
+        hpAvailabilityTime: z.string().optional(),
+    }),
+    z.object({
+        isInHpGroup: z.literal(false),
+        firstName: z.string().min(1, "First name is required."),
+        lastName: z.string().min(1, "Last name is required."),
+        photoFile: z.any().optional(),
+        gender: z.string().min(1, "Gender is required."),
+        ageRange: z.string().min(1, "Age range is required."),
+        bio: z.string().max(200, "Bio cannot be more than 200 characters.").optional(),
+        phoneNumber: z.string().min(1, "Phone number is required."),
+        hpNumber: z.string().optional(),
+        facilitatorName: z.string().optional(),
+        campus: z.string().min(1, "Campus is required."),
+        language: z.string().min(1, "Language is required."),
+        charge: z.string().optional(),
+        role: z.string(),
+        classLadderId: z.string().optional(),
+        hpAvailabilityDay: z.string().min(1, "Please select an availability day."),
+        hpAvailabilityTime: z.string().min(1, "Please enter an availability time."),
+    })
+]);
+
 
 type SettingsFormValues = z.infer<typeof settingsSchema>;
 
@@ -59,14 +84,23 @@ export default function SettingsPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const db = getFirebaseFirestore();
   const storage = getFirebaseStorage();
+  const router = useRouter();
   
   const [campuses, setCampuses] = useState<Campus[]>([]);
-  const [maritalStatuses, setMaritalStatuses] = useState<StoredItem[]>([]);
-  const [ministries, setMinistries] = useState<StoredItem[]>([]);
   const [availableLanguages, setAvailableLanguages] = useState<StoredItem[]>([]);
   const [ladders, setLadders] = useState<Ladder[]>([]);
   const [charges, setCharges] = useState<StoredItem[]>([]);
   const [dataLoading, setDataLoading] = useState(true);
+  const [showProfileForm, setShowProfileForm] = useState(true);
+
+   useEffect(() => {
+    // Show form by default if profile is incomplete.
+    // The "thank you" message will hide it after successful submission.
+    if (!isProfileComplete) {
+      setShowProfileForm(true);
+    }
+  }, [isProfileComplete]);
+
 
   const {
     register,
@@ -74,6 +108,7 @@ export default function SettingsPage() {
     control,
     formState: { errors },
     reset,
+    watch,
   } = useForm<SettingsFormValues>({
     resolver: zodResolver(settingsSchema),
     defaultValues: {
@@ -81,17 +116,22 @@ export default function SettingsPage() {
         lastName: "",
         bio: "",
         phoneNumber: "",
+        isInHpGroup: false,
         hpNumber: "",
         facilitatorName: "",
+        hpAvailabilityDay: "",
+        hpAvailabilityTime: "",
         campus: "",
-        maritalStatus: "",
-        ministry: "",
         language: "",
         charge: "",
         role: "user",
         classLadderId: "",
+        gender: "",
+        ageRange: "",
     },
   });
+  
+  const isInHpGroup = watch("isInHpGroup");
 
    useEffect(() => {
     async function fetchAllData() {
@@ -99,23 +139,17 @@ export default function SettingsPage() {
         try {
             const [
                 campusesData,
-                maritalStatusesData,
-                ministriesData,
                 languagesData,
                 laddersData,
                 chargesData,
             ] = await Promise.all([
                 getDocs(query(collection(db, 'Campus'), orderBy('Campus Name'))),
-                getDocs(query(collection(db, 'maritalStatuses'), orderBy('name'))),
-                getDocs(query(collection(db, 'ministries'), orderBy('name'))),
-                getDocs(query(collection(db, 'languages'), orderBy('name'))),
+                getDocs(query(collection(db, 'languages'), where('status', '==', 'published'), orderBy('name'))),
                 getDocs(query(collection(db, 'courseLevels'), orderBy('order'))),
                 getDocs(query(collection(db, 'charges'), orderBy('name'))),
             ]);
 
             setCampuses(campusesData.docs.map(doc => ({ id: doc.id, ...doc.data() } as Campus)));
-            setMaritalStatuses(maritalStatusesData.docs.map(doc => ({ id: doc.id, ...doc.data() } as StoredItem)));
-            setMinistries(ministriesData.docs.map(doc => ({ id: doc.id, ...doc.data() } as StoredItem)));
             setAvailableLanguages(languagesData.docs.map(doc => ({ id: doc.id, ...doc.data() } as StoredItem)));
             setLadders(laddersData.docs.map(doc => ({ id: doc.id, ...doc.data() } as Ladder)));
             setCharges(chargesData.docs.map(doc => ({ id: doc.id, ...doc.data() } as StoredItem)));
@@ -137,15 +171,18 @@ export default function SettingsPage() {
             lastName: user.lastName || '',
             bio: user.bio || "",
             phoneNumber: user.phoneNumber || "",
+            isInHpGroup: user.isInHpGroup || false,
             hpNumber: user.hpNumber || "",
             facilitatorName: user.facilitatorName || "",
+            hpAvailabilityDay: user.hpAvailabilityDay || "",
+            hpAvailabilityTime: user.hpAvailabilityTime || "",
             campus: user.campus || "",
-            maritalStatus: user.maritalStatus || "",
-            ministry: user.ministry || "",
             language: user.language || "",
             charge: user.charge || "",
             role: user.role || "user",
             classLadderId: user.classLadderId || "",
+            gender: user.gender || "",
+            ageRange: user.ageRange || "",
         });
     }
   }, [user, dataLoading, reset]);
@@ -172,30 +209,57 @@ export default function SettingsPage() {
       const selectedLadder = ladders.find(l => l.id === data.classLadderId);
 
       const userDocRef = doc(db, "users", user.uid);
-      await updateDoc(userDocRef, {
+      
+      let dataToUpdate: Partial<AppUser> = {
         firstName: data.firstName,
         lastName: data.lastName,
         fullName: fullName,
         displayName: fullName,
         photoURL: photoURL,
-        bio: data.bio,
+        gender: data.gender,
+        ageRange: data.ageRange,
+        isInHpGroup: data.isInHpGroup,
         phoneNumber: data.phoneNumber,
-        hpNumber: data.hpNumber,
-        facilitatorName: data.facilitatorName,
         campus: data.campus,
-        maritalStatus: data.maritalStatus,
-        ministry: data.ministry,
         language: data.language,
-        charge: data.charge,
-        classLadderId: data.classLadderId,
-        classLadder: selectedLadder ? selectedLadder.name : '',
-      });
+      };
+
+      if (data.isInHpGroup) {
+        dataToUpdate = {
+          ...dataToUpdate,
+          bio: data.bio,
+          hpNumber: data.hpNumber,
+          facilitatorName: data.facilitatorName,
+          charge: data.charge,
+          classLadderId: data.classLadderId,
+          classLadder: selectedLadder ? selectedLadder.name : '',
+        };
+      } else {
+         dataToUpdate = {
+          ...dataToUpdate,
+          hpAvailabilityDay: data.hpAvailabilityDay,
+          hpAvailabilityTime: data.hpAvailabilityTime,
+        };
+      }
+
+      await updateDoc(userDocRef, dataToUpdate);
 
       await refreshUser();
-      toast({
-        title: "Profile Updated",
-        description: "Your settings have been successfully updated.",
-      });
+      
+      if (!data.isInHpGroup) {
+          toast({
+              title: "Information Received!",
+              description: "Thank you for filling out the form. We will follow up with you shortly to integrate you into a Prayer Group (HP) so you can start your classes.",
+              duration: 10000,
+          });
+          setShowProfileForm(false); // Hide form and show message after submission
+      } else {
+          toast({
+            title: "Profile Updated",
+            description: "Your settings have been successfully updated.",
+          });
+          router.push('/dashboard');
+      }
     } catch (error) {
       toast({
         variant: "destructive",
@@ -217,16 +281,18 @@ export default function SettingsPage() {
           </CardDescription>
         </CardHeader>
         <CardContent>
-          {!isProfileComplete && (
-            <Alert variant="destructive" className="mb-6">
-                <AlertTriangle className="h-4 w-4" />
-                <AlertTitle>Profile Incomplete</AlertTitle>
-                <AlertDescription>
-                    Please complete all required fields (marked with <span className="text-destructive">*</span>) to access all platform features.
-                </AlertDescription>
-            </Alert>
-          )}
-          {user && (
+          {!showProfileForm ? (
+             <div className="text-center p-6 bg-muted/50 rounded-lg">
+                <UserCheck className="mx-auto h-12 w-12 text-green-500" />
+                <h3 className="mt-4 text-lg font-semibold">Thank You!</h3>
+                <p className="mt-2 text-sm text-muted-foreground">
+                    As you are not yet in a Prayer Group (HP), we will follow up with you shortly to integrate you into an HP so you can start taking classes.
+                </p>
+                <div className="mt-6 flex justify-center gap-4">
+                     <Button variant="ghost" onClick={() => setShowProfileForm(true)}>Edit Submission</Button>
+                </div>
+            </div>
+          ) : user && (
             <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
               <div className="flex items-center space-x-4">
                 <Avatar className="h-20 w-20">
@@ -249,10 +315,152 @@ export default function SettingsPage() {
                     <Input id="lastName" {...register("lastName")} />
                     {errors.lastName && <p className="text-sm text-destructive">{errors.lastName.message}</p>}
                 </div>
-                 <div className="space-y-2 md:col-span-2">
+                 <div className="space-y-2">
                     <Label>Email</Label>
                     <Input value={user.email || ""} disabled />
                  </div>
+                 <div className="space-y-2">
+                    <Label>Gender <span className="text-destructive">*</span></Label>
+                     <Controller
+                        name="gender"
+                        control={control}
+                        render={({ field }) => (
+                            <Select onValueChange={field.onChange} value={field.value}>
+                                <SelectTrigger><SelectValue placeholder="Select gender" /></SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="male">Male</SelectItem>
+                                    <SelectItem value="female">Female</SelectItem>
+                                </SelectContent>
+                            </Select>
+                        )}
+                    />
+                    {errors.gender && <p className="text-sm text-destructive">{errors.gender.message}</p>}
+                 </div>
+                 <div className="space-y-2">
+                    <Label>Age Range <span className="text-destructive">*</span></Label>
+                     <Controller
+                        name="ageRange"
+                        control={control}
+                        render={({ field }) => (
+                            <Select onValueChange={field.onChange} value={field.value}>
+                                <SelectTrigger><SelectValue placeholder="Select age range" /></SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="Less than 13">Less than 13 | Moins de 13 ans</SelectItem>
+                                    <SelectItem value="13-17">13-17</SelectItem>
+                                    <SelectItem value="18-24">18-24</SelectItem>
+                                    <SelectItem value="25-34">25-34</SelectItem>
+                                    <SelectItem value="35-44">35-44</SelectItem>
+                                    <SelectItem value="45-54">45-54</SelectItem>
+                                    <SelectItem value="55-64">55-64</SelectItem>
+                                    <SelectItem value="65+">65+</SelectItem>
+                                </SelectContent>
+                            </Select>
+                        )}
+                    />
+                    {errors.ageRange && <p className="text-sm text-destructive">{errors.ageRange.message}</p>}
+                 </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="phoneNumber">Phone Number <span className="text-destructive">*</span></Label>
+                    <Input id="phoneNumber" type="tel" {...register("phoneNumber")} />
+                    {errors.phoneNumber && <p className="text-sm text-destructive">{errors.phoneNumber.message}</p>}
+                </div>
+                 <div className="space-y-2 md:col-span-2">
+                    <Label>Are you in a Prayer Group (HP)? <span className="text-destructive">*</span></Label>
+                    <Controller
+                        name="isInHpGroup"
+                        control={control}
+                        render={({ field }) => (
+                            <div className="flex gap-2">
+                                <Button
+                                    type="button"
+                                    variant={field.value === true ? 'default' : 'outline'}
+                                    onClick={() => field.onChange(true)}
+                                    className="w-full"
+                                >
+                                    Yes
+                                </Button>
+                                <Button
+                                    type="button"
+                                    variant={field.value === false ? 'default' : 'outline'}
+                                    onClick={() => field.onChange(false)}
+                                    className="w-full"
+                                >
+                                    No
+                                </Button>
+                            </div>
+                        )}
+                    />
+                </div>
+
+                {isInHpGroup ? (
+                    <>
+                        <div className="space-y-2">
+                            <Label htmlFor="hpNumber">HP Number <span className="text-destructive">*</span></Label>
+                            <Input id="hpNumber" {...register("hpNumber")} />
+                            {errors.hpNumber && <p className="text-sm text-destructive">{errors.hpNumber.message}</p>}
+                        </div>
+                        <div className="space-y-2">
+                            <Label htmlFor="facilitatorName">Facilitator's Full Name <span className="text-destructive">*</span></Label>
+                            <Input id="facilitatorName" {...register("facilitatorName")} />
+                            {errors.facilitatorName && <p className="text-sm text-destructive">{errors.facilitatorName.message}</p>}
+                        </div>
+                    </>
+                ) : (
+                    <>
+                        <div className="space-y-2">
+                            <Label htmlFor="hpAvailabilityDay">HP Availability Day <span className="text-destructive">*</span></Label>
+                            <Controller
+                                name="hpAvailabilityDay"
+                                control={control}
+                                render={({ field }) => (
+                                    <Select onValueChange={field.onChange} value={field.value}>
+                                        <SelectTrigger>
+                                            <SelectValue placeholder="Select a day" />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            <SelectItem value="Monday">Monday</SelectItem>
+                                            <SelectItem value="Tuesday">Tuesday</SelectItem>
+                                            <SelectItem value="Wednesday">Wednesday</SelectItem>
+                                            <SelectItem value="Thursday">Thursday</SelectItem>
+                                            <SelectItem value="Friday">Friday</SelectItem>
+                                            <SelectItem value="Saturday">Saturday</SelectItem>
+                                            <SelectItem value="Sunday">Sunday</SelectItem>
+                                        </SelectContent>
+                                    </Select>
+                                )}
+                            />
+                            {errors.hpAvailabilityDay && <p className="text-sm text-destructive">{errors.hpAvailabilityDay.message}</p>}
+                        </div>
+                        <div className="space-y-2">
+                            <Label htmlFor="hpAvailabilityTime">HP Availability Time <span className="text-destructive">*</span></Label>
+                            <Input id="hpAvailabilityTime" type="time" {...register("hpAvailabilityTime")} />
+                            {errors.hpAvailabilityTime && <p className="text-sm text-destructive">{errors.hpAvailabilityTime.message}</p>}
+                        </div>
+                    </>
+                )}
+
+
+                
+                <div className="space-y-2">
+                    <Label>Campus <span className="text-destructive">*</span></Label>
+                    <Controller
+                        control={control}
+                        name="campus"
+                        render={({ field }) => (
+                            <Select onValueChange={field.onChange} value={field.value}>
+                                <SelectTrigger>
+                                    <SelectValue placeholder="Select your campus" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    {campuses.map(campus => (
+                                        <SelectItem key={campus.id} value={campus["Campus Name"]}>{campus["Campus Name"]}</SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
+                        )}
+                    />
+                        {errors.campus && <p className="text-sm text-destructive">{errors.campus.message}</p>}
+                </div>
                  <div className="space-y-2">
                     <Label>Language <span className="text-destructive">*</span></Label>
                     <Controller
@@ -273,97 +481,28 @@ export default function SettingsPage() {
                     />
                     {errors.language && <p className="text-sm text-destructive">{errors.language.message}</p>}
                 </div>
-                 <div className="space-y-2">
-                    <Label htmlFor="phoneNumber">Phone Number <span className="text-destructive">*</span></Label>
-                    <Input id="phoneNumber" {...register("phoneNumber")} />
-                    {errors.phoneNumber && <p className="text-sm text-destructive">{errors.phoneNumber.message}</p>}
-                 </div>
-                 <div className="space-y-2">
-                    <Label htmlFor="hpNumber">HP Number <span className="text-destructive">*</span></Label>
-                    <Input id="hpNumber" {...register("hpNumber")} />
-                    {errors.hpNumber && <p className="text-sm text-destructive">{errors.hpNumber.message}</p>}
-                </div>
-                <div className="space-y-2">
-                    <Label htmlFor="facilitatorName">Facilitator's Full Name <span className="text-destructive">*</span></Label>
-                    <Input id="facilitatorName" {...register("facilitatorName")} />
-                    {errors.facilitatorName && <p className="text-sm text-destructive">{errors.facilitatorName.message}</p>}
-                </div>
-                 <div className="space-y-2">
-                    <Label>Campus <span className="text-destructive">*</span></Label>
-                    <Controller
-                        control={control}
-                        name="campus"
-                        render={({ field }) => (
-                            <Select onValueChange={field.onChange} value={field.value}>
-                                <SelectTrigger>
-                                    <SelectValue placeholder="Select your campus" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    {campuses.map(campus => (
-                                        <SelectItem key={campus.id} value={campus["Campus Name"]}>{campus["Campus Name"]}</SelectItem>
-                                    ))}
-                                </SelectContent>
-                            </Select>
-                        )}
-                    />
-                     {errors.campus && <p className="text-sm text-destructive">{errors.campus.message}</p>}
-                </div>
-                 <div className="space-y-2">
-                    <Label>Class Ladder <span className="text-destructive">*</span></Label>
-                    <Input value={ladders.find(l => l.id === user.classLadderId)?.name || 'Not Assigned'} disabled />
-                </div>
-                 <div className="space-y-2">
-                    <Label>Charge <span className="text-destructive">*</span></Label>
-                     <Input value={user.charge || 'Not Assigned'} disabled />
-                </div>
-                <div className="space-y-2">
-                    <Label>Marital Status</Label>
-                     <Controller
-                        control={control}
-                        name="maritalStatus"
-                        render={({ field }) => (
-                            <Select onValueChange={field.onChange} value={field.value}>
-                                <SelectTrigger>
-                                    <SelectValue placeholder="Select marital status" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    {maritalStatuses.map(status => (
-                                        <SelectItem key={status.id} value={status.name}>{status.name}</SelectItem>
-                                    ))}
-                                </SelectContent>
-                            </Select>
-                        )}
-                    />
-                </div>
-                <div className="space-y-2">
-                    <Label>Ministry</Label>
-                     <Controller
-                        control={control}
-                        name="ministry"
-                        render={({ field }) => (
-                            <Select onValueChange={field.onChange} value={field.value}>
-                                <SelectTrigger>
-                                    <SelectValue placeholder="Select your ministry" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    {ministries.map(ministry => (
-                                        <SelectItem key={ministry.id} value={ministry.name}>{ministry.name}</SelectItem>
-                                    ))}
-                                </SelectContent>
-                            </Select>
-                        )}
-                    />
-                </div>
-                 <div className="space-y-2">
-                    <Label>Role</Label>
-                    <Input value={user.role || "user"} disabled className="capitalize"/>
-                </div>
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="bio">Profile Bio</Label>
-                <Textarea id="bio" {...register("bio")} placeholder="Tell us a little about yourself..." />
-                {errors.bio && <p className="text-sm text-destructive">{errors.bio.message}</p>}
+                
+                {isInHpGroup ? (
+                    <>
+                         <div className="space-y-2">
+                            <Label>Class Ladder</Label>
+                            <Input value={ladders.find(l => l.id === user.classLadderId)?.name || 'Not Assigned'} disabled />
+                        </div>
+                         <div className="space-y-2">
+                            <Label>Charge</Label>
+                             <Input value={user.charge || 'Not Assigned'} disabled />
+                        </div>
+                         <div className="space-y-2">
+                            <Label>Role</Label>
+                            <Input value={user.role || "user"} disabled className="capitalize"/>
+                        </div>
+                         <div className="space-y-2 md:col-span-2">
+                            <Label htmlFor="bio">Profile Bio</Label>
+                            <Textarea id="bio" {...register("bio")} placeholder="Tell us a little about yourself..." />
+                            {errors.bio && <p className="text-sm text-destructive">{errors.bio.message}</p>}
+                        </div>
+                    </>
+                ) : null}
               </div>
               
               <div className="flex justify-end">

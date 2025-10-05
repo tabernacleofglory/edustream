@@ -1,4 +1,5 @@
 
+
 export interface User {
   id: string;
   uid: string;
@@ -24,6 +25,11 @@ export interface User {
   phoneNumber?: string;
   facilitatorName?: string;
   language?: string;
+  isInHpGroup?: boolean;
+  hpAvailabilityDay?: string;
+  hpAvailabilityTime?: string;
+  gender?: string;
+  ageRange?: string;
 }
 
 export interface Speaker {
@@ -98,19 +104,17 @@ export interface Video {
   shareCount?: number;
   commentCount?: number;
   status?: 'published' | 'private';
-  transcodeStatus?: 'pending' | 'processing' | 'succeeded' | 'failed' | 'not_requested' | 'cancelled';
-  transcodeJobName?: string;
-  errorMessage?: string;
   hlsUrl?: string;
-  type?: 'video' | 'quiz' | 'youtube';
+  type?: 'video' | 'quiz' | 'youtube' | 'googledrive';
   questions?: QuizQuestion[];
+  enableStillWatchingPrompt?: boolean;
 }
 
 export interface UserQuizResult {
   userId: string;
   courseId: string;
   quizId: string;
-  answers: number[];
+  answers: any; // Changed from number[] to any to support multiple answer types
   score: number;
   passed: boolean;
   attemptedAt: any;

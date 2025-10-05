@@ -1,5 +1,4 @@
 
-
 // src/hooks/useProcessedCourses.tsx
 "use client";
 
@@ -81,7 +80,13 @@ export function useProcessedCourses(forAllCoursesPage: boolean = false) {
       // If a user has a language set, filter courses by that language.
       if (user?.language) {
           coursesQuery = query(coursesQuery, where("language", "==", user.language));
+      } else if (user) {
+        // If user is logged in but has no language, they shouldn't see any courses.
+        // We create a query that will deliberately return no results.
+        coursesQuery = query(coursesQuery, where("language", "==", "nonexistent-language-to-return-empty"));
       }
+
+
       const coursesSnapshot = await getDocs(coursesQuery);
 
       // Normalize ladderIds so downstream logic always has them
@@ -177,8 +182,9 @@ export function useProcessedCourses(forAllCoursesPage: boolean = false) {
         );
 
         const requiredQuizIds = course.quizIds || [];
-        const passedCourseQuizzes = passedQuizzesByCourse.get(course.id!) || new Set();
-        const allQuizzesCompleted = requiredQuizIds.every(quizId => passedCourseQuizzes.has(quizId));
+        const quizzesPassedForThisCourse = passedQuizzesByCourse.get(course.id!) || new Set();
+        const allQuizzesCompleted = requiredQuizIds.length > 0 ? requiredQuizIds.every(quizId => quizzesPassedForThisCourse.has(quizId)) : true;
+
 
         if (allVideosCompleted && allQuizzesCompleted) {
           completedCourseIds.add(course.id!);
@@ -307,14 +313,7 @@ export function useProcessedCourses(forAllCoursesPage: boolean = false) {
   }, [user]);
 
   useEffect(() => {
-    if(user?.language) { // Only fetch courses if user has a language set
-        fetchAndProcessCourses();
-    } else if (user && !user.language) { // If user is logged in but has no language, don't show any courses
-        setProcessedCourses([]);
-        setLoading(false);
-    } else { // For guests
-        fetchAndProcessCourses();
-    }
+      fetchAndProcessCourses();
   }, [fetchAndProcessCourses, user]);
 
   const refresh = () => {

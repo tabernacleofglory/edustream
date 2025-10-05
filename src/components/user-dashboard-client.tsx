@@ -13,7 +13,7 @@ import {
   CarouselPrevious,
 } from "@/components/ui/carousel";
 import Link from "next/link";
-import { useIsMobile } from "@/hooks/use-is-mobile";
+import { useIsMobile } from "@/hooks/use-mobile";
 import { Line, LineChart, CartesianGrid, XAxis, YAxis, Tooltip, ResponsiveContainer } from "recharts";
 import { ChartConfig, ChartContainer, ChartTooltipContent } from "@/components/ui/chart";
 import { useProcessedCourses } from "@/hooks/useProcessedCourses";
@@ -85,8 +85,6 @@ export default function UserDashboardClient() {
 
   const completedCourses = useMemo(() => enrolledCourses.filter(p => p.isCompleted), [enrolledCourses]);
   
-  const suggestedCourses = useMemo(() => processedCourses.filter(p => !p.isEnrolled && !p.isLocked), [processedCourses]);
-
   const coursesForProgressOverview = useMemo(() => {
     return enrolledCourses
         .map(p => ({
@@ -117,6 +115,39 @@ export default function UserDashboardClient() {
     if (!currentLadderDetails) return null;
     return allLadders.find(l => l.order > currentLadderDetails.order);
   }, [allLadders, currentLadderDetails]);
+
+  const groupedCourses = useMemo(() => {
+    const groups: { [key: string]: (typeof processedCourses[0])[] } = {};
+    
+    processedCourses.forEach(course => {
+      if (course.ladderIds && course.ladderIds.length > 0) {
+        course.ladderIds.forEach(ladderId => {
+          if (!groups[ladderId]) groups[ladderId] = [];
+          groups[ladderId].push(course);
+        });
+      } else {
+        if (!groups['uncategorized']) groups['uncategorized'] = [];
+        groups['uncategorized'].push(course);
+      }
+    });
+
+    return Object.keys(groups).map(ladderId => {
+        const ladder = allLadders.find(l => l.id === ladderId);
+        return {
+            ladderId,
+            ladderName: ladder?.name || 'Uncategorized',
+            order: ladder?.order ?? Infinity,
+            courses: groups[ladderId]
+        }
+    }).sort((a, b) => {
+        if (user?.classLadderId) {
+            if (a.ladderId === user.classLadderId) return -1;
+            if (b.ladderId === user.classLadderId) return 1;
+        }
+        return a.order - b.order;
+    });
+  }, [processedCourses, allLadders, user]);
+
   
   const handleRequestPromotion = async () => {
     if (!user || !currentLadderDetails || !nextLadder) return;
@@ -241,26 +272,51 @@ export default function UserDashboardClient() {
           </section>
       )}
 
-       {suggestedCourses.length > 0 && (
-          <section>
-                <div className="flex justify-between items-center mb-4">
-                    <h2 className="font-headline text-2xl font-semibold">Your Next Steps</h2>
-                    <Button asChild variant="outline">
-                        <Link href="/courses">
-                            View All <ArrowRight className="ml-2 h-4 w-4" />
-                        </Link>
-                    </Button>
+      <section>
+          <div className="space-y-12">
+            {loading ? (
+                Array.from({ length: 2 }).map((_, groupIndex) => (
+                    <div key={groupIndex} className="space-y-4">
+                         <Skeleton className="h-8 w-1/3" />
+                         <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-2 xl:grid-cols-3">
+                            {Array.from({ length: 3 }).map((_, index) => (
+                                <div key={index} className="space-y-4">
+                                    <Skeleton className="h-48 w-full" />
+                                    <div className="space-y-2 p-4">
+                                        <Skeleton className="h-4 w-1/4" />
+                                        <Skeleton className="h-6 w-3/4" />
+                                        <Skeleton className="h-4 w-full" />
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                ))
+            ) : groupedCourses.length > 0 ? (
+                groupedCourses.map(group => (
+                    <div key={group.ladderId} id={`ladder-group-${group.ladderId}`} className="scroll-mt-32">
+                        <h3 className="font-headline text-2xl font-bold mb-4">{group.ladderName}</h3>
+                        <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-2 xl:grid-cols-3">
+                        {group.courses.map((course) => (
+                            <div key={course.id} className="relative group">
+                                <CourseCard 
+                                course={course} 
+                                onUnenroll={refresh} 
+                                showEnroll={!user} 
+                                isAdminView={false}
+                                />
+                            </div>
+                        ))}
+                        </div>
+                    </div>
+                ))
+            ) : (
+                <div className="text-center py-16 text-muted-foreground">
+                    <p>No courses available at this time.</p>
                 </div>
-                <p className="text-muted-foreground mb-4">
-                    Here are some courses in your learning path to get you started.
-                </p>
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                  {suggestedCourses.slice(0, 3).map(course => (
-                      <CourseCard key={course.id} course={course} onUnenroll={() => handleUnenrollment()} />
-                  ))}
-              </div>
-          </section>
-      )}
+            )}
+        </div>
+      </section>
 
       {completedCourses.length > 0 && (
           <section>

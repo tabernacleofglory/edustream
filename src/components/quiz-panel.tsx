@@ -173,7 +173,7 @@ export default function QuizPanel({ quizData, courseId, onQuizComplete }: QuizPa
                 score: calculatedScore,
                 passed: hasPassed,
                 attemptedAt: serverTimestamp(),
-            } as Omit<UserQuizResult, 'id' | 'answers'> & { answers: any });
+            } as Omit<UserQuizResult, 'id'| 'answers'> & { answers: any });
 
             if (hasPassed) {
                 onQuizComplete();
@@ -210,6 +210,7 @@ export default function QuizPanel({ quizData, courseId, onQuizComplete }: QuizPa
   }
 
   if (submitted) {
+    const incorrectResults = results.filter(r => !r.isCorrect && r.type !== 'free-text');
     return (
       <Card className="m-auto max-w-2xl">
          {passed && <Confetti recycle={false} />}
@@ -229,35 +230,36 @@ export default function QuizPanel({ quizData, courseId, onQuizComplete }: QuizPa
                 </Alert>
             )}
         </CardHeader>
-        <CardContent>
-            <div className="space-y-4 max-h-[40vh] overflow-y-auto p-2">
-                {results.map((r, index) => (
-                    <div key={r.id} className="border p-4 rounded-md">
-                        <div className="flex items-start justify-between">
-                            <p className="font-semibold">{index + 1}. {r.questionText}</p>
-                            {r.type === 'free-text' ? null : r.isCorrect ? <CheckCircle2 className="text-green-500" /> : <XCircle className="text-destructive" />}
-                        </div>
-                         {r.type !== 'free-text' && (
-                             <ul className="mt-2 text-sm text-muted-foreground list-disc pl-5">
+        {!passed && (
+            <CardContent>
+                <h3 className="font-semibold text-center mb-4">Review Your Incorrect Answers</h3>
+                <div className="space-y-4 max-h-[40vh] overflow-y-auto p-2">
+                    {incorrectResults.map((r, index) => (
+                        <div key={r.id} className="border p-4 rounded-md">
+                            <div className="flex items-start justify-between">
+                                <p className="font-semibold">{index + 1}. {r.questionText}</p>
+                                <XCircle className="text-destructive" />
+                            </div>
+                            <ul className="mt-2 text-sm text-muted-foreground list-disc pl-5">
                                 {r.options.map((opt, i) => (
                                     <li key={i} className={cn(
-                                        r.type === 'multiple-choice' && i === r.correctAnswerIndex && 'font-bold text-green-600',
-                                        r.type === 'multiple-select' && r.correctAnswerIndexes?.includes(i) && 'font-bold text-green-600'
+                                        (r.type === 'multiple-choice' && i === r.correctAnswerIndex) && 'font-bold text-green-600',
+                                        (r.type === 'multiple-select' && r.correctAnswerIndexes?.includes(i)) && 'font-bold text-green-600'
                                     )}>
                                         {opt}
+                                        {r.type === 'multiple-choice' && i === Number(r.userAnswer) && <Badge variant="destructive" className="ml-2">Your Answer</Badge>}
+                                        {r.type === 'multiple-select' && r.userAnswer?.includes(i) && <Badge variant="destructive" className="ml-2">Your Answer</Badge>}
                                     </li>
                                 ))}
                             </ul>
-                         )}
-                         {r.type === 'free-text' && (
-                            <div className="mt-2 p-2 bg-muted rounded-md text-sm">
-                                <strong>Your Answer:</strong> <em>{r.userAnswer}</em>
-                            </div>
-                         )}
-                    </div>
-                ))}
-            </div>
-        </CardContent>
+                        </div>
+                    ))}
+                    {incorrectResults.length === 0 && (
+                        <p className="text-center text-muted-foreground">You answered all graded questions correctly!</p>
+                    )}
+                </div>
+            </CardContent>
+        )}
         <CardFooter className="flex flex-col sm:flex-row gap-2">
             {passed ? (
                 <Button className="w-full" onClick={onQuizComplete}>

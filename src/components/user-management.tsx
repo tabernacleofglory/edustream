@@ -719,41 +719,45 @@ export default function UserManagement() {
                   </div>
                   <div className="grid grid-cols-2 gap-4 text-sm">
                         <div>
-                          <p className="font-semibold">Charge</p>
-                          <p>{viewingUser.charge || "Not provided"}</p>
-                      </div>
-                      <div>
-                          <p className="font-semibold">Role</p>
-                           <div><Badge variant={viewingUser.role === 'admin' ? "default" : "secondary"}>{viewingUser.role}</Badge></div>
-                      </div>
-                      <div>
-                          <p className="font-semibold">Membership Status</p>
-                          <div><Badge variant={viewingUser.membershipStatus === 'premium' ? "default" : "secondary"}>{viewingUser.membershipStatus}</Badge></div>
-                      </div>
-                      <div>
-                          <p className="font-semibold">Phone Number</p>
-                          <p>{viewingUser.phoneNumber || "Not provided"}</p>
-                      </div>
-                      <div>
-                          <p className="font-semibold">HP Number</p>
-                          <p>{viewingUser.hpNumber || "Not provided"}</p>
-                      </div>
-                      <div>
+                            <p className="font-semibold">Gender</p>
+                            <p className="capitalize">{viewingUser.gender || "Not provided"}</p>
+                        </div>
+                        <div>
+                            <p className="font-semibold">Age Range</p>
+                            <p>{viewingUser.ageRange || "Not provided"}</p>
+                        </div>
+                        <div>
+                            <p className="font-semibold">Phone Number</p>
+                            <p>{viewingUser.phoneNumber || "Not provided"}</p>
+                        </div>
+                         <div>
                           <p className="font-semibold">Campus</p>
                           <p>{viewingUser.campus || "Not provided"}</p>
-                      </div>
-                       <div>
+                        </div>
+                        <div>
+                            <p className="font-semibold">HP Number</p>
+                            <p>{viewingUser.hpNumber || "Not provided"}</p>
+                        </div>
+                        <div>
+                            <p className="font-semibold">HP Facilitator</p>
+                            <p>{viewingUser.facilitatorName || "Not provided"}</p>
+                        </div>
+                        <div>
                           <p className="font-semibold">Membership Ladder</p>
                           <p>{getUserLadderName(viewingUser.classLadderId)}</p>
-                      </div>
-                      <div>
-                          <p className="font-semibold">Marital Status</p>
-                          <p>{viewingUser.maritalStatus || "Not provided"}</p>
-                      </div>
-                      <div>
-                          <p className="font-semibold">Ministry</p>
-                          <p>{viewingUser.ministry || "Not provided"}</p>
-                      </div>
+                        </div>
+                         <div>
+                          <p className="font-semibold">Charge</p>
+                          <p>{viewingUser.charge || "Not provided"}</p>
+                        </div>
+                        <div>
+                            <p className="font-semibold">Role</p>
+                            <div><Badge variant={viewingUser.role === 'admin' || viewingUser.role === 'developer' ? 'default' : 'secondary'} className="capitalize">{viewingUser.role}</Badge></div>
+                        </div>
+                        <div>
+                            <p className="font-semibold">Membership Status</p>
+                            <div><Badge variant={viewingUser.membershipStatus === 'premium' ? "default" : "secondary"}>{viewingUser.membershipStatus}</Badge></div>
+                        </div>
                       <div className="col-span-2">
                           <p className="font-semibold">User ID</p>
                           <p className="text-xs text-muted-foreground break-all">{viewingUser.uid}</p>
@@ -854,3 +858,4 @@ export default function UserManagement() {
     </>
   );
 }
+

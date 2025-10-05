@@ -3,7 +3,7 @@ import type { Metadata } from "next";
 import { Inter, Space_Grotesk, Dancing_Script, Great_Vibes, Source_Serif_4 } from "next/font/google";
 import "./globals.css";
 import { getSiteSettings } from "@/lib/data";
-import AppContent from "./app-content";
+import { Providers } from "@/components/providers";
 
 // This tells Next.js to always re-evaluate this page and not cache it.
 export const revalidate = 0;
@@ -46,13 +46,12 @@ export async function generateMetadata(): Promise<Metadata> {
   return {
     title: settings?.websiteName || "Glory Training Hub",
     description: settings?.metaDescription || "Transforming lives through Christ-centered learning.",
-    keywords: settings?.seoKeywords || "",
+    keywords: Array.isArray(settings?.seoKeywords) ? settings.seoKeywords.join(', ') : settings?.seoKeywords || "",
     icons: {
       icon: settings?.faviconUrl || '/favicon.ico',
     },
   };
 }
-
 
 export default function RootLayout({
   children,
@@ -61,8 +60,10 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en" className={`${inter.variable} ${spaceGrotesk.variable} ${dancingScript.variable} ${greatVibes.variable} ${sourceSerif.variable}`} suppressHydrationWarning>
-      <body className="font-body">
-        <AppContent>{children}</AppContent>
+      <body>
+        <Providers>
+            {children}
+        </Providers>
       </body>
     </html>
   );

@@ -124,7 +124,6 @@ export async function requestPromotion(
  * - Deletes enrollment doc
  * - Deletes progress doc
  * - Decrements courses/{courseId}.enrollmentCount by exactly 1
- *   (your rules explicitly allow +/- 1 for non-admins)
  */
 export async function unenrollUserFromCourse(
   userId: string,
@@ -141,28 +140,18 @@ export async function unenrollUserFromCourse(
       return { success: false, message: 'Enrollment not found.' };
     }
 
-    // Try transaction first for atomic behavior
-    await db.runTransaction(async (tx) => {
-      const courseSnap = await tx.get(courseRef);
-      if (courseSnap.exists) {
-        const currentCount = (courseSnap.data()?.enrollmentCount ?? 0) as number;
-        tx.update(courseRef, { enrollmentCount: currentCount - 1 });
-      }
-      tx.delete(enrollmentRef);
-      tx.delete(progressRef);
-    });
+    // Atomically update all documents.
+    const batch = db.batch();
+    
+    batch.delete(enrollmentRef);
+    batch.delete(progressRef);
+    batch.update(courseRef, { enrollmentCount: FieldValue.increment(-1) });
+    
+    await batch.commit();
 
     return { success: true, message: 'Successfully unenrolled from the course.' };
   } catch (error: any) {
     console.error('Error unenrolling user:', error);
-    // Best-effort fallback if transaction failed mid-way
-    try {
-      const courseRef = db.doc(`courses/${courseId}`);
-      await courseRef.update({ enrollmentCount: FieldValue.increment(-1) });
-    } catch {}
-    try { await db.doc(`enrollments/${userId}_${courseId}`).delete(); } catch {}
-    try { await db.doc(`userVideoProgress/${userId}_${courseId}`).delete(); } catch {}
-
     const message = error.message || 'An unexpected error occurred.';
     return { success: false, message };
   }

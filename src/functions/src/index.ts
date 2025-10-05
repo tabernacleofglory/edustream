@@ -3,7 +3,6 @@ import * as functions from "firebase-functions";
 import * as admin from "firebase-admin";
 import * as sgMail from "@sendgrid/mail";
 
-
 admin.initializeApp();
 const db = admin.firestore();
 
@@ -16,7 +15,7 @@ export const sendCertificateEmail = functions.https.onCall(async (data, context)
 
     const msg = {
         to: data.email,
-        from: 'glorytraining@tabernacleofglory.net', // TODO: Add your verified SendGrid email address
+        from: 'glorytraining@tabernacleofglory.net', // Ensure this is a verified SendGrid sender
         subject: `Your Certificate for ${data.courseName}`,
         html: `
             <h1>Congratulations, ${data.userName}!</h1>
@@ -37,53 +36,32 @@ export const sendCertificateEmail = functions.https.onCall(async (data, context)
     }
 });
 
-export const syncVideos = functions.https.onCall(async (data, context) => {
-    const bucket = admin.storage().bucket("edustream-5t6z4.appspot.com");
-    const videoFolderPath = 'contents/videos/';
-    const [files] = await bucket.getFiles({ prefix: videoFolderPath });
-    
-    const contentsCollection = db.collection('Contents');
-    const existingVideosSnapshot = await contentsCollection.where('Type', '==', 'video').get();
-    const existingVideoPaths = new Set(existingVideosSnapshot.docs.map(doc => doc.data().path));
-
-    const batch = db.batch();
-    let count = 0;
-
-    for (const file of files) {
-        if (file.name.endsWith('/') || existingVideoPaths.has(file.name)) {
-            continue; // Skip folders and existing videos
-        }
-
-        const fileName = file.name.split('/').pop() || '';
-        const newContentRef = db.collection('Contents').doc();
-        
-        const [url] = await file.getSignedUrl({ action: 'read', expires: '03-09-2491' });
-
-        batch.set(newContentRef, {
-            title: fileName.substring(0, fileName.lastIndexOf('.')),
-            path: file.name,
-            url: url,
-            'File name': fileName,
-            Type: 'video',
-            status: 'published',
-            createdAt: admin.firestore.FieldValue.serverTimestamp(),
-        });
-
-        count++;
-        if (count % 499 === 0) {
-            await batch.commit();
-        }
+export const sendHpFollowUp = functions.https.onCall(async (data, context) => {
+    const sendgridApiKey = functions.config().sendgrid?.key;
+    if (!sendgridApiKey) {
+        throw new functions.https.HttpsError('failed-precondition', 'SendGrid API key is not set in the environment configuration.');
     }
+    sgMail.setApiKey(sendgridApiKey);
 
-    if (count > 0 && count % 499 !== 0) {
-        await batch.commit();
+    const msg = {
+        to: data.email,
+        from: 'glorytraining@tabernacleofglory.net', // Ensure this is a verified SendGrid sender
+        subject: 'HP Placement Request Received',
+        html: `
+            <h1>Hello, ${data.name}!</h1>
+            <p>We are happy to inform you that we have received your request and are beginning the follow-up process to place you in an HP (Prayer Group).</p>
+            <p>We will be in touch with further updates soon.</p>
+            <br/>
+            <p>Thank you!</p>
+            <p>The Glory Training Hub Team</p>
+        `,
+    };
+
+    try {
+        await sgMail.send(msg);
+        return { success: true, message: 'Follow-up email sent successfully.' };
+    } catch (error) {
+        console.error("Error sending HP follow-up email:", error);
+        throw new functions.https.HttpsError('internal', 'An error occurred while trying to send the email.');
     }
-
-    const message = `Successfully created Firestore documents for ${count} new videos.`;
-    functions.logger.log(message);
-    return { status: 'success', message: message };
 });
-
-// We will export the new functions from a different file to isolate them.
-export * from './transcoding';
-    
