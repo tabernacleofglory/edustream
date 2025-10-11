@@ -49,6 +49,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useIsMobile } from "@/hooks/use-is-mobile";
+import { useI18n } from "@/hooks/use-i18n";
 
 
 interface CourseWithStatus extends Course {
@@ -58,6 +59,7 @@ interface CourseWithStatus extends Course {
 
 function AdminCoursesPageContent() {
   const { user, loading: authLoading, isCurrentUserAdmin, hasPermission } = useAuth();
+  const { t } = useI18n();
   const [allCourses, setAllCourses] = useState<Course[]>([]);
   const [filteredCourses, setFilteredCourses] = useState<CourseWithStatus[]>([]);
   const [loading, setLoading] = useState(true);
@@ -193,21 +195,30 @@ function AdminCoursesPageContent() {
       <div className="flex flex-col sm:flex-row justify-between items-start gap-4">
         <div>
           <h1 className="font-headline text-3xl font-bold md:text-4xl">
-            Course Management
+            {t('admin.courses.title', "Course Management")}
           </h1>
           <p className="text-muted-foreground">
-            Create, view, and edit courses in your catalog.
+            {t('admin.courses.description', "Create, view, and edit courses in your catalog.")}
           </p>
         </div>
         {canAddCourses && (
             <Button onClick={handleAddCourse}>
                 <Plus className="mr-2 h-4 w-4" />
-                Add Course
+                {t('admin.courses.add_button', "Add Course")}
             </Button>
         )}
       </div>
 
       <div className="flex flex-col gap-4">
+        <div className="relative">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground" />
+          <Input
+            placeholder="Search by course title..."
+            className="pl-10"
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+          />
+        </div>
         <div className="flex flex-col md:flex-row gap-2">
             {isMobile ? (
                  <Select
@@ -215,10 +226,10 @@ function AdminCoursesPageContent() {
                     onValueChange={(value) => setSelectedLadderId(value === "all" ? null : value)}
                     >
                     <SelectTrigger className="w-full">
-                        <SelectValue placeholder="All Class Ladders" />
+                        <SelectValue placeholder={t('admin.courses.filter.ladders_placeholder', "All Class Ladders")} />
                     </SelectTrigger>
                     <SelectContent>
-                        <SelectItem value="all">All Class Ladders</SelectItem>
+                        <SelectItem value="all">{t('admin.courses.filter.all_ladders', "All Class Ladders")}</SelectItem>
                         {ladders.map(ladder => (
                             <SelectItem key={ladder.id} value={ladder.id}>{ladder.name} {ladder.side !== 'none' && `(${ladder.side})`}</SelectItem>
                         ))}
@@ -231,7 +242,7 @@ function AdminCoursesPageContent() {
                         onClick={() => setSelectedLadderId(null)}
                         className="flex-shrink-0"
                     >
-                        All Ladders
+                        {t('admin.courses.filter.all_ladders', "All Ladders")}
                     </Button>
                     {visibleLadders.map(ladder => (
                         <Button
@@ -248,7 +259,7 @@ function AdminCoursesPageContent() {
                             <DropdownMenuTrigger asChild>
                                 <Button variant="outline" className="flex-shrink-0">
                                     <Filter className="mr-2 h-4 w-4" />
-                                    More
+                                    {t('admin.courses.filter.more', "More")}
                                 </Button>
                             </DropdownMenuTrigger>
                             <DropdownMenuContent>
@@ -268,7 +279,7 @@ function AdminCoursesPageContent() {
                   onClick={() => handleCategoryClick(null)}
                   className="flex-shrink-0"
               >
-                  All Categories
+                  {t('admin.courses.filter.all_categories', "All Categories")}
               </Button>
               {categories.slice(0, 4).map((category) => (
                   <Button
@@ -285,7 +296,7 @@ function AdminCoursesPageContent() {
                       <DropdownMenuTrigger asChild>
                           <Button variant="outline" className="flex-shrink-0">
                               <Filter className="mr-2 h-4 w-4" />
-                              More
+                              {t('admin.courses.filter.more', "More")}
                           </Button>
                       </DropdownMenuTrigger>
                       <DropdownMenuContent>
@@ -334,7 +345,7 @@ function AdminCoursesPageContent() {
             <SheetContent className="w-full sm:max-w-xl md:max-w-2xl lg:max-w-3xl xl:max-w-4xl p-0">
                 <ScrollArea className="h-screen">
                     <SheetHeader className="p-6 sticky top-0 bg-background z-10">
-                        <SheetTitle>{editCourseId ? 'Edit Course' : 'Create a New Course'}</SheetTitle>
+                        <SheetTitle>{editCourseId ? t('admin.courses.edit_sheet_title', "Edit Course") : t('admin.courses.add_sheet_title', "Create a New Course")}</SheetTitle>
                     </SheetHeader>
                     <div className="p-6 pt-0">
                         <AddCourseForm allCourses={allCourses} onCourseUpdated={onCourseUpdated} />

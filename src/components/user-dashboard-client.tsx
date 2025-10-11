@@ -13,7 +13,7 @@ import {
   CarouselPrevious,
 } from "@/components/ui/carousel";
 import Link from "next/link";
-import { useIsMobile } from "@/hooks/use-mobile";
+import { useIsMobile } from "@/hooks/use-is-mobile";
 import { Line, LineChart, CartesianGrid, XAxis, YAxis, Tooltip, ResponsiveContainer } from "recharts";
 import { ChartConfig, ChartContainer, ChartTooltipContent } from "@/components/ui/chart";
 import { useProcessedCourses } from "@/hooks/useProcessedCourses";
@@ -75,10 +75,6 @@ export default function UserDashboardClient() {
     }
   }, []);
 
-  const handleUnenrollment = () => {
-    refresh();
-  };
-
   const enrolledCourses = useMemo(() => processedCourses.filter(p => p.isEnrolled), [processedCourses]);
   
   const coursesInProgress = useMemo(() => enrolledCourses.filter(p => !p.isCompleted), [enrolledCourses]);
@@ -102,19 +98,36 @@ export default function UserDashboardClient() {
   }, [user, allLadders]);
 
   const coursesInCurrentLadder = useMemo(() => {
-    if (!currentLadderDetails) return [];
-    return processedCourses.filter(c => c.ladderIds?.includes(currentLadderDetails.id));
-  }, [processedCourses, currentLadderDetails]);
+    if (!currentLadderDetails || !user?.language) return [];
+    // Important: Filter courses in the ladder by the user's specific language.
+    return processedCourses.filter(c => 
+        c.ladderIds?.includes(currentLadderDetails.id) && c.language === user.language
+    );
+  }, [processedCourses, currentLadderDetails, user?.language]);
 
   const allCoursesInLadderCompleted = useMemo(() => {
+    // If there are no courses in the current ladder for the user's language, they can't have completed it.
     if (coursesInCurrentLadder.length === 0) return false;
+    // Check if every course required for this ladder (in this language) is marked as completed.
     return coursesInCurrentLadder.every(c => c.isCompleted);
   }, [coursesInCurrentLadder]);
 
   const nextLadder = useMemo(() => {
     if (!currentLadderDetails) return null;
+    // Find the next ladder in sequence based on the 'order' property.
     return allLadders.find(l => l.order > currentLadderDetails.order);
   }, [allLadders, currentLadderDetails]);
+  
+  const ladderProgress = useMemo(() => {
+    if (!currentLadderDetails) return { completed: 0, total: 0, percentage: 0 };
+    const total = coursesInCurrentLadder.length;
+    if (total === 0) return { completed: 0, total: 0, percentage: 0 };
+    
+    const completed = coursesInCurrentLadder.filter(c => c.isCompleted).length;
+    const percentage = Math.round((completed / total) * 100);
+    
+    return { completed, total, percentage };
+  }, [currentLadderDetails, coursesInCurrentLadder]);
 
   const groupedCourses = useMemo(() => {
     const groups: { [key: string]: (typeof processedCourses[0])[] } = {};
@@ -184,26 +197,39 @@ export default function UserDashboardClient() {
         </Card>
        )}
        <AnnouncementCard />
-        {allCoursesInLadderCompleted && nextLadder && (
-             <Card className="bg-blue-50 dark:bg-blue-900/30 border-blue-200 dark:border-blue-800">
-                <CardHeader className="text-center">
-                    <div className="mx-auto bg-blue-100 dark:bg-blue-900 p-3 rounded-full w-fit">
-                        <Trophy className="h-8 w-8 text-blue-600 dark:text-blue-400" />
-                    </div>
-                    <CardTitle className="text-blue-800 dark:text-blue-200">Ladder Complete!</CardTitle>
-                    <CardDescription className="text-blue-700 dark:text-blue-300">
-                        Congratulations, you have completed all classes for the {currentLadderDetails?.name} ladder.
-                        You are qualified to become a potential {nextLadder.name}.
-                    </CardDescription>
+        
+        {currentLadderDetails && (
+             <Card>
+                <CardHeader>
+                    <CardTitle>My Ladder Progress</CardTitle>
+                    <CardDescription>Your progress in the <span className="font-bold">{currentLadderDetails.name}</span> ladder.</CardDescription>
                 </CardHeader>
-                <CardContent className="flex justify-center">
-                    <Button onClick={handleRequestPromotion} disabled={isRequestingPromotion}>
-                        {isRequestingPromotion && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                        Request to become a potential {nextLadder.name}
-                    </Button>
+                <CardContent>
+                    {allCoursesInLadderCompleted && nextLadder ? (
+                         <div className="text-center p-4 bg-blue-50 dark:bg-blue-900/30 border border-blue-200 dark:border-blue-800 rounded-lg">
+                            <Trophy className="mx-auto h-10 w-10 text-blue-600 dark:text-blue-400" />
+                            <h3 className="mt-2 text-lg font-semibold text-blue-800 dark:text-blue-200">Ladder Complete!</h3>
+                            <p className="mt-1 text-sm text-blue-700 dark:text-blue-300">
+                                You are qualified to become a potential {nextLadder.name}.
+                            </p>
+                            <Button onClick={handleRequestPromotion} disabled={isRequestingPromotion} className="mt-4">
+                                {isRequestingPromotion && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                                Request Promotion
+                            </Button>
+                        </div>
+                    ) : (
+                        <div className="space-y-2">
+                             <div className="flex justify-between items-center text-sm">
+                                <p className="font-medium text-muted-foreground">{ladderProgress.completed} of {ladderProgress.total} courses completed</p>
+                                <p className="font-bold">{ladderProgress.percentage}%</p>
+                            </div>
+                            <Progress value={ladderProgress.percentage} className="h-2" />
+                        </div>
+                    )}
                 </CardContent>
             </Card>
         )}
+
        <Card>
             <CardHeader>
                 <CardTitle>My Progress Overview</CardTitle>
@@ -250,7 +276,7 @@ export default function UserDashboardClient() {
               isMobile ? (
                  <div className="grid grid-cols-1 gap-4">
                   {coursesInProgress.map(course => (
-                      <CourseCard key={course.id} course={course} onUnenroll={() => handleUnenrollment()} />
+                      <CourseCard key={course.id} course={course} onChange={refresh} />
                   ))}
                 </div>
               ) : (
@@ -259,7 +285,7 @@ export default function UserDashboardClient() {
                       {coursesInProgress.map(course => (
                           <CarouselItem key={course.id} className="basis-full md:basis-1/2 lg:basis-1/3">
                             <div className="p-1">
-                               <CourseCard course={course} onUnenroll={() => handleUnenrollment()} />
+                               <CourseCard course={course} onChange={refresh} />
                             </div>
                           </CarouselItem>
                       ))}
@@ -301,7 +327,7 @@ export default function UserDashboardClient() {
                             <div key={course.id} className="relative group">
                                 <CourseCard 
                                 course={course} 
-                                onUnenroll={refresh} 
+                                onChange={refresh} 
                                 showEnroll={!user} 
                                 isAdminView={false}
                                 />
@@ -331,7 +357,7 @@ export default function UserDashboardClient() {
                isMobile ? (
                   <div className="grid grid-cols-1 gap-4">
                     {completedCourses.map(course => (
-                      <CourseCard key={course.id} course={course} onUnenroll={() => handleUnenrollment()} />
+                      <CourseCard key={course.id} course={course} onChange={refresh} />
                     ))}
                   </div>
                 ) : (
@@ -340,7 +366,7 @@ export default function UserDashboardClient() {
                       {completedCourses.map(course => (
                          <CarouselItem key={course.id} className="basis-full md:basis-1/2 lg:basis-1/3">
                            <div className="p-1">
-                             <CourseCard course={course} onUnenroll={() => handleUnenrollment()} />
+                             <CourseCard course={course} onChange={refresh} />
                            </div>
                          </CarouselItem>
                       ))}

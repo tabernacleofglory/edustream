@@ -59,6 +59,7 @@ export default function Certificate({ userName, courseName, completionDate, temp
     }
   }, [finalTemplateUrl]);
   
+  // The completionDate prop is the dynamic date passed in. If it's not available (e.g., in a preview), it defaults to today.
   const dateToFormat = completionDate ? new Date(completionDate) : new Date();
   const isValidDate = !isNaN(dateToFormat.getTime());
   const formattedCompletionDate = isValidDate 
@@ -138,13 +139,9 @@ export default function Certificate({ userName, courseName, completionDate, temp
                 <p className="text-xs text-muted-foreground mt-1" style={getFontSize(settings?.cert_date_size || 1)}>Date</p>
             </div>
             
-            {finalLogoUrl && (
-            <div className="flex-shrink-0 flex-1 basis-1/3 flex justify-center">
-                <div className="relative cert-logo">
-                    <Image src={finalLogoUrl} alt="Organization Logo" fill style={{objectFit:"contain"}} />
-                </div>
+            <div className="flex-1 basis-1/3">
+              {/* Logo was here */}
             </div>
-            )}
 
             <div className="text-center flex-1 basis-1/3">
                 <p className="pb-1 border-b-2 border-gray-400 font-great-vibes text-gray-700" style={getFontSize(settings?.cert_signatureName_size || 2)}>{signatureName}</p>

@@ -30,6 +30,8 @@ export interface User {
   hpAvailabilityTime?: string;
   gender?: string;
   ageRange?: string;
+  locationPreference?: 'Onsite' | 'Online';
+  campus?: string;
 }
 
 export interface Speaker {
@@ -89,7 +91,40 @@ export interface Course {
     title: string;
   };
   language?: string;
+  certificateEnabled?: boolean;
+  badgeEnabled?: boolean;
 }
+
+export interface CourseGroup {
+  id: string;
+  title: string;
+  description: string;
+  courseIds: string[];
+  certificateTemplateUrl?: string;
+  status: 'published' | 'draft';
+  createdAt: any;
+}
+
+export interface UserBadge {
+  id: string;
+  userId: string;
+  courseId: string;
+  badgeTitle: string;
+  badgeIconUrl: string;
+  earnedAt: any;
+}
+
+export interface OnsiteCompletion {
+    id: string;
+    userId: string;
+    userName: string;
+    userCampus: string;
+    courseId: string;
+    courseName: string;
+    completedAt: any;
+    markedBy: string;
+}
+
 
 export interface Video {
   id: string;
@@ -297,3 +332,5 @@ export interface SiteSettings {
     cert_spacing_courseName_signatures?: number;
     quiz_pass_threshold?: number;
 }
+
+    

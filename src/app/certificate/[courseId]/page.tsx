@@ -1,59 +1,49 @@
+"use client";
 
-import React from 'react';
-import { doc, getDoc, Timestamp } from 'firebase/firestore';
-import { db } from '@/lib/firebase';
-import type { Course } from '@/lib/types';
-import { notFound } from 'next/navigation';
-import CertificatePrint from '@/components/certificate-print';
-import { useAuth } from '@/hooks/use-auth';
-import { Skeleton } from '@/components/ui/skeleton';
-import CertificatePageClient from '@/components/certificate-page-client';
+import { useEffect, useState } from "react";
+import { useRouter, useParams } from "next/navigation";
+import { doc, getDoc } from "firebase/firestore";
+import { getFirebaseFirestore } from "@/lib/firebase";
+import type { Course, Enrollment } from "@/lib/types";
+import { useAuth } from "@/hooks/use-auth";
+import CertificatePageClient from "@/components/certificate-page-client";
+import { Skeleton } from "@/components/ui/skeleton";
 
-// Helper to convert Firestore Timestamps to a serializable format for props
-const convertTimestamps = (data: any) => {
-  if (data && typeof data === 'object') {
-    for (const key in data) {
-      if (data.hasOwnProperty(key)) {
-        if (data[key] instanceof Timestamp) {
-          data[key] = data[key].toDate().toISOString();
-        } else if (Array.isArray(data[key])) {
-          data[key] = data[key].map(item => convertTimestamps(item));
-        } else if (typeof data[key] === 'object' && data[key] !== null) {
-          convertTimestamps(data[key]);
-        }
-      }
-    }
+export default function CertificatePage() {
+  const { courseId } = useParams<{ courseId: string }>();
+  const { user, loading } = useAuth();
+  const router = useRouter();
+  const db = getFirebaseFirestore();
+  const [course, setCourse] = useState<Course | null>(null);
+  const [busy, setBusy] = useState(true);
+
+  useEffect(() => {
+    if (loading) return;
+    if (!user) { router.replace("/login"); return; }
+
+    (async () => {
+      setBusy(true);
+      const cSnap = await getDoc(doc(db, "courses", courseId));
+      if (!cSnap.exists()) { router.replace("/courses"); return; }
+      const eSnap = await getDoc(doc(db, "enrollments", `${user.uid}_${courseId}`));
+      const completed = !!(eSnap.exists() && (eSnap.data() as Enrollment).completedAt);
+      if (!completed) { router.replace("/courses"); return; }
+      setCourse({ id: cSnap.id, ...cSnap.data() } as Course);
+      setBusy(false);
+    })();
+  }, [loading, user, db, courseId, router]);
+
+  if (busy || loading) {
+    return <div className="min-h-screen p-8"><Skeleton className="h-[60vh] max-w-4xl mx-auto" /></div>;
   }
-  return data;
-}
 
-// Data fetching function on the server
-async function getCourse(courseId: string): Promise<Course | null> {
-    const courseRef = doc(db, 'courses', courseId);
-    const courseSnap = await getDoc(courseRef);
-    if (!courseSnap.exists()) {
-        return null;
-    }
-    const courseData = courseSnap.data();
-    // Ensure data is serializable before passing to client component
-    const serializableCourse = convertTimestamps({ id: courseSnap.id, ...courseData });
-    return serializableCourse as Course;
-}
+  if (!course) return null;
 
-// This is now a Server Component
-export default async function CertificatePage({ params }: { params: { courseId: string } }) {
-    const { courseId } = params;
-    const course = await getCourse(courseId);
-
-    if (!course) {
-        notFound();
-    }
-    
-    return (
-        <div className="flex items-center justify-center min-h-screen bg-gray-100 dark:bg-gray-900">
-            <div className="w-full max-w-4xl p-4">
-                 <CertificatePageClient course={course} />
-            </div>
-        </div>
-    );
+  return (
+    <div className="flex items-center justify-center min-h-screen bg-gray-100 dark:bg-gray-900">
+      <div className="w-full max-w-4xl p-4">
+        <CertificatePageClient course={course} />
+      </div>
+    </div>
+  );
 }

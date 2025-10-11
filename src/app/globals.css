@@ -93,7 +93,7 @@ body {
 
 @layer components {
   .destructive {
-    @apply bg-gradient-to-r from-red-500 to-orange-500 text-white;
+    @apply bg-gradient-to-r from-blue-900 to-yellow-500 text-white border-blue-900;
   }
   
   .cert-logo {
@@ -131,5 +131,23 @@ body {
   .no-scrollbar {
     -ms-overflow-style: none;  /* IE and Edge */
     scrollbar-width: none;  /* Firefox */
+  }
+}
+
+@media print {
+  body * {
+    visibility: hidden;
+  }
+
+  .certificate-print-area, .certificate-print-area * {
+    visibility: visible;
+  }
+
+  .certificate-print-area {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100%;
+    height: 100%;
   }
 }

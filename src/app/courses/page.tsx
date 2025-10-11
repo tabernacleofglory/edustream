@@ -24,7 +24,7 @@ interface CourseWithStatus extends Course {
 
 export default function AllCoursesPage() {
   const { user, isCurrentUserAdmin, loading: authLoading } = useAuth();
-  const { processedCourses, allLadders, loading: coursesLoading, refresh } = useProcessedCourses(true);
+  const { processedCourses, allLadders, loading: coursesLoading, refresh } = useProcessedCourses();
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedLadderId, setSelectedLadderId] = useState<string>('all');
   const router = useRouter();
@@ -200,7 +200,7 @@ export default function AllCoursesPage() {
                             <div key={course.id} className="relative group">
                                 <CourseCard 
                                 course={course} 
-                                onUnenroll={refresh} 
+                                onChange={refresh} 
                                 showEnroll={!user} 
                                 isAdminView={false}
                                 />

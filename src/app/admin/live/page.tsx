@@ -246,8 +246,8 @@ const LivePage = () => {
                                   <SelectValue placeholder="Select event type" />
                               </SelectTrigger>
                               <SelectContent>
-                                  <SelectItem value="one-time">One-Time Event</SelectItem>
-                                  <SelectItem value="recurring">Recurring Event</SelectItem>
+                                  <SelectItem value="one-time" translate="no">One-Time Event</SelectItem>
+                                  <SelectItem value="recurring" translate="no">Recurring Event</SelectItem>
                               </SelectContent>
                           </Select>
                       </div>

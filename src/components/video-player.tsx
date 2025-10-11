@@ -102,12 +102,6 @@ const PlaylistAndResources = ({
   quizResults = [],
   lastVideoCompleted
 }: PlaylistAndResourcesProps) => {
-  let lastUnlockedIndex = -1;
-  courseVideos.forEach((video, index) => {
-    if (watchedVideos.has(video.id)) {
-      lastUnlockedIndex = index;
-    }
-  });
 
   return (
     <Accordion
@@ -170,7 +164,9 @@ const PlaylistAndResources = ({
                  {quizzes.map((quiz, index) => {
                     const prevQuizId = index > 0 ? quizzes[index-1].id : null;
                     const prevQuizPassed = prevQuizId ? quizResults.some(r => r.quizId === prevQuizId && r.passed) : true;
+                    
                     const isQuizLocked = !lastVideoCompleted || !prevQuizPassed;
+                    
                     const result = quizResults.find(r => r.quizId === quiz.id);
                     const isCompleted = !!result && result.passed;
                     

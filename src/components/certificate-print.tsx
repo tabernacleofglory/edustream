@@ -1,10 +1,9 @@
 
 "use client";
 
-import { useRef, useState, forwardRef } from "react";
+import { useRef, useState } from "react";
 import Certificate from "@/components/certificate";
 import type { Course } from "@/lib/types";
-import { useReactToPrint } from "react-to-print";
 import { Button } from "./ui/button";
 import { Printer, Download, Mail, Loader2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
@@ -29,37 +28,19 @@ interface CertificatePrintProps {
     course: Course;
 }
 
-// Create a new component that is a simple button and forwards the ref
-// This is necessary because useReactToPrint uses findDOMNode, which can have issues with functional components and hooks.
-// Wrapping it this way provides a stable node for the library to reference.
-const PrintButton = forwardRef<HTMLButtonElement, { onClick: () => void }>(({ onClick }, ref) => {
-    return (
-        <Button onClick={onClick} ref={ref}>
-            <Printer className="mr-2 h-4 w-4" />
-            Print / Save as PDF
-        </Button>
-    );
-});
-PrintButton.displayName = "PrintButton";
-
-
 export default function CertificatePrint({ userName, course }: CertificatePrintProps) {
-    const certificateRef = useRef<HTMLDivElement>(null);
     const { toast } = useToast();
     const { user } = useAuth();
-    const printRef = useRef<HTMLButtonElement>(null);
     const [isEmailing, setIsEmailing] = useState(false);
     const [email, setEmail] = useState(user?.email || '');
     const [isEmailDialogOpen, setIsEmailDialogOpen] = useState(false);
 
-    const handlePrint = useReactToPrint({
-        content: () => certificateRef.current,
-        documentTitle: `${userName} - ${course.title} Certificate`,
-        trigger: () => printRef.current,
-    });
+    const handlePrint = () => {
+        window.print();
+    };
     
      const handleDownload = async () => {
-        const certificateElement = certificateRef.current;
+        const certificateElement = document.querySelector('.certificate-print-area') as HTMLElement;
         if (!certificateElement) return;
 
         try {
@@ -115,19 +96,20 @@ export default function CertificatePrint({ userName, course }: CertificatePrintP
 
     return (
         <div className="flex flex-col items-center justify-center p-4">
-            <div className="w-full bg-white shadow-lg max-w-4xl">
-                <div ref={certificateRef}>
-                    <Certificate
-                        userName={userName}
-                        courseName={course.title}
-                        completionDate={course.completedAt}
-                        templateUrl={course.certificateTemplateUrl}
-                        logoUrl={course.logoUrl}
-                    />
-                </div>
+            <div className="w-full bg-white shadow-lg max-w-4xl certificate-print-area">
+                <Certificate
+                    userName={userName}
+                    courseName={course.title}
+                    completionDate={course.completedAt}
+                    templateUrl={course.certificateTemplateUrl}
+                    logoUrl={course.logoUrl}
+                />
             </div>
             <div className="mt-4 flex flex-wrap items-center justify-center gap-2">
-                <PrintButton ref={printRef} onClick={handlePrint} />
+                <Button onClick={handlePrint}>
+                    <Printer className="mr-2 h-4 w-4" />
+                    Print / Save as PDF
+                </Button>
                 <Button onClick={handleDownload} variant="outline">
                     <Download className="mr-2 h-4 w-4" />
                     Download as Image

@@ -1,3 +1,4 @@
+
 "use client";
 
 import React, { useState, useEffect, useCallback } from "react";
@@ -42,6 +43,7 @@ import DynamicIcon from "@/components/dynamic-icon";
 import { Alert, AlertTitle, AlertDescription } from "@/components/ui/alert";
 import { Lock } from 'lucide-react';
 import GlobalSearch from "@/components/global-search";
+import LanguageSwitcher from "@/components/language-switcher";
 
 
 const navItems = [
@@ -184,7 +186,7 @@ const HeaderContent = () => {
                     <GlobalSearch />
                 </div>
                  <div className="ml-auto flex items-center gap-2">
-                    
+                    <LanguageSwitcher />
                     {!isMobile && <ThemeToggle />}
                     <UserProfile />
                 </div>
@@ -192,6 +194,7 @@ const HeaderContent = () => {
         )}
          {isVideoPage && (
             <div className="ml-auto flex items-center gap-2">
+                <LanguageSwitcher />
                 {!isMobile && <ThemeToggle />}
                 <UserProfile />
             </div>
@@ -202,7 +205,7 @@ const HeaderContent = () => {
 
 function AppContentInternal({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
-  const { user, loading, hasPermission } = useAuth();
+  const { user, loading, hasPermission, isProfileComplete } = useAuth();
   const router = useRouter();
   const { currentTrack } = useAudioPlayer();
 
@@ -217,6 +220,8 @@ function AppContentInternal({ children }: { children: React.ReactNode }) {
 
   const isVideoPage = pathname.includes('/courses/') && pathname.includes('/video/');
 
+  // Derived state to check if user can see the full menu
+  const canSeeFullMenu = isProfileComplete && user?.isInHpGroup;
 
    useEffect(() => {
     if (isMobile === undefined) return;
@@ -275,7 +280,7 @@ function AppContentInternal({ children }: { children: React.ReactNode }) {
                 </SidebarHeader>
                 <SidebarContent>
                     <SidebarMenu>
-                    {navItems.filter(item => hasPermission(item.permission)).map((item) => (
+                    {canSeeFullMenu && navItems.filter(item => hasPermission(item.permission)).map((item) => (
                         <SidebarMenuItem key={item.href}>
                         <Link href={item.href}>
                             <SidebarMenuButton
@@ -288,7 +293,7 @@ function AppContentInternal({ children }: { children: React.ReactNode }) {
                         </Link>
                         </SidebarMenuItem>
                     ))}
-                    {hasPermission('viewAdminDashboard') && (
+                    {canSeeFullMenu && hasPermission('viewAdminDashboard') && (
                         <SidebarMenuItem>
                             <Link href="/admin/analytics">
                                 <SidebarMenuButton
@@ -297,6 +302,19 @@ function AppContentInternal({ children }: { children: React.ReactNode }) {
                                 >
                                     <Shield />
                                     {isSidebarOpen && <span>Admin Panel</span>}
+                                </SidebarMenuButton>
+                            </Link>
+                        </SidebarMenuItem>
+                    )}
+                    {!canSeeFullMenu && (
+                         <SidebarMenuItem>
+                            <Link href="/settings">
+                                <SidebarMenuButton
+                                    isActive={pathname.startsWith('/settings')}
+                                    tooltip={{ children: 'Complete Profile' }}
+                                >
+                                    <Settings />
+                                    {isSidebarOpen && <span>Complete Profile</span>}
                                 </SidebarMenuButton>
                             </Link>
                         </SidebarMenuItem>

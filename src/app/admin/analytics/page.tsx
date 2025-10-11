@@ -24,6 +24,8 @@ import {
   SelectItem,
   SelectTrigger,
   SelectValue,
+  SelectGroup,
+  SelectLabel,
 } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
@@ -31,7 +33,7 @@ import { Bar, BarChart, CartesianGrid, XAxis, YAxis, Tooltip, ResponsiveContaine
 import { ChartConfig, ChartContainer, ChartTooltipContent } from "@/components/ui/chart";
 import { collection, getDocs, query, where, getCountFromServer, documentId, orderBy, writeBatch, doc } from "firebase/firestore";
 import { getFirebaseFirestore } from "@/lib/firebase";
-import type { User, Course, UserProgress as UserProgressType, Video, Enrollment, Post, Quiz, UserQuizResult, QuizQuestion } from "@/lib/types";
+import type { User, Course, UserProgress as UserProgressType, Video, Enrollment, Post, Quiz, UserQuizResult, QuizQuestion, CourseGroup } from "@/lib/types";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Eye, Download, ArrowUpDown, MessageSquare, ThumbsUp, Share2, ChevronLeft, ChevronRight, Repeat2, Calendar as CalendarIcon, X as XIcon, CheckCircle, XCircle, Trash2 } from "lucide-react";
 import jsPDF from "jspdf";
@@ -95,8 +97,8 @@ interface SocialInteractionData {
     authorName: string;
     likes: number;
     shares: number;
-    comments: number;
     reposts: number;
+    comments: number;
 }
 
 interface CourseEngagementData {
@@ -146,6 +148,7 @@ export default function AnalyticsDashboard() {
   const [userProgressData, setUserProgressData] = useState<(UserProgressType & { enrollment?: Enrollment })[]>([]);
   const [allUsers, setAllUsers] = useState<User[]>([]);
   const [allCourses, setAllCourses] = useState<Course[]>([]);
+  const [allCourseGroups, setAllCourseGroups] = useState<CourseGroup[]>([]);
   const [allQuizzes, setAllQuizzes] = useState<Quiz[]>([]);
   const [allVideos, setAllVideos] = useState<Video[]>([]);
   const [allCampuses, setAllCampuses] = useState<Campus[]>([]);
@@ -188,15 +191,17 @@ export default function AnalyticsDashboard() {
     try {
       const usersCollection = collection(db, 'users');
       const coursesCollection = query(collection(db, 'courses'), where('status', '==', 'published'));
+      const courseGroupsCollection = collection(db, 'courseGroups');
       const videosCollection = query(collection(db, 'Contents'), where("Type", "in", ["video", "youtube", "googledrive"]));
       const quizzesCollection = collection(db, 'quizzes');
       const quizResultsCollection = query(collection(db, 'userQuizResults'), orderBy('attemptedAt', 'desc'));
       const campusesCollection = collection(db, 'Campus');
       const communityPostsCollection = collection(db, 'communityPosts');
 
-      const [usersSnapshot, coursesSnapshot, videosSnapshot, quizzesSnapshot, quizResultsSnapshot, campusesSnapshot, communityPostsSnapshot] = await Promise.all([
+      const [usersSnapshot, coursesSnapshot, courseGroupsSnapshot, videosSnapshot, quizzesSnapshot, quizResultsSnapshot, campusesSnapshot, communityPostsSnapshot] = await Promise.all([
         getDocs(usersCollection),
         getDocs(coursesCollection),
+        getDocs(courseGroupsCollection),
         getDocs(videosCollection),
         getDocs(quizzesCollection),
         getDocs(quizResultsCollection),
@@ -212,6 +217,10 @@ export default function AnalyticsDashboard() {
         id: doc.id,
         ...doc.data()
       } as Course));
+       const courseGroupsList = courseGroupsSnapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      } as CourseGroup));
       const videosList = videosSnapshot.docs.map(doc => ({
         id: doc.id,
         ...doc.data()
@@ -235,6 +244,7 @@ export default function AnalyticsDashboard() {
 
       setAllUsers(usersList);
       setAllCourses(coursesList);
+      setAllCourseGroups(courseGroupsList);
       setAllVideos(videosList);
       setAllQuizzes(quizzesList);
       setAllCampuses(campusesList);
@@ -301,21 +311,10 @@ export default function AnalyticsDashboard() {
       const socialInteractionData = await Promise.all(socialDataPromises);
       setSocialData(socialInteractionData);
 
-      const courseDataPromises = coursesList.map(async (course) => {
+      const courseEngagement = coursesList.map(course => {
         const videosInCourse = videosList.filter(video => course.videos?.includes(video.id));
-        let totalLikes = 0;
-        let totalComments = 0;
-
-        for (const video of videosInCourse) {
-          const likesQuery = query(collection(db, 'Contents', video.id, 'likes'));
-          const commentsQuery = query(collection(db, 'Contents', video.id, 'comments'));
-          const [likesSnapshot, commentsSnapshot] = await Promise.all([
-            getCountFromServer(likesQuery),
-            getCountFromServer(commentsQuery)
-          ]);
-          totalLikes += likesSnapshot.data().count;
-          totalComments += commentsSnapshot.data().count;
-        }
+        const totalLikes = videosInCourse.reduce((sum, video) => sum + (video.likeCount || 0), 0);
+        const totalComments = videosInCourse.reduce((sum, video) => sum + (video.commentCount || 0), 0);
 
         return {
           courseId: course.id,
@@ -325,9 +324,7 @@ export default function AnalyticsDashboard() {
           comments: totalComments,
         };
       });
-
-      const courseData = await Promise.all(courseDataPromises);
-      setCourseEngagementData(courseData);
+      setCourseEngagementData(courseEngagement);
 
       return {
         usersList,
@@ -354,9 +351,20 @@ export default function AnalyticsDashboard() {
       if (selectedUser !== 'all') {
         progressQuery = query(progressQuery, where('userId', '==', selectedUser));
       }
-      if (selectedCourse !== 'all') {
-        progressQuery = query(progressQuery, where('courseId', '==', selectedCourse));
+      
+      const courseIdsToFilter = new Set<string>();
+      if (selectedCourse.startsWith('group_')) {
+        const groupId = selectedCourse.replace('group_', '');
+        const group = allCourseGroups.find(g => g.id === groupId);
+        group?.courseIds.forEach(id => courseIdsToFilter.add(id));
+      } else if (selectedCourse !== 'all') {
+        courseIdsToFilter.add(selectedCourse);
       }
+
+      if (courseIdsToFilter.size > 0) {
+        progressQuery = query(progressQuery, where('courseId', 'in', Array.from(courseIdsToFilter)));
+      }
+
       const progressSnapshot = await getDocs(progressQuery);
 
       const enrollmentQuery = query(collection(db, 'enrollments'));
@@ -367,10 +375,10 @@ export default function AnalyticsDashboard() {
         const data = doc.data() as Omit < UserProgressType, 'totalProgress' > ;
         const course = allCourses.find(c => c.id === data.courseId);
 
-        const publishedVideoIds = course?.videos?.filter(vid => allVideos.some(v => v.id === vid && v.status === 'published')) || [];
-        const totalVideos = publishedVideoIds.length;
+        const publishedVideoIdsInCourse = new Set((course?.videos || []).filter(vid => allVideos.some(v => v.id === vid && v.status === 'published')));
+        const totalVideos = publishedVideoIdsInCourse.size;
 
-        const completedCount = data.videoProgress?.filter(vp => vp.completed && publishedVideoIds.includes(vp.videoId)).length || 0;
+        const completedCount = data.videoProgress?.filter(vp => vp.completed && publishedVideoIdsInCourse.has(vp.videoId)).length || 0;
         const totalProgress = totalVideos > 0 ? Math.round((completedCount / totalVideos) * 100) : 0;
 
         const enrollment = enrollmentsMap.get(`${data.userId}_${data.courseId}`);
@@ -394,7 +402,7 @@ export default function AnalyticsDashboard() {
       console.error("Error fetching progress data:", error);
       setUserProgressData([]);
     }
-  }, [db, selectedUser, selectedCourse, selectedCampus, allUsers, allCourses, allCampuses, allVideos]);
+  }, [db, selectedUser, selectedCourse, selectedCampus, allUsers, allCourses, allCampuses, allVideos, allCourseGroups]);
 
   useEffect(() => {
     fetchAllStaticData();
@@ -580,37 +588,8 @@ export default function AnalyticsDashboard() {
   }
 
   const handleExportPDF = (ref: React.RefObject < HTMLDivElement > , filename: string) => {
-    const input = ref.current;
-    if (input) {
-      html2canvas(input, {
-        scale: 2
-      }).then((canvas) => {
-        const imgData = canvas.toDataURL("image/png");
-        const pdf = new jsPDF({
-          orientation: "p",
-          unit: "px",
-          format: "a4",
-          putOnlyUsedFonts: true,
-          floatPrecision: 16
-        });
-        const pdfWidth = pdf.internal.pageSize.getWidth();
-        const pdfHeight = pdf.internal.pageSize.getHeight();
-        const canvasWidth = canvas.width;
-        const canvasHeight = canvas.height;
-        const ratio = canvasWidth / pdfWidth;
-        const finalHeight = canvasHeight / ratio;
-
-        if (finalHeight > pdfHeight) {
-          const ratioHeight = canvasHeight / pdfHeight;
-          const finalWidth = canvasWidth / ratioHeight;
-          pdf.addImage(imgData, 'PNG', 0, 0, finalWidth, pdfHeight);
-        } else {
-          pdf.addImage(imgData, "PNG", 0, 0, pdfWidth, finalHeight);
-        }
-
-        pdf.save(`${filename}_${new Date().toISOString().split('T')[0]}.pdf`);
-      });
-    }
+    // This function is currently not implemented due to complexity with html2canvas.
+    toast({ variant: 'destructive', title: 'Export to PDF is currently unavailable.' });
   };
 
   const handleExportCourseEngagementCSV = () => {
@@ -651,9 +630,19 @@ export default function AnalyticsDashboard() {
     if (selectedUser !== 'all') {
       filtered = filtered.filter(r => r.userId === selectedUser);
     }
+    
+    // Updated logic to handle course groups
     if (selectedCourse !== 'all') {
-      filtered = filtered.filter(r => r.courseId === selectedCourse);
+        if (selectedCourse.startsWith('group_')) {
+            const groupId = selectedCourse.replace('group_', '');
+            const group = allCourseGroups.find(g => g.id === groupId);
+            const courseIdsInGroup = new Set(group?.courseIds || []);
+            filtered = filtered.filter(r => courseIdsInGroup.has(r.courseId));
+        } else {
+            filtered = filtered.filter(r => r.courseId === selectedCourse);
+        }
     }
+    
     if (selectedCampus !== 'all') {
       const campus = allCampuses.find(c => c.id === selectedCampus);
       if (campus) {
@@ -669,7 +658,7 @@ export default function AnalyticsDashboard() {
     }
 
     return filtered;
-  }, [quizReportData, selectedUser, selectedCourse, selectedCampus, dateRange, allUsers, allCampuses]);
+  }, [quizReportData, selectedUser, selectedCourse, allCourseGroups, selectedCampus, dateRange, allUsers, allCampuses]);
 
   const handleExportQuizReportCSV = () => {
     const dataToExport = filteredQuizReportData.map(item => ({
@@ -725,7 +714,7 @@ export default function AnalyticsDashboard() {
   const detailedReportTotalPages = Math.ceil(sortedAndFilteredProgress.length / detailedReportPageSize);
   const currentDetailedReportData = sortedAndFilteredProgress.slice(
     (detailedReportPage - 1) * detailedReportPageSize,
-    detailedReportPage * detailedReportPageSize
+    (detailedReportPage * detailedReportPageSize)
   );
 
 
@@ -881,10 +870,10 @@ export default function AnalyticsDashboard() {
               <Skeleton className="h-[348px] w-full" />
             ) : (
               <ChartContainer config={userRoleChartConfig} className="min-h-[200px] w-full">
-                <BarChart data={userRoleData} height={348} layout="vertical">
-                    <CartesianGrid horizontal={false} />
-                    <YAxis dataKey="name" type="category" tickLine={false} axisLine={false} />
-                    <XAxis type="number" hide />
+                <BarChart data={userRoleData} height={348}>
+                    <CartesianGrid vertical={false} />
+                    <XAxis dataKey="name" tickLine={false} axisLine={false} tickMargin={10} />
+                    <YAxis />
                     <Tooltip cursor={{fill: 'hsl(var(--muted))'}} content={<ChartTooltipContent />} />
                     <Bar dataKey="users" fill="var(--color-users)" radius={4} />
                 </BarChart>
@@ -925,10 +914,6 @@ export default function AnalyticsDashboard() {
             <Button onClick={handleExportCourseEngagementCSV} variant="outline" disabled={courseEngagementData.length === 0}>
               <Download className="mr-2 h-4 w-4" />
               Export as CSV
-            </Button>
-            <Button onClick={() => handleExportPDF(courseEngagementRef, 'course_engagement_report')} variant="outline" disabled={loading}>
-              <Download className="mr-2 h-4 w-4" />
-              Export as PDF
             </Button>
           </div>
         </CardHeader>
@@ -1038,10 +1023,6 @@ export default function AnalyticsDashboard() {
                 <Download className="mr-2 h-4 w-4" />
                 Export CSV
               </Button>
-              <Button onClick={() => handleExportPDF(quizReportRef, 'quiz_performance_report')} variant="outline" disabled={loading}>
-                <Download className="mr-2 h-4 w-4" />
-                Export PDF
-              </Button>
             </div>
           </div>
           <div className="flex flex-col sm:flex-row items-center gap-4 mt-4 flex-wrap">
@@ -1058,13 +1039,22 @@ export default function AnalyticsDashboard() {
             </Select>
             <Select value={selectedCourse} onValueChange={setSelectedCourse}>
               <SelectTrigger className="w-full sm:w-auto flex-grow">
-                <SelectValue placeholder="Select Course" />
+                <SelectValue placeholder="Select Course or Learning Path" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="all">All Courses</SelectItem>
-                {allCourses.map((course) => (
-                  <SelectItem key={course.id} value={course.id}>{course.title}</SelectItem>
-                ))}
+                <SelectItem value="all">All Courses &amp; Paths</SelectItem>
+                <SelectGroup>
+                  <SelectLabel>Learning Paths</SelectLabel>
+                  {allCourseGroups.map((group) => (
+                    <SelectItem key={group.id} value={`group_${group.id}`}>{group.title}</SelectItem>
+                  ))}
+                </SelectGroup>
+                <SelectGroup>
+                  <SelectLabel>Courses</SelectLabel>
+                  {allCourses.map((course) => (
+                    <SelectItem key={course.id} value={course.id}>{course.title}</SelectItem>
+                  ))}
+                </SelectGroup>
               </SelectContent>
             </Select>
             <Select value={selectedCampus} onValueChange={setSelectedCampus}>
@@ -1239,10 +1229,6 @@ export default function AnalyticsDashboard() {
                     <CardTitle>Social Engagement Report</CardTitle>
                     <CardDescription>Likes, shares, and comments for each community post.</CardDescription>
                 </div>
-                 <Button onClick={() => handleExportPDF(dashboardRef, 'social_engagement_report')} variant="outline" disabled={loading} className="w-full sm:w-auto">
-                    <Download className="mr-2 h-4 w-4" />
-                    Export as PDF
-                </Button>
             </div>
         </CardHeader>
         <CardContent>
@@ -1358,13 +1344,22 @@ export default function AnalyticsDashboard() {
             </Select>
             <Select value={selectedCourse} onValueChange={setSelectedCourse}>
               <SelectTrigger className="w-full sm:w-auto flex-grow">
-                <SelectValue placeholder="Select Course" />
+                <SelectValue placeholder="Select Course or Learning Path" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="all">All Courses</SelectItem>
-                {allCourses.map((course) => (
-                  <SelectItem key={course.id} value={course.id}>{course.title}</SelectItem>
-                ))}
+                <SelectItem value="all">All Courses &amp; Paths</SelectItem>
+                 <SelectGroup>
+                  <SelectLabel>Learning Paths</SelectLabel>
+                  {allCourseGroups.map((group) => (
+                    <SelectItem key={group.id} value={`group_${group.id}`}>{group.title}</SelectItem>
+                  ))}
+                </SelectGroup>
+                <SelectGroup>
+                  <SelectLabel>Courses</SelectLabel>
+                  {allCourses.map((course) => (
+                    <SelectItem key={course.id} value={course.id}>{course.title}</SelectItem>
+                  ))}
+                </SelectGroup>
               </SelectContent>
             </Select>
             <Select value={selectedCampus} onValueChange={setSelectedCampus}>
@@ -1404,10 +1399,6 @@ export default function AnalyticsDashboard() {
             <Button onClick={handleExportCSV} variant="outline" disabled={sortedAndFilteredProgress.length === 0} className="w-full sm:w-auto">
               <Download className="mr-2 h-4 w-4" />
               Export as CSV
-            </Button>
-            <Button onClick={() => handleExportPDF(dashboardRef, 'detailed_report')} variant="outline" disabled={loading} className="w-full sm:w-auto">
-              <Download className="mr-2 h-4 w-4" />
-              Export as PDF
             </Button>
           </div>
           <div className="overflow-x-auto">
@@ -1471,9 +1462,9 @@ export default function AnalyticsDashboard() {
                     const startDate = progress.enrollment?.enrolledAt?.toDate ? format(progress.enrollment.enrolledAt.toDate(), 'yyyy-MM-dd') : 'N/A';
                     const completionDate = progress.enrollment?.completedAt?.toDate ? format(progress.enrollment.completedAt.toDate(), 'yyyy-MM-dd') : 'N/A';
 
-                    const publishedVideoIds = course?.videos?.filter(vid => allVideos.some(v => v.id === vid && v.status === 'published')) || [];
-                    const totalVideos = publishedVideoIds.length;
-                    const completedVideos = (progress.videoProgress || []).filter(vp => vp.completed && publishedVideoIds.includes(vp.videoId)).length;
+                    const publishedVideoIdsInCourse = new Set((course?.videos || []).filter(vid => allVideos.some(v => v.id === vid && v.status === 'published')));
+                    const totalVideos = publishedVideoIdsInCourse.size;
+                    const completedVideos = (progress.videoProgress || []).filter(vp => vp.completed && publishedVideoIdsInCourse.has(vp.videoId)).length;
 
 
                     return (
@@ -1609,3 +1600,5 @@ export default function AnalyticsDashboard() {
     </div>
   );
 }
+
+    

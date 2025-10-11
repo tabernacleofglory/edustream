@@ -26,43 +26,39 @@ const AuthContext = createContext<AuthContextType>({
   isProfileComplete: false,
 });
 
+const languageMigrationMap: { [key: string]: string } = {
+    "Creole": "Haitian; Haitian Creole",
+    "French": "French",
+    "Spanish": "Spanish; Castilian",
+    "English": "English",
+};
+
+
 export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   const [user, setUser] = useState<AppUser | null>(null);
   const [loading, setLoading] = useState(true);
   const [userPermissions, setUserPermissions] = useState<string[]>([]);
-  const [defaultLadder, setDefaultLadder] = useState<Ladder | null>(null);
+  const [validLanguages, setValidLanguages] = useState<string[]>([]);
   const auth = getFirebaseAuth();
   const db = getFirebaseFirestore();
   const router = useRouter(); 
   const pathname = usePathname();
   const isCurrentUserAdmin = user?.role === 'admin' || user?.role === 'developer';
   
-  const isProfileComplete = !!user?.isInHpGroup;
+  const isProfileComplete = !!user?.isInHpGroup && !!user?.language && validLanguages.includes(user.language) && !!user?.locationPreference;
 
   useEffect(() => {
-    const fetchDefaultLadder = async () => {
+    const fetchValidLanguages = async () => {
         try {
-            const laddersRef = collection(db, "courseLevels");
-            // First, try to find the "New Member" ladder specifically.
-            const q = query(laddersRef, where("name", "==", "New Member"), limit(1));
-            const querySnapshot = await getDocs(q);
-            if (!querySnapshot.empty) {
-                const ladderDoc = querySnapshot.docs[0];
-                setDefaultLadder({ id: ladderDoc.id, ...ladderDoc.data() } as Ladder);
-            } else {
-                // If "New Member" doesn't exist, fall back to the ladder with the lowest order.
-                const fallbackQuery = query(laddersRef, orderBy("order"), limit(1));
-                const fallbackSnapshot = await getDocs(fallbackQuery);
-                if(!fallbackSnapshot.empty) {
-                    const ladderDoc = fallbackSnapshot.docs[0];
-                    setDefaultLadder({ id: ladderDoc.id, ...ladderDoc.data() } as Ladder);
-                }
-            }
+            const langQuery = query(collection(db, 'languages'), where('status', '==', 'published'));
+            const langSnapshot = await getDocs(langQuery);
+            const langNames = langSnapshot.docs.map(doc => doc.data().name as string);
+            setValidLanguages(langNames);
         } catch (e) {
-            console.error("Could not fetch default ladder for auth provider.", e);
+            console.error("Could not fetch valid languages for auth check.", e);
         }
     };
-    fetchDefaultLadder();
+    fetchValidLanguages();
   }, [db]);
 
 
@@ -78,39 +74,21 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     const unsubscribeUser = onSnapshot(userDocRef, async (docSnapshot) => {
       if (docSnapshot.exists()) {
         const userData = docSnapshot.data() as Omit<AppUser, 'uid'>;
-        
-        // --- Start of Backfill Logic ---
-        const updatesToApply: Partial<AppUser> = {};
-        if (!userData.uid || !userData.id) {
-            updatesToApply.uid = firebaseUser.uid;
-            updatesToApply.id = firebaseUser.uid;
-        }
-        if (!userData.role) {
-            updatesToApply.role = 'user';
-        }
-        if (!userData.charge) {
-            updatesToApply.charge = 'App User';
-        }
-        if (!userData.classLadderId && defaultLadder) {
-            updatesToApply.classLadderId = defaultLadder.id;
-            updatesToApply.classLadder = defaultLadder.name;
-        }
-        if (Object.keys(updatesToApply).length > 0) {
-            try {
-                await updateDoc(userDocRef, updatesToApply);
-            } catch (e) {
-                console.error("Failed to backfill user data:", e);
+
+        // One-time language migration logic
+        if (userData.language && languageMigrationMap[userData.language]) {
+            const newLanguage = languageMigrationMap[userData.language];
+            if (userData.language !== newLanguage) {
+                await updateDoc(userDocRef, { language: newLanguage });
+                userData.language = newLanguage; // Update locally to prevent re-triggering
             }
         }
-        // --- End of Backfill Logic ---
-
-        const finalUserData = { ...userData, ...updatesToApply };
-
+        
         const authUser: AppUser = {
           uid: firebaseUser.uid,
           id: firebaseUser.uid,
-          ...finalUserData,
-          displayName: finalUserData.fullName || firebaseUser.displayName,
+          ...userData,
+          displayName: userData.fullName || firebaseUser.displayName,
           photoURL: firebaseUser.photoURL,
         };
         setUser(authUser);
@@ -124,8 +102,6 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
             setUserPermissions([]);
         }
       } else {
-        // This case handles users who signed up but their Firestore doc creation failed or is pending.
-        // It's a temporary state.
         const tempUser: AppUser = { 
           uid: firebaseUser.uid, 
           id: firebaseUser.uid,
@@ -146,7 +122,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
 
     return unsubscribeUser;
 
-  }, [db, defaultLadder]);
+  }, [db]);
 
 
   useEffect(() => {
@@ -174,28 +150,24 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   }, [auth, fetchUserDocument]);
 
   useEffect(() => {
-    if (loading) return;
+    if (loading || validLanguages.length === 0) return;
 
     const publicPaths = ['/login', '/signup'];
-    const isPublicPage = publicPaths.includes(pathname);
-    const isHomePage = pathname === '/';
+    const isPublicPage = publicPaths.some(path => pathname.startsWith(path)) || pathname === '/';
     const isSettingsPage = pathname === '/settings';
-    const isAdminPage = pathname.startsWith('/admin');
 
     if (user) {
-      // User is logged in
-      if (!isProfileComplete && !isSettingsPage && !isAdminPage) {
+      if (!isProfileComplete && !isSettingsPage) {
         router.push('/settings');
-      } else if (isPublicPage || (isProfileComplete && isHomePage)) {
+      } else if (isPublicPage) {
         router.push('/dashboard');
       }
     } else {
-      // User is not logged in
-      if (!isPublicPage && !isHomePage) {
+      if (!isPublicPage) {
         router.push('/login');
       }
     }
-  }, [user, loading, pathname, router, isProfileComplete]);
+  }, [user, loading, pathname, router, isProfileComplete, validLanguages]);
 
 
   const hasPermission = useCallback((permission: string) => {

@@ -338,8 +338,8 @@ export default function LadderManagementPage() {
                                     <SelectValue placeholder="Select a category" />
                                 </SelectTrigger>
                                 <SelectContent>
-                                    <SelectItem value="membership">Membership</SelectItem>
-                                    <SelectItem value="leadership">Leadership</SelectItem>
+                                    <SelectItem value="membership" translate="no">Membership</SelectItem>
+                                    <SelectItem value="leadership" translate="no">Leadership</SelectItem>
                                 </SelectContent>
                             </Select>
                         </div>
@@ -359,9 +359,9 @@ export default function LadderManagementPage() {
                                     <SelectValue placeholder="Select a side" />
                                 </SelectTrigger>
                                 <SelectContent>
-                                    <SelectItem value="none">None</SelectItem>
-                                    <SelectItem value="ministry">Ministry</SelectItem>
-                                    <SelectItem value="hp">HP</SelectItem>
+                                    <SelectItem value="none" translate="no">None</SelectItem>
+                                    <SelectItem value="ministry" translate="no">Ministry</SelectItem>
+                                    <SelectItem value="hp" translate="no">HP</SelectItem>
                                 </SelectContent>
                             </Select>
                         </div>
@@ -398,7 +398,7 @@ export default function LadderManagementPage() {
                                 </SelectTrigger>
                                 <SelectContent>
                                     {ICONS.map(iconName => (
-                                        <SelectItem key={iconName} value={iconName}>
+                                        <SelectItem key={iconName} value={iconName} translate="no">
                                             <div className="flex items-center gap-2">
                                                 <DynamicIcon name={iconName} className="h-4 w-4" />
                                                 <span>{iconName}</span>

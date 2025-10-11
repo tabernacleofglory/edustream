@@ -51,8 +51,7 @@ interface CourseCardProps {
   onEdit?: () => void;
   onDelete?: () => void;
   onDuplicate?: () => void;
-  onUnenroll?: (courseId: string) => void; // kept for backwards-compat
-  onChange?: () => void; // new: generic “refresh parent” hook
+  onChange?: () => void;
   isAdminView?: boolean;
   showEnroll?: boolean;
 }
@@ -62,7 +61,6 @@ export function CourseCard({
   onEdit,
   onDelete,
   onDuplicate,
-  onUnenroll,
   onChange,
   isAdminView = false,
   showEnroll = false,
@@ -134,7 +132,6 @@ export function CourseCard({
       return;
     }
 
-    // Single source of truth: if the hook says locked, block with reason.
     if (isLocked) {
       const prereq = course.prerequisiteCourse?.title;
       toast({
@@ -147,7 +144,6 @@ export function CourseCard({
       return;
     }
     
-    // If there are no videos, don't enroll, go to the course page
     if (publishedVideoCount === 0) {
         router.push(`/courses`);
         return;
@@ -165,56 +161,19 @@ export function CourseCard({
         enrolledAt: serverTimestamp(),
       });
       
-      // Atomically increment the enrollment count on the course
       await updateDoc(courseRef, {
         enrollmentCount: increment(1)
       });
 
-
-      // Optional immediate-complete check: only consider PUBLISHED videos.
-      // Aggregate user's completed video IDs across progress docs.
-      const progressQ = query(collection(db, "userVideoProgress"), where("userId", "==", user.uid));
-      const progressSnap = await getDocs(progressQ);
-      const completedVideoIds = new Set<string>();
-      progressSnap.forEach((d) => {
-        const data = d.data();
-        (data.videoProgress ?? []).forEach((vp: { videoId: string; completed: boolean }) => {
-          if (vp.completed) completedVideoIds.add(vp.videoId);
-        });
-      });
-
-      // Verify completion against the same "published only" rule we use in the hook.
-      let allCourseVideosCompleted = true;
-      if (Array.isArray(course.videos) && course.videos.length > 0) {
-        // fetch which of course.videos are published (chunked)
-        const ids = course.videos as string[];
-        const chunkSize = 10;
-        const publishedIds = new Set<string>();
-        for (let i = 0; i < ids.length; i += chunkSize) {
-          const slice = ids.slice(i, i + chunkSize);
-          const q = query(collection(db, "Contents"), where("__name__", "in", slice), where("status", "==", "published"));
-          const snap = await getDocs(q);
-          snap.docs.forEach((d) => publishedIds.add(d.id));
-        }
-        const publishedList = ids.filter((id) => publishedIds.has(id));
-        allCourseVideosCompleted = publishedList.length > 0 && publishedList.every((id) => completedVideoIds.has(id));
+      toast({ title: "Enrolled", description: `You can now start ${course.title}.` });
+      
+      const videoIdToRedirect = course.lastWatchedVideoId || firstPublishedVideoId;
+      if(videoIdToRedirect) {
+          router.push(`/courses/${course.id}/video/${videoIdToRedirect}`);
       }
 
-      if (allCourseVideosCompleted) {
-        await updateDoc(enrollmentRef, { completedAt: serverTimestamp() });
-        toast({ title: "Course Completed", description: `You've already finished all videos for ${course.title}.` });
-      } else {
-        toast({ title: "Enrolled", description: `You can now start ${course.title}.` });
-        const videoIdToRedirect = course.lastWatchedVideoId || firstPublishedVideoId;
-        if(videoIdToRedirect) {
-            router.push(`/courses/${course.id}/video/${videoIdToRedirect}`);
-        }
-      }
-
-      // Notify parent to refresh if provided; else refresh auth snapshot
-      if (onChange) onChange();
-      else if (onUnenroll) onUnenroll(course.id); // backward compat refresh
-      else refreshUser();
+      onChange?.();
+      refreshUser();
     } catch (error) {
       toast({
         variant: "destructive",
@@ -235,7 +194,6 @@ export function CourseCard({
     const result = await unenrollUserFromCourse(user.uid, course.id);
     if (result.success) {
       toast({ title: "Successfully unenrolled" });
-      onUnenroll?.(course.id);
       onChange?.();
     } else {
       toast({ variant: "destructive", title: "Unenrollment failed", description: result.message });

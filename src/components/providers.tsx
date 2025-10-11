@@ -8,6 +8,7 @@ import { AudioPlayerProvider } from "@/hooks/use-audio-player";
 import { Toaster } from "@/components/ui/toaster";
 import StickyAudioPlayer from "./sticky-audio-player";
 import AppContent from "@/app/app-content";
+import { I18nProvider } from "@/hooks/use-i18n";
 
 export function Providers({ 
     children,
@@ -21,6 +22,7 @@ export function Providers({
         enableSystem
         disableTransitionOnChange
       >
+        <I18nProvider>
           <AuthProvider>
             <AudioPlayerProvider>
                 <AppContent>{children}</AppContent>
@@ -28,6 +30,7 @@ export function Providers({
                 <Toaster />
             </AudioPlayerProvider>
           </AuthProvider>
+        </I18nProvider>
       </ThemeProvider>
   );
 }

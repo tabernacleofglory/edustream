@@ -85,6 +85,8 @@ const courseSchema = z.object({
   logoUrl: z.string().url("Please select a valid logo.").optional().or(z.literal('')),
   status: z.enum(['published', 'draft']).default('draft'),
   order: z.number().optional(),
+  certificateEnabled: z.boolean().optional(),
+  badgeEnabled: z.boolean().optional(),
 });
 
 type CourseFormValues = z.infer<typeof courseSchema>;
@@ -321,6 +323,8 @@ export default function AddCourseForm({ allCourses, onCourseUpdated }: AddCourse
             logoUrl: '',
             status: 'draft',
             order: 0,
+            certificateEnabled: true,
+            badgeEnabled: true,
         }
     });
 
@@ -415,6 +419,8 @@ export default function AddCourseForm({ allCourses, onCourseUpdated }: AddCourse
                   logoUrl: courseData.logoUrl,
                   status: courseData.status || 'draft',
                   order: courseData.order ?? 0,
+                  certificateEnabled: courseData.certificateEnabled !== false, // default to true if undefined
+                  badgeEnabled: courseData.badgeEnabled !== false, // default to true if undefined
                 });
             }
         };
@@ -631,6 +637,8 @@ export default function AddCourseForm({ allCourses, onCourseUpdated }: AddCourse
                 logoUrl: data.logoUrl,
                 creatorId: course?.creatorId || user.uid,
                 order: orderValue,
+                certificateEnabled: data.certificateEnabled,
+                badgeEnabled: data.badgeEnabled,
             };
 
             if (isActuallyEditing) {
@@ -1036,9 +1044,39 @@ export default function AddCourseForm({ allCourses, onCourseUpdated }: AddCourse
                     {canManageSettings && (
                         <Card>
                             <CardHeader>
-                                <CardTitle>Attachments &amp; Certificate</CardTitle>
+                                <CardTitle>Attachments &amp; Rewards</CardTitle>
                             </CardHeader>
                             <CardContent className="space-y-6">
+                                <div className="space-y-4">
+                                    <div className="flex items-center space-x-2">
+                                        <Controller
+                                            control={control}
+                                            name="certificateEnabled"
+                                            render={({ field }) => (
+                                                <Switch
+                                                    id="certificateEnabled"
+                                                    checked={field.value}
+                                                    onCheckedChange={field.onChange}
+                                                />
+                                            )}
+                                        />
+                                        <Label htmlFor="certificateEnabled">Enable Certificate for this Course</Label>
+                                    </div>
+                                    <div className="flex items-center space-x-2">
+                                         <Controller
+                                            control={control}
+                                            name="badgeEnabled"
+                                            render={({ field }) => (
+                                                <Switch
+                                                    id="badgeEnabled"
+                                                    checked={field.value}
+                                                    onCheckedChange={field.onChange}
+                                                />
+                                            )}
+                                        />
+                                        <Label htmlFor="badgeEnabled">Enable Completion Badge for this Course</Label>
+                                    </div>
+                                </div>
                                 <div>
                                     <Label className="font-semibold">Resources</Label>
                                     <div className="p-4 border rounded-md mt-2 space-y-2">

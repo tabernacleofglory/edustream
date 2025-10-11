@@ -1,110 +1,75 @@
+
+"use client";
+
+import { useEffect, useMemo, useState } from "react";
+import { useRouter, useParams } from "next/navigation";
+import { collection, doc, getDoc, getDocs, query, where, documentId } from "firebase/firestore";
 import { getFirebaseFirestore } from "@/lib/firebase";
-import { Course, Video, Speaker } from "@/lib/types";
-import {
-  doc,
-  getDoc,
-  collection,
-  getDocs,
-  query,
-  where,
-  documentId,
-  Timestamp,
-} from "firebase/firestore";
-import { notFound } from "next/navigation";
+import type { Course, Speaker, Video } from "@/lib/types";
+import { useAuth } from "@/hooks/use-auth";
 import VideoPlayer from "@/components/video-player";
-import { getFirebaseAuth } from "@/lib/firebase";
-import type { User as FirebaseUser } from "firebase/auth";
-import { use } from 'react';
+import { Skeleton } from "@/components/ui/skeleton";
 
-type VideoPageProps = {
-  params: {
-    courseId: string;
-    videoId: string;
-  };
-};
-
-// Helper to convert Firestore Timestamps to a serializable format
-const convertTimestamps = (data: any) => {
-  if (data && typeof data === "object") {
-    for (const key in data) {
-      if (data[key] instanceof Timestamp) {
-        data[key] = data[key].toDate().toISOString();
-      } else if (typeof data[key] === "object" && data[key] !== null) {
-        convertTimestamps(data[key]);
-      }
-    }
-  }
-  return data;
-};
-
-async function getCourseAndVideos(courseId: string, _user: FirebaseUser | null) {
+export default function VideoPage() {
+  const { courseId, videoId } = useParams<{ courseId: string; videoId: string }>();
+  const { user, loading } = useAuth();
+  const router = useRouter();
   const db = getFirebaseFirestore();
-  const courseRef = doc(db, "courses", courseId);
-  const courseSnap = await getDoc(courseRef);
 
-  if (!courseSnap.exists() || courseSnap.data()?.status !== "published") {
-    return { course: null, videos: [], speaker: null as Speaker | null };
+  const [course, setCourse] = useState<Course | null>(null);
+  const [videos, setVideos] = useState<Video[]>([]);
+  const [speaker, setSpeaker] = useState<Speaker | null>(null);
+  const [busy, setBusy] = useState(true);
+
+  useEffect(() => {
+    if (loading) return;
+    if (!user) { router.replace("/login"); return; }
+
+    (async () => {
+      setBusy(true);
+      const cRef = doc(db, "courses", courseId);
+      const cSnap = await getDoc(cRef);
+      if (!cSnap.exists() || cSnap.data()?.status !== "published") { router.replace("/courses"); return; }
+
+      const eSnap = await getDoc(doc(db, "enrollments", `${user.uid}_${courseId}`));
+      if (!eSnap.exists()) { router.replace("/dashboard"); return; }
+
+      const c = { id: cSnap.id, ...cSnap.data() } as Course;
+      setCourse(c);
+
+      if (c.speakerId) {
+        const sSnap = await getDoc(doc(db, "speakers", c.speakerId));
+        if (sSnap.exists()) setSpeaker({ id: sSnap.id, ...sSnap.data() } as Speaker);
+      }
+
+      const ids = (c.videos || []) as string[];
+      if (ids.length) {
+        const q = query(collection(db, "Contents"), where(documentId(), "in", ids), where("status", "==", "published"));
+        const qs = await getDocs(q);
+        const list = qs.docs.map(d => ({ id: d.id, ...d.data() } as Video));
+        const ordered = ids.map(id => list.find(v => v.id === id)).filter(Boolean) as Video[];
+        setVideos(ordered);
+      }
+
+      setBusy(false);
+    })();
+  }, [loading, user, db, courseId, videoId, router]); // Added videoId to re-fetch if it changes
+
+  const currentVideo = useMemo(() => videos.find(v => v.id === videoId) || null, [videos, videoId]);
+  const videoIndex = useMemo(() => currentVideo ? videos.findIndex(v => v.id === currentVideo.id) : -1, [videos, currentVideo]);
+
+  if (busy || loading) {
+    return <div className="min-h-screen p-8"><Skeleton className="h-[60vh] max-w-5xl mx-auto" /></div>;
   }
-
-  const courseData = courseSnap.data() as Course;
-  const course = convertTimestamps({ id: courseSnap.id, ...courseData }) as Course;
-
-  // Speaker (optional)
-  let speaker: Speaker | null = null;
-  if (course.speakerId) {
-    const speakerRef = doc(db, "speakers", course.speakerId);
-    const speakerSnap = await getDoc(speakerRef);
-    if (speakerSnap.exists()) {
-      speaker = convertTimestamps({ id: speakerSnap.id, ...speakerSnap.data() }) as Speaker;
+  
+  // Ensure both course and currentVideo are loaded before rendering the player
+  if (!course || !currentVideo || videoIndex < 0) {
+    // If data is missing after loading, it's likely an invalid URL, so redirect.
+    if (!busy) {
+        router.replace("/courses");
     }
+    return <div className="min-h-screen p-8"><Skeleton className="h-[60vh] max-w-5xl mx-auto" /></div>;
   }
-
-  // No videos?
-  if (!course.videos || course.videos.length === 0) {
-    return { course, videos: [], speaker };
-  }
-
-  // Firestore 'in' queries max 30 IDs — chunk to be safe.
-  const ids = course.videos as string[];
-  const chunkSize = 30;
-  const allDocs: Video[] = [];
-
-  for (let i = 0; i < ids.length; i += chunkSize) {
-    const slice = ids.slice(i, i + chunkSize);
-    const contentQuery = query(
-      collection(db, "Contents"),
-      where(documentId(), "in", slice),
-      where("status", "==", "published")
-    );
-    const contentSnapshot = await getDocs(contentQuery);
-    const contentItems = contentSnapshot.docs.map((d) =>
-      convertTimestamps({ id: d.id, ...d.data() })
-    ) as Video[];
-    allDocs.push(...contentItems);
-  }
-
-  // Preserve original order from course.videos
-  const orderedVideos = ids
-    .map((id) => allDocs.find((v) => v.id === id))
-    .filter(Boolean) as Video[];
-
-  return { course, videos: orderedVideos, speaker };
-}
-
-export default async function VideoPage({ params }: VideoPageProps) {
-  const { courseId, videoId } = await params;
-
-  // Server-side "best effort" auth read; actual gating happens client-side.
-  const auth = getFirebaseAuth();
-  const user = auth.currentUser;
-
-  const { course, videos, speaker } = await getCourseAndVideos(courseId, user);
-  if (!course) return notFound();
-
-  const currentVideo = videos.find((v) => v.id === videoId);
-  if (!currentVideo) return notFound();
-
-  const videoIndex = videos.findIndex((v) => v.id === currentVideo.id);
 
   return (
     <VideoPlayer

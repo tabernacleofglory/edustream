@@ -1,20 +1,37 @@
-
 import admin from 'firebase-admin';
 
-if (!admin.apps.length) {
-  try {
-    // When deployed in a Google Cloud environment like App Hosting,
-    // initializeApp() automatically uses Application Default Credentials.
-    admin.initializeApp({
-        projectId: 'edustream-5t6z4',
-        storageBucket: "edustream-5t6z4.appspot.com",
-        databaseURL: "https://edustream-5t6z4.firebaseio.com"
-    });
-    console.log("Firebase Admin SDK initialized successfully with Application Default Credentials.");
-  } catch (error: any) {
-    console.error("Firebase Admin SDK initialization error:", error.message);
-  }
+// This is a temporary workaround to get the service account key into the environment
+// In a real App Hosting environment, this would not be necessary.
+if (process.env.FIREBASE_SERVICE_ACCOUNT_KEY && !admin.apps.length) {
+    const serviceAccount = JSON.parse(
+        Buffer.from(process.env.FIREBASE_SERVICE_ACCOUNT_KEY, 'base64').toString('ascii')
+    );
+    try {
+        admin.initializeApp({
+            credential: admin.credential.cert(serviceAccount),
+            projectId: 'edustream-5t6z4',
+            storageBucket: "edustream-5t6z4.appspot.com",
+            databaseURL: "https://edustream-5t6z4.firebaseio.com"
+        });
+        console.log("Firebase Admin SDK initialized with service account.");
+    } catch (error: any) {
+        console.error("Firebase Admin SDK service account initialization error:", error.message);
+    }
+} else if (!admin.apps.length) {
+    try {
+        // When deployed in a Google Cloud environment like App Hosting,
+        // initializeApp() automatically uses Application Default Credentials.
+        admin.initializeApp({
+            projectId: 'edustream-5t6z4',
+            storageBucket: "edustream-5t6z4.appspot.com",
+            databaseURL: "https://edustream-5t6z4.firebaseio.com"
+        });
+        console.log("Firebase Admin SDK initialized successfully with Application Default Credentials.");
+    } catch (error: any) {
+        console.error("Firebase Admin SDK default initialization error:", error.message);
+    }
 }
+
 
 let auth: admin.auth.Auth;
 let db: admin.firestore.Firestore;

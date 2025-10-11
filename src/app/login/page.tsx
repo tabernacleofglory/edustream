@@ -25,16 +25,18 @@ import React from "react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogTrigger } from "@/components/ui/dialog";
 import { doc, getDoc, setDoc, collection, query, where, getDocs, orderBy, limit, serverTimestamp } from "firebase/firestore";
+import LanguageSwitcher from "@/components/language-switcher";
 
 const getDefaultLadderId = async (db: any): Promise<{id: string, name: string} | null> => {
     const laddersRef = collection(db, "courseLevels");
-    const q = query(laddersRef, where("name", "==", "New Member"), where("category", "==", "membership"));
+    // Attempt to find a ladder specifically named "New Member" with a category of "membership"
+    const q = query(laddersRef, where("name", "==", "New Member"), where("category", "==", "membership"), limit(1));
     const querySnapshot = await getDocs(q);
     if (!querySnapshot.empty) {
         const doc = querySnapshot.docs[0];
         return { id: doc.id, name: doc.data().name };
     }
-    // Fallback if "New Member" doesn't exist
+    // Fallback: If "New Member" doesn't exist, get the ladder with the lowest order number.
     const fallbackQuery = query(laddersRef, orderBy("order"), limit(1));
     const fallbackSnapshot = await getDocs(fallbackQuery);
     if(!fallbackSnapshot.empty) {
@@ -43,6 +45,7 @@ const getDefaultLadderId = async (db: any): Promise<{id: string, name: string} |
     }
     return null;
 }
+
 
 export default function LoginPage() {
     const router = useRouter();
@@ -238,6 +241,9 @@ export default function LoginPage() {
         </CardHeader>
         <CardContent>
           <div className="grid gap-4">
+            <div className="flex justify-center">
+                <LanguageSwitcher />
+            </div>
             {loginMethod === 'code' && (
                 <div className="grid gap-4">
                     <div className="grid gap-2">

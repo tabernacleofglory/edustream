@@ -58,81 +58,47 @@ export function useProcessedCourses(forAllCoursesPage: boolean = false) {
       );
       setAllLadders(laddersList);
 
-      /** PUBLISHED VIDEOS (map by id for quick inclusion checks) */
-      const videosQuery = query(
-        collection(db, "Contents"),
-        where("status", "==", "published"),
-        where("Type", "==", "video")
-      );
-      const videosSnapshot = await getDocs(videosQuery);
-      const allPublishedVideosMap = new Map<string, (Video & { id: string })>(
-        videosSnapshot.docs.map((doc) => [
-          doc.id,
-          { id: doc.id, ...(doc.data() as Video) },
-        ])
-      );
-
       /** PUBLISHED COURSES */
       let coursesQuery = query(
         collection(db, "courses"),
         where("status", "==", "published")
       );
-      // If a user has a language set, filter courses by that language.
-      if (user?.language) {
-          coursesQuery = query(coursesQuery, where("language", "==", user.language));
-      } else if (user) {
-        // If user is logged in but has no language, they shouldn't see any courses.
-        // We create a query that will deliberately return no results.
-        coursesQuery = query(coursesQuery, where("language", "==", "nonexistent-language-to-return-empty"));
-      }
-
-
+      
+      // If a user is logged in, filter by their language. Otherwise, default to English for guests.
+      const languageToFilter = user?.language || 'English';
+      coursesQuery = query(coursesQuery, where("language", "==", languageToFilter));
+      
       const coursesSnapshot = await getDocs(coursesQuery);
 
-      // Normalize ladderIds so downstream logic always has them
       const coursesList: Course[] = coursesSnapshot.docs.map((doc) => {
         const raw = { id: doc.id, ...doc.data() } as Course;
         const ladderIds = getLadderIds(raw);
         return { ...raw, ladderIds };
       });
 
-      // Sort once (null/undefined orders to the end)
       const sortedCourses = [...coursesList].sort(
         (a, b) => (a.order ?? Infinity) - (b.order ?? Infinity)
       );
 
-      // Guests: browse freely; no progress/locks enforced.
       if (!user) {
+        // For guest users, just show the courses without any progress or lock status.
         setProcessedCourses(
           sortedCourses.map((c) => ({
             ...c,
             isEnrolled: false,
             isCompleted: false,
-            isLocked: false, // allow browsing
+            isLocked: false,
             totalProgress: 0,
-            lastWatchedVideoId: c.videos?.find((vid) =>
-              allPublishedVideosMap.has(vid as string)
-            ),
           }))
         );
         setLoading(false);
         return;
       }
-
-      /** USER DATA: enrollments, progress, and quiz results */
-      const enrollmentsQuery = query(
-        collection(db, "enrollments"),
-        where("userId", "==", user.uid)
-      );
-      const progressQuery = query(
-        collection(db, "userVideoProgress"),
-        where("userId", "==", user.uid)
-      );
-      const quizResultsQuery = query(
-        collection(db, 'userQuizResults'),
-        where('userId', '==', user.uid)
-      );
-
+      
+      // Fetch all necessary user data in parallel
+      const enrollmentsQuery = query(collection(db, "enrollments"), where("userId", "==", user.uid));
+      const progressQuery = query(collection(db, "userVideoProgress"), where("userId", "==", user.uid));
+      const quizResultsQuery = query(collection(db, 'userQuizResults'), where('userId', '==', user.uid));
 
       const [enrollmentsSnapshot, progressSnapshot, quizResultsSnapshot] = await Promise.all([
         getDocs(enrollmentsQuery),
@@ -146,7 +112,7 @@ export function useProcessedCourses(forAllCoursesPage: boolean = false) {
           return [data.courseId, data];
         })
       );
-
+      
       const progressMap = new Map<string, UserProgressType>(
         progressSnapshot.docs.map((doc) => [
           (doc.data() as UserProgressType).courseId,
@@ -164,146 +130,75 @@ export function useProcessedCourses(forAllCoursesPage: boolean = false) {
               passedQuizzesByCourse.get(result.courseId)!.add(result.quizId);
           }
       });
-
-      /** Identify completed + in-progress courses based on published videos AND quizzes */
+      
       const completedCourseIds = new Set<string>();
       const coursesInProgress = new Set<string>();
 
       for (const course of sortedCourses) {
-        const enrollment = enrollmentData.get(course.id!);
-        const progress = progressMap.get(course.id!);
-
-        const publishedVideoIdsForCourse: string[] =
-          course.videos?.filter((vid) => allPublishedVideosMap.has(vid as string)) ??
-          [];
-
-        const allVideosCompleted = publishedVideoIdsForCourse.length > 0 && publishedVideoIdsForCourse.every(vid => 
-            progress?.videoProgress?.some(p => p.videoId === vid && p.completed)
-        );
-
-        const requiredQuizIds = course.quizIds || [];
-        const quizzesPassedForThisCourse = passedQuizzesByCourse.get(course.id!) || new Set();
-        const allQuizzesCompleted = requiredQuizIds.length > 0 ? requiredQuizIds.every(quizId => quizzesPassedForThisCourse.has(quizId)) : true;
-
+        if (!course.id) continue;
+        const progress = progressMap.get(course.id);
+        const videosInCourse = course.videos || [];
+        const quizzesInCourse = course.quizIds || [];
+        
+        const completedVideosCount = progress?.videoProgress?.filter(p => p.completed).length || 0;
+        const allVideosCompleted = videosInCourse.length > 0 ? completedVideosCount >= videosInCourse.length : true;
+        
+        const passedQuizzesSet = passedQuizzesByCourse.get(course.id) || new Set();
+        const allQuizzesCompleted = quizzesInCourse.length > 0 ? quizzesInCourse.every(qid => passedQuizzesSet.has(qid)) : true;
 
         if (allVideosCompleted && allQuizzesCompleted) {
-          completedCourseIds.add(course.id!);
-        } else if (enrollment) {
-          coursesInProgress.add(course.id!);
+          completedCourseIds.add(course.id);
+        } else if (enrollmentData.has(course.id)) {
+          coursesInProgress.add(course.id);
         }
       }
 
-      /** USER LADDER CONTEXT */
-      const lowestLadderOrder = laddersList.length > 0 ? laddersList[0].order : 0;
-      const userLadder =
-        laddersList.find((l) => l.id === (user as any)?.classLadderId) ?? null;
-      const userLadderOrder = userLadder?.order ?? (laddersList[0]?.order ?? 0);
-      const isLowestLadder = userLadderOrder === lowestLadderOrder;
+      const userLadder = laddersList.find((l) => l.id === (user as any)?.classLadderId) ?? null;
+      const userLadderOrder = userLadder?.order ?? 0;
 
-      /** Precompute per-ladder ordering for prereq lookups */
-      const orderByLadder = new Map<string, Course[]>();
-      for (const c of sortedCourses) {
-        for (const lid of c.ladderIds ?? []) {
-          if (!orderByLadder.has(lid)) orderByLadder.set(lid, []);
-          orderByLadder.get(lid)!.push(c);
-        }
-      }
-      for (const [, arr] of orderByLadder) {
-        arr.sort((a, b) => (a.order ?? Infinity) - (b.order ?? Infinity));
-      }
-
-      function findNearestLowerPrereq(course: Course, ladderId: string) {
-        if (course.order == null) return undefined;
-        const arr = orderByLadder.get(ladderId) ?? [];
-        let candidate: Course | undefined;
-        for (const c of arr) {
-          if ((c.order ?? Infinity) < course.order) candidate = c;
-          else break;
-        }
-        return candidate;
-      }
-
-      /** Build final course states (with corrected locking + prereq logic) */
       const coursesWithStatus: CourseWithStatus[] = sortedCourses.map((course) => {
         const enrollment = enrollmentData.get(course.id!);
         const progress = progressMap.get(course.id!);
-
-        const publishedVideoIdsForCourse: string[] =
-          course.videos?.filter((vid) => allPublishedVideosMap.has(vid as string)) ?? [];
-        const totalVideos = publishedVideoIdsForCourse.length;
-
-        const completedVideosCount =
-          progress?.videoProgress?.filter(
-            (v) => v.completed && publishedVideoIdsForCourse.includes(v.videoId)
-          ).length ?? 0;
-
-        const isCompleted = completedCourseIds.has(course.id!);
-
-        const courseLadders = (course.ladderIds || [])
-          .map((id) => laddersList.find((l) => l.id === id))
-          .filter(Boolean) as Ladder[];
-
-        let isLocked = false;
-        let prerequisiteCourse: CourseWithStatus["prerequisiteCourse"] = undefined;
         
-        if (userLadder && courseLadders.length > 0) {
-            const minCourseLadderOrder = Math.min(...courseLadders.map((l) => l.order));
-            const maxCourseLadderOrder = Math.max(...courseLadders.map((l) => l.order));
+        const totalVideos = course.videos?.length || 0;
+        const completedVideosCount = progress?.videoProgress?.filter(v => v.completed).length || 0;
+        
+        let isLocked = false;
+        let prerequisiteCourse: CourseWithStatus['prerequisiteCourse'] | undefined;
+        
+        const courseMinLadderOrder = Math.min(...(course.ladderIds || []).map(id => laddersList.find(l => l.id === id)?.order ?? Infinity));
 
-            if (minCourseLadderOrder > userLadderOrder) {
-                // If the course's lowest ladder is still higher than the user's, it's locked.
-                isLocked = true;
-            } else if (maxCourseLadderOrder < userLadderOrder) {
-                // If the course's highest ladder is below the user's, it's always unlocked.
-                isLocked = false; 
-            } else {
-                // The course is in the user's ladder or spans it. Check prerequisites only within the user's ladder.
-                if (courseLadders.some(l => l.id === userLadder.id)) {
-                    const prereq = findNearestLowerPrereq(course, userLadder.id);
-                    if (prereq && !completedCourseIds.has(prereq.id!)) {
-                        isLocked = true;
-                        prerequisiteCourse = { id: prereq.id!, title: prereq.title };
-                    }
-                }
-            }
-        }
-
-
-        // Lowest ladder: only one in-progress course at a time in that *user* ladder
-        if (!isLocked && isLowestLadder && userLadder) {
-          const inProgressInUserLadder = [...coursesInProgress].some((cid) => {
-            const cc = sortedCourses.find((c) => c.id === cid);
-            return (cc?.ladderIds || []).includes(userLadder.id);
-          });
-          const thisInUserLadder = (course.ladderIds || []).includes(userLadder.id);
-          if (inProgressInUserLadder && thisInUserLadder && !isCompleted && !enrollment) {
+        if (userLadder && course.ladderIds) {
+          if (courseMinLadderOrder > userLadderOrder) {
             isLocked = true;
           }
         }
-
-        const lastWatchedVideoId =
-          progress?.lastWatchedVideoId ??
-          (publishedVideoIdsForCourse.length > 0
-            ? (publishedVideoIdsForCourse[0] as string)
-            : undefined);
+        
+        // Find prerequisite if any
+        if (!isLocked && course.order !== undefined && course.order > 0 && userLadderOrder <= courseMinLadderOrder) {
+            const prereq = sortedCourses.find(c => 
+                c.ladderIds?.some(lId => course.ladderIds.includes(lId)) && // Must be in the same ladder
+                c.order === course.order - 1
+            );
+            
+            // Only enforce prerequisite lock if user is in the same or lower ladder
+            if (prereq && !completedCourseIds.has(prereq.id)) {
+                isLocked = true;
+                prerequisiteCourse = { id: prereq.id, title: prereq.title };
+            }
+        }
 
         return {
           ...course,
           isEnrolled: !!enrollment,
-          isCompleted,
+          isCompleted: completedCourseIds.has(course.id!),
           isLocked,
           prerequisiteCourse,
-          totalProgress:
-            totalVideos > 0
-              ? Math.round((completedVideosCount / totalVideos) * 100)
-              : 0,
-          lastWatchedVideoId,
-          completedAt: (enrollment?.completedAt as Timestamp | undefined)
-            ? (enrollment!.completedAt as Timestamp).toDate().toISOString()
-            : undefined,
+          totalProgress: totalVideos > 0 ? Math.round((completedVideosCount / totalVideos) * 100) : 0,
+          lastWatchedVideoId: progress?.lastWatchedVideoId,
+          completedAt: (enrollment?.completedAt as Timestamp | undefined)?.toDate().toISOString(),
         };
       });
-
       setProcessedCourses(coursesWithStatus);
     } catch (error) {
       console.error("Error fetching and processing courses:", error);

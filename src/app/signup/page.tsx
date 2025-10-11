@@ -19,16 +19,18 @@ import { Logo } from "@/components/logo";
 import { useToast } from "@/hooks/use-toast";
 import { Loader2 } from "lucide-react";
 import { doc, setDoc, getDoc, collection, query, where, getDocs, orderBy, limit, serverTimestamp } from "firebase/firestore";
+import LanguageSwitcher from "@/components/language-switcher";
 
 const getDefaultLadderId = async (db: any): Promise<{id: string, name: string} | null> => {
     const laddersRef = collection(db, "courseLevels");
-    const q = query(laddersRef, where("name", "==", "New Member"), where("category", "==", "membership"));
+    // Attempt to find a ladder specifically named "New Member" with a category of "membership"
+    const q = query(laddersRef, where("name", "==", "New Member"), where("category", "==", "membership"), limit(1));
     const querySnapshot = await getDocs(q);
     if (!querySnapshot.empty) {
         const doc = querySnapshot.docs[0];
         return { id: doc.id, name: doc.data().name };
     }
-    // Fallback if "New Member" doesn't exist
+    // Fallback: If "New Member" doesn't exist, get the ladder with the lowest order number.
     const fallbackQuery = query(laddersRef, orderBy("order"), limit(1));
     const fallbackSnapshot = await getDocs(fallbackQuery);
     if(!fallbackSnapshot.empty) {
@@ -153,22 +155,25 @@ export default function SignupPage() {
            </CardDescription>
         </CardHeader>
         <CardContent>
-          <form onSubmit={handleSignup} className="grid gap-4">
-            <div className="grid gap-4">
-              <div className="grid gap-2">
-                <Label htmlFor="email">Email</Label>
-                <Input id="email" type="email" placeholder="m@example.com" required value={email} onChange={(e) => setEmail(e.target.value)} disabled={isLoading || isGoogleLoading} />
-              </div>
-              <div className="grid gap-2">
-                <Label htmlFor="password">Password</Label>
-                <Input id="password" type="password" required value={password} onChange={(e) => setPassword(e.target.value)} disabled={isLoading || isGoogleLoading} />
-              </div>
-              <Button type="submit" className="w-full" disabled={isLoading || isGoogleLoading}>
-                {isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                Create account
-              </Button>
+          <div className="grid gap-4">
+            <div className="flex justify-center">
+                <LanguageSwitcher />
             </div>
-          </form>
+            <form onSubmit={handleSignup} className="grid gap-4">
+                <div className="grid gap-2">
+                    <Label htmlFor="email">Email</Label>
+                    <Input id="email" type="email" placeholder="m@example.com" required value={email} onChange={(e) => setEmail(e.target.value)} disabled={isLoading || isGoogleLoading} />
+                </div>
+                <div className="grid gap-2">
+                    <Label htmlFor="password">Password</Label>
+                    <Input id="password" type="password" required value={password} onChange={(e) => setPassword(e.target.value)} disabled={isLoading || isGoogleLoading} />
+                </div>
+                <Button type="submit" className="w-full" disabled={isLoading || isGoogleLoading}>
+                    {isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                    Create account
+                </Button>
+            </form>
+          </div>
             <div className="relative mt-4">
                 <div className="absolute inset-0 flex items-center">
                     <span className="w-full border-t" />

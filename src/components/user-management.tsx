@@ -1,8 +1,7 @@
 
-
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import Link from "next/link";
 import { getFirebaseFirestore, getFirebaseApp } from "@/lib/firebase";
 import { collection, getDocs, doc, updateDoc, query, orderBy, deleteDoc, setDoc, addDoc, serverTimestamp, where, documentId } from "firebase/firestore";
@@ -12,7 +11,8 @@ import {
   CardContent,
   CardHeader,
   CardTitle,
-  CardDescription
+  CardDescription,
+  CardFooter
 } from "@/components/ui/card";
 import {
   Table,
@@ -54,12 +54,12 @@ import {
   SheetContent,
   SheetHeader,
   SheetTitle,
-  SheetTrigger,
   SheetDescription,
+  SheetTrigger,
 } from "@/components/ui/sheet";
 import { Avatar, AvatarFallback, AvatarImage } from "./ui/avatar";
 import { Button } from "./ui/button";
-import { Edit, Eye, Loader2, Plus, Trash, Upload, Download, UserMinus, ChevronLeft, ChevronRight, Mail } from "lucide-react";
+import { Edit, Eye, Loader2, Plus, Trash, Upload, Download, UserMinus, ChevronLeft, ChevronRight, Mail, BookCheck, Search } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { Skeleton } from "./ui/skeleton";
 import AddUserForm from "./add-user-form";
@@ -189,6 +189,12 @@ export default function UserManagement() {
   const { toast } = useToast();
   const db = getFirebaseFirestore();
 
+  const [searchTerm, setSearchTerm] = useState('');
+  const [selectedCampus, setSelectedCampus] = useState('all');
+  const [currentPage, setCurrentPage] = useState(1);
+  const [usersPerPage, setUsersPerPage] = useState(10);
+
+
   const fetchAllData = useCallback(async () => {
     setLoading(true);
     try {
@@ -225,6 +231,27 @@ export default function UserManagement() {
   useEffect(() => {
     fetchAllData();
   }, [fetchAllData]);
+
+  const filteredUsers = useMemo(() => {
+    return users.filter(user => {
+        const matchesSearch = searchTerm === '' ||
+            user.displayName?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+            user.email?.toLowerCase().includes(searchTerm.toLowerCase());
+        
+        const matchesCampus = selectedCampus === 'all' || 
+            (user.campus && user.campus.toLowerCase() === selectedCampus.toLowerCase());
+
+        return matchesSearch && matchesCampus;
+    });
+  }, [users, searchTerm, selectedCampus]);
+
+  const allCampuses = useMemo(() => {
+    const campusSet = new Set(users.map(u => u.campus).filter(Boolean));
+    return Array.from(campusSet).sort();
+  }, [users]);
+
+  const totalPages = Math.ceil(filteredUsers.length / usersPerPage);
+  const paginatedUsers = filteredUsers.slice((currentPage - 1) * usersPerPage, currentPage * usersPerPage);
 
   const fetchUserProgress = useCallback(async (user: User) => {
     if (!user?.uid || courses.length === 0) return;
@@ -278,7 +305,10 @@ export default function UserManagement() {
         setViewingUserProgress(detailedCourseProgress);
 
         const ladderProgressData: UserLadderProgress[] = ladders.map(ladder => {
-            const coursesInLadder = courses.filter(c => c.ladders?.includes(ladder.name));
+            // Filter courses by BOTH ladder AND user's language
+            const coursesInLadder = courses.filter(c => 
+              c.ladderIds?.includes(ladder.id) && c.language === user.language
+            );
             const totalCourses = coursesInLadder.length;
             const completedCourses = coursesInLadder.filter(c => completedCourseIds.has(c.id)).length;
             const progress = totalCourses > 0 ? Math.round((completedCourses / totalCourses) * 100) : 0;
@@ -291,7 +321,7 @@ export default function UserManagement() {
                 totalCourses: totalCourses,
                 completedCourses: completedCourses
             }
-        }).filter(lp => lp.totalCourses > 0);
+        }).filter(lp => lp.totalCourses > 0); // Only show ladders that have courses for the user's language
 
         setViewingUserLadderProgress(ladderProgressData);
 
@@ -574,6 +604,28 @@ export default function UserManagement() {
         </div>
       </CardHeader>
       <CardContent>
+        <div className="flex flex-col md:flex-row gap-4 mb-4">
+            <div className="relative flex-1">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground" />
+                <Input
+                    placeholder="Search by name or email..."
+                    className="pl-10"
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                />
+            </div>
+             <Select value={selectedCampus} onValueChange={setSelectedCampus}>
+                <SelectTrigger className="w-full md:w-[200px]">
+                    <SelectValue placeholder="Filter by campus" />
+                </SelectTrigger>
+                <SelectContent>
+                    <SelectItem value="all">All Campuses</SelectItem>
+                    {allCampuses.map(campus => (
+                        <SelectItem key={campus} value={campus}>{campus}</SelectItem>
+                    ))}
+                </SelectContent>
+            </Select>
+        </div>
         <div className="overflow-x-auto">
             <Table>
             <TableHeader>
@@ -607,7 +659,7 @@ export default function UserManagement() {
                         </TableRow>
                     ))
                 ) : (
-                    users.map((user) => (
+                    paginatedUsers.map((user) => (
                     <TableRow key={user.id} onClick={() => handleRowClick(user)} className="cursor-pointer">
                         <TableCell>
                         <div className="flex items-center gap-3">
@@ -693,6 +745,34 @@ export default function UserManagement() {
             </div>
         )}
       </CardContent>
+       {totalPages > 1 && (
+        <CardFooter className="flex justify-end items-center gap-4">
+            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                <span>Rows per page</span>
+                <Select value={`${usersPerPage}`} onValueChange={value => setUsersPerPage(Number(value))}>
+                    <SelectTrigger className="w-[70px]">
+                        <SelectValue placeholder={`${usersPerPage}`} />
+                    </SelectTrigger>
+                    <SelectContent>
+                        {[10, 25, 50, 100].map(size => (
+                            <SelectItem key={size} value={`${size}`}>{size}</SelectItem>
+                        ))}
+                    </SelectContent>
+                </Select>
+            </div>
+            <span className="text-sm text-muted-foreground">Page {currentPage} of {totalPages}</span>
+            <div className="flex items-center gap-2">
+                <Button variant="outline" size="sm" onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))} disabled={currentPage === 1}>
+                    <ChevronLeft className="h-4 w-4" />
+                    Previous
+                </Button>
+                <Button variant="outline" size="sm" onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))} disabled={currentPage === totalPages}>
+                    Next
+                    <ChevronRight className="h-4 w-4" />
+                </Button>
+            </div>
+        </CardFooter>
+      )}
       </Card>
       
       <Dialog open={!!viewingUser} onOpenChange={(isOpen) => !isOpen && setViewingUser(null)}>
@@ -859,3 +939,4 @@ export default function UserManagement() {
   );
 }
 
+    

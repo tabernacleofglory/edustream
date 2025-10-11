@@ -300,10 +300,10 @@ export default function AddUserForm({ onUserAdded, ladders }: AddUserFormProps) 
                     <Select onValueChange={field.onChange} value={field.value} disabled={isSubmitting}>
                         <SelectTrigger><SelectValue placeholder="Select gender" /></SelectTrigger>
                         <SelectContent>
-                            <SelectItem value="male">Male</SelectItem>
-                            <SelectItem value="female">Female</SelectItem>
-                            <SelectItem value="other">Other</SelectItem>
-                            <SelectItem value="prefer-not-to-say">Prefer not to say</SelectItem>
+                            <SelectItem value="male" translate="no">Male</SelectItem>
+                            <SelectItem value="female" translate="no">Female</SelectItem>
+                            <SelectItem value="other" translate="no">Other</SelectItem>
+                            <SelectItem value="prefer-not-to-say" translate="no">Prefer not to say</SelectItem>
                         </SelectContent>
                     </Select>
                 )}
@@ -319,13 +319,13 @@ export default function AddUserForm({ onUserAdded, ladders }: AddUserFormProps) 
                     <Select onValueChange={field.onChange} value={field.value} disabled={isSubmitting}>
                         <SelectTrigger><SelectValue placeholder="Select age range" /></SelectTrigger>
                         <SelectContent>
-                            <SelectItem value="18-24">18-24</SelectItem>
-                            <SelectItem value="25-34">25-34</SelectItem>
-                            <SelectItem value="35-44">35-44</SelectItem>
-                            <SelectItem value="45-54">45-54</SelectItem>
-                            <SelectItem value="55-64">55-64</SelectItem>
-                            <SelectItem value="65+">65+</SelectItem>
-                            <SelectItem value="prefer-not-to-say">Prefer not to say</SelectItem>
+                            <SelectItem value="18-24" translate="no">18-24</SelectItem>
+                            <SelectItem value="25-34" translate="no">25-34</SelectItem>
+                            <SelectItem value="35-44" translate="no">35-44</SelectItem>
+                            <SelectItem value="45-54" translate="no">45-54</SelectItem>
+                            <SelectItem value="55-64" translate="no">55-64</SelectItem>
+                            <SelectItem value="65+" translate="no">65+</SelectItem>
+                            <SelectItem value="prefer-not-to-say" translate="no">Prefer not to say</SelectItem>
                         </SelectContent>
                     </Select>
                 )}
@@ -498,3 +498,5 @@ export default function AddUserForm({ onUserAdded, ladders }: AddUserFormProps) 
     </form>
   );
 }
+
+    
