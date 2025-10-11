@@ -20,44 +20,77 @@ export default function VideoPage() {
   const [videos, setVideos] = useState<Video[]>([]);
   const [speaker, setSpeaker] = useState<Speaker | null>(null);
   const [busy, setBusy] = useState(true);
+  const [currentVideo, setCurrentVideo] = useState<Video | null>(null);
 
   useEffect(() => {
     if (loading) return;
     if (!user) { router.replace("/login"); return; }
 
-    (async () => {
+    const fetchVideoData = async () => {
       setBusy(true);
-      const cRef = doc(db, "courses", courseId);
-      const cSnap = await getDoc(cRef);
-      if (!cSnap.exists() || cSnap.data()?.status !== "published") { router.replace("/courses"); return; }
+      try {
+        const courseRef = doc(db, "courses", courseId);
+        const courseSnap = await getDoc(courseRef);
 
-      const eSnap = await getDoc(doc(db, "enrollments", `${user.uid}_${courseId}`));
-      if (!eSnap.exists()) { router.replace("/dashboard"); return; }
+        if (!courseSnap.exists() || courseSnap.data()?.status !== "published") {
+          router.replace("/courses");
+          return;
+        }
 
-      const c = { id: cSnap.id, ...cSnap.data() } as Course;
-      setCourse(c);
+        const enrollmentSnap = await getDoc(doc(db, "enrollments", `${user.uid}_${courseId}`));
+        if (!enrollmentSnap.exists()) {
+          router.replace("/dashboard");
+          return;
+        }
 
-      if (c.speakerId) {
-        const sSnap = await getDoc(doc(db, "speakers", c.speakerId));
-        if (sSnap.exists()) setSpeaker({ id: sSnap.id, ...sSnap.data() } as Speaker);
+        const courseData = { id: courseSnap.id, ...courseSnap.data() } as Course;
+        setCourse(courseData);
+
+        if (courseData.speakerId) {
+          const speakerSnap = await getDoc(doc(db, "speakers", courseData.speakerId));
+          if (speakerSnap.exists()) {
+            setSpeaker({ id: speakerSnap.id, ...speakerSnap.data() } as Speaker);
+          }
+        }
+
+        const videoIds = (courseData.videos || []) as string[];
+        if (videoIds.length > 0) {
+          const q = query(collection(db, "Contents"), where(documentId(), "in", videoIds), where("status", "==", "published"));
+          const videosSnap = await getDocs(q);
+          const videosData = videosSnap.docs.map(d => ({ id: d.id, ...d.data() } as Video));
+          
+          const orderedVideos = videoIds.map(id => videosData.find(v => v.id === id)).filter(Boolean) as Video[];
+          setVideos(orderedVideos);
+
+          const foundVideo = orderedVideos.find(v => v.id === videoId);
+          if (foundVideo) {
+            setCurrentVideo(foundVideo);
+          } else {
+            // If the videoId in URL is not in the fetched list, redirect
+            router.replace(`/courses/${courseId}`);
+          }
+        } else {
+            // No videos in course, redirect
+            router.replace(`/courses/${courseId}`);
+        }
+
+      } catch (error) {
+        console.error("Error fetching video page data:", error);
+        router.replace("/courses");
+      } finally {
+        setBusy(false);
       }
+    };
+    
+    fetchVideoData();
+  }, [loading, user, db, courseId, videoId, router]);
 
-      const ids = (c.videos || []) as string[];
-      if (ids.length) {
-        const q = query(collection(db, "Contents"), where(documentId(), "in", ids), where("status", "==", "published"));
-        const qs = await getDocs(q);
-        const list = qs.docs.map(d => ({ id: d.id, ...d.data() } as Video));
-        const ordered = ids.map(id => list.find(v => v.id === id)).filter(Boolean) as Video[];
-        setVideos(ordered);
-      }
+  const videoIndex = useMemo(() => {
+    if (!currentVideo || videos.length === 0) return -1;
+    return videos.findIndex(v => v.id === currentVideo.id);
+  }, [videos, currentVideo]);
 
-      setBusy(false);
-    })();
-  }, [loading, user, db, courseId, videoId, router]); // Added videoId to re-fetch if it changes
-
-  const currentVideo = useMemo(() => videos.find(v => v.id === videoId) || null, [videos, videoId]);
-  const videoIndex = useMemo(() => currentVideo ? videos.findIndex(v => v.id === currentVideo.id) : -1, [videos, currentVideo]);
-
+  // Render a skeleton while any data is loading or if data is inconsistent
   if (busy || loading || !course || !currentVideo || videoIndex < 0) {
     return <div className="min-h-screen p-8"><Skeleton className="h-[60vh] max-w-5xl mx-auto" /></div>;
   }

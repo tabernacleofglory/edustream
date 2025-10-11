@@ -20,7 +20,7 @@ import {
 import { getFirebaseApp, getFirebaseFirestore } from "@/lib/firebase";
 import { useAuth } from "@/hooks/use-auth";
 import { useToast } from "@/hooks/use-toast";
-import type { User, Course, OnsiteCompletion } from "@/lib/types";
+import type { User, Course, OnsiteCompletion, Ladder } from "@/lib/types";
 
 import {
   Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter,
@@ -53,9 +53,10 @@ export default function ManageCompletionsPage() {
   // Lists
   const [users, setUsers] = useState<User[]>([]);
   const [courses, setCourses] = useState<Course[]>([]);
+  const [ladders, setLadders] = useState<Ladder[]>([]);
   const [isLoadingLists, setIsLoadingLists] = useState(true);
 
-  // Selections (left and middle panes)
+  // Selections
   const [userSearchTerm, setUserSearchTerm] = useState("");
   const [courseSearchTerm, setCourseSearchTerm] = useState("");
   const [selectedUser, setSelectedUser] = useState<User | null>(null);
@@ -65,23 +66,25 @@ export default function ManageCompletionsPage() {
   // Save state
   const [isSaving, setIsSaving] = useState(false);
 
-  // Log (right / bottom pane) state
+  // Log state
   const [logRows, setLogRows] = useState<(OnsiteCompletion & { id: string })[]>([]);
   const [isLoadingLog, setIsLoadingLog] = useState(false);
   const [pageSize, setPageSize] = useState(PAGE_SIZE_DEFAULT);
   const [page, setPage] = useState(1);
-  const [cursors, setCursors] = useState<DocumentSnapshot[]>([]); // cursor stack for startAfter
+  const [cursors, setCursors] = useState<DocumentSnapshot[]>([]);
   const [hasNextPage, setHasNextPage] = useState(false);
 
   // Filters
-  const [dateFrom, setDateFrom] = useState<string>(""); // yyyy-mm-dd
-  const [dateTo, setDateTo] = useState<string>("");   // yyyy-mm-dd
-  const [logSearchTerm, setLogSearchTerm] = useState(""); // simple client-side search over displayed page
+  const [dateFrom, setDateFrom] = useState<string>("");
+  the
+  const [dateTo, setDateTo] = useState<string>("");
+  const [logSearchTerm, setLogSearchTerm] = useState("");
+
   // Selection (log rows)
   const [selectedLogIds, setSelectedLogIds] = useState<Set<string>>(new Set());
   const [selectAllOnPage, setSelectAllOnPage] = useState(false);
 
-  // --- Load users & courses (once) ---
+  // --- Load users, courses, ladders ---
   useEffect(() => {
     (async () => {
       setIsLoadingLists(true);
@@ -90,18 +93,27 @@ export default function ManageCompletionsPage() {
         const coursesSnap = await getDocs(
           query(collection(db, "courses"), where("status", "==", "published"), orderBy("title"))
         );
+        const laddersSnap = await getDocs(query(collection(db, "courseLevels"), orderBy("order")));
+
         setUsers(usersSnap.docs.map(d => ({ id: d.id, ...d.data() } as User)));
         setCourses(coursesSnap.docs.map(d => ({ id: d.id, ...d.data() } as Course)));
+        setLadders(laddersSnap.docs.map(d => ({ id: d.id, ...d.data() } as Ladder)));
       } catch (e) {
         console.error(e);
-        toast({ variant: "destructive", title: "Failed to load users/courses." });
+        toast({ variant: "destructive", title: "Failed to load users/courses/ladders." });
       } finally {
         setIsLoadingLists(false);
       }
     })();
   }, [db, toast]);
 
-  // --- When user changes: refresh “already logged” set + reset course selection + reset pagination ---
+  const ladderById = useMemo(() => {
+    const map = new Map<string, Ladder>();
+    ladders.forEach(l => map.set(l.id, l));
+    return map;
+  }, [ladders]);
+
+  // --- When user changes: refresh “already logged” + page 1 ---
   useEffect(() => {
     (async () => {
       setUserLoggedCourseIds(new Set());
@@ -110,26 +122,22 @@ export default function ManageCompletionsPage() {
       setCursors([]);
       if (!selectedUser) return;
 
-      // Build set of courseIds already logged for this user
-      const seen = new Set<string>();
-      // Use batched reads (pagination not needed here, we only need IDs)
-      // We query by userId and pull all; if you have huge data, add a limit+cursor loop.
       const snap = await getDocs(
         query(collection(db, "onsiteCompletions"), where("userId", "==", selectedUser.uid))
       );
+      const seen = new Set<string>();
       snap.forEach(d => {
         const data = d.data() as any;
         if (data?.courseId) seen.add(data.courseId);
       });
       setUserLoggedCourseIds(seen);
 
-      // Also (re)load log page 1 for this user
       await loadLogPage(1, [], selectedUser, dateFrom, dateTo, pageSize);
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedUser]);
 
-  // --- If filters change: reset to page 1 and reload ---
+  // --- Filters change -> reload page 1 ---
   useEffect(() => {
     if (!selectedUser) return;
     setPage(1);
@@ -138,7 +146,7 @@ export default function ManageCompletionsPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dateFrom, dateTo, pageSize, selectedUser]);
 
-  // --- Helpers: user/course filtered lists ---
+  // --- Helpers: filtered lists ---
   const filteredUsers = useMemo(() => {
     const q = userSearchTerm.toLowerCase();
     return users.filter(
@@ -162,7 +170,7 @@ export default function ManageCompletionsPage() {
     });
   };
 
-  // --- Save: create one doc per selected course (skip dupes) ---
+  // --- Save: create one doc per selected course (store extra user fields) ---
   const handleSave = async () => {
     if (!selectedUser) {
       toast({ variant: "destructive", title: "Pick a user first." });
@@ -176,7 +184,6 @@ export default function ManageCompletionsPage() {
 
     setIsSaving(true);
     try {
-      // client-side dedupe
       const candidateIds = toSaveIds.filter(id => !userLoggedCourseIds.has(id));
       if (candidateIds.length === 0) {
         toast({ variant: "destructive", title: "Already logged", description: "All selected courses are already logged." });
@@ -184,7 +191,6 @@ export default function ManageCompletionsPage() {
         return;
       }
 
-      // server-side dedupe (race-safe) with "in" queries in chunks of 10
       const serverExisting = new Set<string>();
       for (const group of chunk(candidateIds, 10)) {
         const dSnap = await getDocs(
@@ -214,11 +220,18 @@ export default function ManageCompletionsPage() {
         selectedUser.locationPreference ||
         "N/A";
 
+      const ladderId = (selectedUser as any).classLadderId || null;
+      const ladderObj = ladderId ? ladderById.get(ladderId) : undefined;
+      const ladderName = ladderObj
+        ? `${ladderObj.name}${ladderObj.side && ladderObj.side !== "none" ? ` (${ladderObj.side})` : ""}`
+        : "Not assigned";
+
       const titleById = new Map(courses.map(c => [c.id, c.title || "Untitled Course"]));
 
       await Promise.all(
         finalToCreate.map(courseId =>
           addDoc(collection(db, "onsiteCompletions"), {
+            // required / old
             userId: selectedUser.uid,
             userName: selectedUser.displayName || selectedUser.email || "Unknown User",
             userCampus,
@@ -230,6 +243,13 @@ export default function ManageCompletionsPage() {
                 ? `${adminUser.displayName} <${adminUser.email}>`
                 : adminUser?.email || "Admin",
             markedById: adminUser?.uid || null,
+
+            // NEW: enrich for future reads
+            userEmail: selectedUser.email || null,
+            userPhone: (selectedUser as any).phoneNumber || null,
+            userGender: (selectedUser as any).gender || null,
+            userLadderId: ladderId,
+            userLadderName: ladderName,
           })
         )
       );
@@ -239,12 +259,13 @@ export default function ManageCompletionsPage() {
         description: `Created ${finalToCreate.length}. Skipped ${serverExisting.size} duplicate(s).`,
       });
 
-      // Clear selections and refresh page 1
+      // Clear selections & refresh page 1
       setSelectedCourseIds(new Set());
       setCourseSearchTerm("");
       setPage(1);
       setCursors([]);
       await loadLogPage(1, [], selectedUser, dateFrom, dateTo, pageSize);
+
       // refresh userLoggedCourseIds quickly
       const newSet = new Set(userLoggedCourseIds);
       finalToCreate.forEach(id => newSet.add(id));
@@ -257,7 +278,7 @@ export default function ManageCompletionsPage() {
     }
   };
 
-  // --- Fetch paginated log for selected user + date filters ---
+  // --- Fetch paginated log ---
   async function loadLogPage(
     targetPage: number,
     cursorStack: DocumentSnapshot[],
@@ -274,7 +295,6 @@ export default function ManageCompletionsPage() {
       const col = collection(db, "onsiteCompletions");
       const baseClauses: any[] = [where("userId", "==", user.uid)];
 
-      // Date range: inclusive day range (convert yyyy-mm-dd to T00:00 / T23:59:59)
       if (from) {
         const startDate = new Date(from);
         baseClauses.push(where("completedAt", ">=", Timestamp.fromDate(new Date(startDate.setHours(0, 0, 0, 0)))));
@@ -284,12 +304,8 @@ export default function ManageCompletionsPage() {
         baseClauses.push(where("completedAt", "<=", Timestamp.fromDate(new Date(endDate.setHours(23, 59, 59, 999)))));
       }
 
-      // Important: Firestore may require a composite index for (userId, completedAt) with the chosen directions
-      // If Console prompts for an index, create it once.
+      let qRef = query(col, ...baseClauses, orderBy("completedAt", "desc"), limit(size + 1));
 
-      let qRef = query(col, ...baseClauses, orderBy("completedAt", "desc"), limit(size + 1)); // +1 to know if next page exists
-
-      // Apply cursor for pages > 1
       if (targetPage > 1 && cursorStack[targetPage - 2]) {
         qRef = query(col, ...baseClauses, orderBy("completedAt", "desc"), startAfter(cursorStack[targetPage - 2]), limit(size + 1));
       }
@@ -297,14 +313,13 @@ export default function ManageCompletionsPage() {
       const snap = await getDocs(qRef);
       const docs = snap.docs.map(d => ({ id: d.id, ...d.data() } as any));
       const pageHasNext = docs.length > size;
-
       const pageDocs = pageHasNext ? docs.slice(0, size) : docs;
+
       setLogRows(pageDocs);
 
-      // update cursors stack
       const newStack = [...cursorStack];
       if (pageDocs.length > 0) {
-        newStack[targetPage - 1] = snap.docs[Math.min(size - 1, snap.docs.length - 1)]; // last visible of this page
+        newStack[targetPage - 1] = snap.docs[Math.min(size - 1, snap.docs.length - 1)];
       }
       setCursors(newStack);
       setPage(targetPage);
@@ -319,20 +334,19 @@ export default function ManageCompletionsPage() {
     }
   }
 
-  // --- Pagination handlers ---
+  // Pagination
   const goPrev = async () => {
     if (!selectedUser) return;
     if (page <= 1) return;
     await loadLogPage(page - 1, cursors, selectedUser, dateFrom, dateTo, pageSize);
   };
-
   const goNext = async () => {
     if (!selectedUser) return;
     if (!hasNextPage) return;
     await loadLogPage(page + 1, cursors, selectedUser, dateFrom, dateTo, pageSize);
   };
 
-  // --- Log selection ---
+  // Log selection
   const toggleSelectLog = (id: string) => {
     setSelectedLogIds(prev => {
       const next = new Set(prev);
@@ -341,7 +355,6 @@ export default function ManageCompletionsPage() {
       return next;
     });
   };
-
   const toggleSelectAllOnPage = () => {
     if (selectAllOnPage) {
       setSelectedLogIds(new Set());
@@ -352,7 +365,7 @@ export default function ManageCompletionsPage() {
     }
   };
 
-  // --- Bulk delete selected log rows ---
+  // Bulk delete
   const handleDeleteSelected = async () => {
     if (selectedLogIds.size === 0) {
       toast({ variant: "destructive", title: "Select at least one log row to delete." });
@@ -365,7 +378,6 @@ export default function ManageCompletionsPage() {
 
       toast({ title: "Deleted", description: `Removed ${selectedLogIds.size} record(s).` });
 
-      // Refresh current page (could have fewer rows now)
       if (selectedUser) {
         await loadLogPage(page, cursors, selectedUser, dateFrom, dateTo, pageSize);
       }
@@ -378,20 +390,38 @@ export default function ManageCompletionsPage() {
     }
   };
 
-  // --- CSV download for current (filtered) page ---
+  // CSV of current page with richer fields
   const handleDownloadCSV = () => {
     if (logRows.length === 0) {
       toast({ variant: "destructive", title: "No rows to download." });
       return;
     }
-    const header = ["User", "Campus", "Course", "Date", "Marked By"];
+    const header = ["User", "Email", "Phone", "Gender", "Campus", "Ladder", "Course", "Date", "Marked By"];
     const lines = [
       header.join(","),
       ...logRows.map((r: any) => {
         const dateStr = r.completedAt ? format(new Date((r.completedAt as Timestamp).seconds * 1000), "yyyy-MM-dd HH:mm:ss") : "";
+        // fallbacks to users/ladders if missing on the row
+        const u = users.find(u => u.uid === r.userId);
+        const email = r.userEmail ?? u?.email ?? "";
+        const phone = r.userPhone ?? (u as any)?.phoneNumber ?? "";
+        const gender = r.userGender ?? (u as any)?.gender ?? "";
+        const ladderName =
+          r.userLadderName ??
+          (() => {
+            const id = r.userLadderId ?? (u as any)?.classLadderId;
+            if (!id) return "Not assigned";
+            const L = ladderById.get(id);
+            return L ? `${L.name}${L.side && L.side !== "none" ? ` (${L.side})` : ""}` : "Not assigned";
+          })();
+
         const fields = [
-          r.userName || "",
-          r.userCampus || "",
+          r.userName || u?.displayName || "",
+          email,
+          phone,
+          gender,
+          r.userCampus || (u as any)?.campus || "N/A",
+          ladderName,
           r.courseName || "",
           dateStr,
           r.markedBy || "",
@@ -410,7 +440,7 @@ export default function ManageCompletionsPage() {
     URL.revokeObjectURL(url);
   };
 
-  // --- Client-side quick filter over displayed page (logSearchTerm) ---
+  // Client-side quick filter over displayed page
   const visibleLogRows = useMemo(() => {
     if (!logSearchTerm) return logRows;
     const q = logSearchTerm.toLowerCase();
@@ -418,16 +448,16 @@ export default function ManageCompletionsPage() {
       (r.userName || "").toLowerCase().includes(q) ||
       (r.userCampus || "").toLowerCase().includes(q) ||
       (r.courseName || "").toLowerCase().includes(q) ||
-      (r.markedBy || "").toLowerCase().includes(q)
+      (r.markedBy || "").toLowerCase().includes(q) ||
+      (r.userEmail || "").toLowerCase().includes(q)
     );
   }, [logRows, logSearchTerm]);
 
-  // UI
   return (
     <div className="flex flex-col gap-8">
       <div>
         <h1 className="font-headline text-3xl font-bold md:text-4xl">Manage Course Completions</h1>
-        <p className="text-muted-foreground">Select a user, select one or more courses, then save to log onsite completions (one row per course). The log supports filtering, CSV download, pagination, and bulk delete.</p>
+        <p className="text-muted-foreground">Select a user, select one or more courses, then save. Each log row stores user email, phone, gender, and ladder at the time of logging.</p>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-4 gap-8">
@@ -473,7 +503,7 @@ export default function ManageCompletionsPage() {
           </CardContent>
         </Card>
 
-        {/* Courses (multi-select) */}
+        {/* Courses */}
         <Card className="lg:col-span-2">
           <CardHeader>
             <CardTitle>{selectedUser ? `Pick course(s) for ${selectedUser.displayName || selectedUser.email}` : "Pick course(s)"}</CardTitle>
@@ -586,7 +616,11 @@ export default function ManageCompletionsPage() {
                       <input type="checkbox" checked={selectAllOnPage} onChange={toggleSelectAllOnPage} />
                     </TableHead>
                     <TableHead>User</TableHead>
+                    <TableHead>Email</TableHead>
+                    <TableHead>Phone</TableHead>
+                    <TableHead>Gender</TableHead>
                     <TableHead>Campus</TableHead>
+                    <TableHead>Ladder</TableHead>
                     <TableHead>Course</TableHead>
                     <TableHead>Date</TableHead>
                     <TableHead>Marked By</TableHead>
@@ -597,17 +631,33 @@ export default function ManageCompletionsPage() {
                     const id = oc.id;
                     const checked = selectedLogIds.has(id);
                     const dateStr = oc.completedAt ? format(new Date((oc.completedAt as Timestamp).seconds * 1000), "PPP") : "N/A";
+
+                    // fallbacks (old rows)
+                    const u = users.find(u => u.uid === oc.userId);
+                    const email = oc.userEmail ?? u?.email ?? "—";
+                    const phone = oc.userPhone ?? (u as any)?.phoneNumber ?? "—";
+                    const gender = oc.userGender ?? (u as any)?.gender ?? "—";
+                    const campus = oc.userCampus || (u as any)?.campus || "N/A";
+                    const ladderName =
+                      oc.userLadderName ??
+                      (() => {
+                        const id = oc.userLadderId ?? (u as any)?.classLadderId;
+                        if (!id) return "Not assigned";
+                        const L = ladderById.get(id);
+                        return L ? `${L.name}${L.side && L.side !== "none" ? ` (${L.side})` : ""}` : "Not assigned";
+                      })();
+
                     return (
                       <TableRow key={id} className={checked ? "bg-muted/50" : undefined}>
                         <TableCell>
-                          <input
-                            type="checkbox"
-                            checked={checked}
-                            onChange={() => toggleSelectLog(id)}
-                          />
+                          <input type="checkbox" checked={checked} onChange={() => toggleSelectLog(id)} />
                         </TableCell>
-                        <TableCell>{oc.userName}</TableCell>
-                        <TableCell>{oc.userCampus || "N/A"}</TableCell>
+                        <TableCell>{oc.userName || u?.displayName || "—"}</TableCell>
+                        <TableCell>{email}</TableCell>
+                        <TableCell>{phone}</TableCell>
+                        <TableCell className="capitalize">{gender}</TableCell>
+                        <TableCell>{campus}</TableCell>
+                        <TableCell>{ladderName}</TableCell>
                         <TableCell>{oc.courseName}</TableCell>
                         <TableCell>{dateStr}</TableCell>
                         <TableCell>{oc.markedBy || "N/A"}</TableCell>
@@ -616,7 +666,7 @@ export default function ManageCompletionsPage() {
                   })}
                   {visibleLogRows.length === 0 && (
                     <TableRow>
-                      <TableCell colSpan={6} className="text-center text-muted-foreground">No records on this page.</TableCell>
+                      <TableCell colSpan={10} className="text-center text-muted-foreground">No records on this page.</TableCell>
                     </TableRow>
                   )}
                 </TableBody>
