@@ -58,19 +58,10 @@ export default function VideoPage() {
   const currentVideo = useMemo(() => videos.find(v => v.id === videoId) || null, [videos, videoId]);
   const videoIndex = useMemo(() => currentVideo ? videos.findIndex(v => v.id === currentVideo.id) : -1, [videos, currentVideo]);
 
-  if (busy || loading) {
+  if (busy || loading || !course || !currentVideo || videoIndex < 0) {
     return <div className="min-h-screen p-8"><Skeleton className="h-[60vh] max-w-5xl mx-auto" /></div>;
   }
   
-  // Ensure both course and currentVideo are loaded before rendering the player
-  if (!course || !currentVideo || videoIndex < 0) {
-    // If data is missing after loading, it's likely an invalid URL, so redirect.
-    if (!busy) {
-        router.replace("/courses");
-    }
-    return <div className="min-h-screen p-8"><Skeleton className="h-[60vh] max-w-5xl mx-auto" /></div>;
-  }
-
   return (
     <VideoPlayer
       course={course}

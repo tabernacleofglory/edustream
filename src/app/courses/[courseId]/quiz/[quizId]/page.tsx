@@ -4,9 +4,9 @@ import { useState, useEffect, useMemo, useRef } from "react";
 import { useForm, Controller } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { Button } from "./ui/button";
-import { RadioGroup, RadioGroupItem } from "./ui/radio-group";
-import { Label } from "./ui/label";
+import { Button } from "@/components/ui/button";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import { Label } from "@/components/ui/label";
 import {
   Card,
   CardContent,
@@ -14,8 +14,8 @@ import {
   CardFooter,
   CardHeader,
   CardTitle,
-} from "./ui/card";
-import { Alert, AlertDescription, AlertTitle } from "./ui/alert";
+} from "@/components/ui/card";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import {
   Trophy,
   FileQuestion,
@@ -30,10 +30,10 @@ import { collection, addDoc, serverTimestamp, doc, getDoc } from "firebase/fires
 import { db } from "@/lib/firebase";
 import { useToast } from "@/hooks/use-toast";
 import Confetti from "react-confetti";
-import { Textarea } from "./ui/textarea";
-import { Checkbox } from "./ui/checkbox";
+import { Textarea } from "@/components/ui/textarea";
+import { Checkbox } from "@/components/ui/checkbox";
 import { cn } from "@/lib/utils";
-import { Badge } from "./ui/badge";
+import { Badge } from "@/components/ui/badge";
 
 interface QuizPanelProps {
   quizData: QuizData;

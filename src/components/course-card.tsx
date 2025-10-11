@@ -388,7 +388,7 @@ export function CourseCard({
                   </div>
                 ) : isCompleted ? (
                   <Button asChild className="w-full" variant="outline">
-                    <Link href={`/certificate/${course.id}`}>
+                    <Link href="/my-certificates">
                         View Certificate
                     </Link>
                   </Button>

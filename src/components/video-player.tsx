@@ -291,6 +291,7 @@ export default function VideoPlayerClient({
   const isMobile = useIsMobile();
 
   const [isPlaying, setIsPlaying] = useState(false);
+  const [isReady, setIsReady] = useState(false);
   const [isLooping, setIsLooping] = useState(false);
   const [isAutoNextEnabled, setIsAutoNextEnabled] = useState(true);
   const [progress, setProgress] = useState(0);
@@ -408,6 +409,7 @@ export default function VideoPlayerClient({
     setIsPlaying(false); // Ensure video starts paused
     setCurrentTime(0); // Reset time for new video load
     setProgress(0);
+    setIsReady(false); // Player is not ready on video change
 
     const enrollmentRef = doc(db, "enrollments", `${user.uid}_${course.id}`);
     const unsubscribeEnrollment = onSnapshot(enrollmentRef, (d) => {
@@ -415,9 +417,6 @@ export default function VideoPlayerClient({
       setIsEnrolled(enrolled);
       setIsCompleted(!!d.data()?.completedAt);
       setIsLoadingEnrollment(false);
-      if(enrolled) {
-        setIsPlaying(true); // Autoplay if enrolled
-      }
     });
 
     const progressRef = doc(db, "userVideoProgress", `${user.uid}_${course.id}`);
@@ -438,13 +437,37 @@ export default function VideoPlayerClient({
       unsubscribeProgress();
     };
   }, [user, course.id, db, currentVideo.id]);
+  
+  const handleReady = useCallback(async () => {
+    setIsReady(true);
+     if (!user || !isEnrolled) return;
+      const progressRef = doc(db, "userVideoProgress", `${user.uid}_${course.id}`);
+      const snap = await getDoc(progressRef);
+      if (snap.exists()) {
+          const vp = (snap.data() as UserProgressType).videoProgress?.find(
+              (x) => x.videoId === currentVideo.id
+          );
+          if (vp && typeof vp.timeSpent === "number") {
+              const resumeTime = vp.timeSpent;
+              farthestTimeWatchedRef.current = resumeTime;
+              
+              if ((isYouTube || isGoogleDrive) && reactPlayerRef.current) {
+                  reactPlayerRef.current.seekTo(resumeTime, 'seconds');
+              } else if (playerRef.current) {
+                  playerRef.current.currentTime = resumeTime;
+              }
+          }
+      }
+      setIsPlaying(true);
+  }, [user, isEnrolled, db, course.id, currentVideo.id, isYouTube, isGoogleDrive]);
+
 
   useEffect(() => {
     const videoElement = playerRef.current;
     
-    // Common setup for both video types
-    const resume = async () => {
-        if (!user || !isEnrolled) return;
+    // Common setup for native video element
+    const resumeNativeVideo = async () => {
+        if (!user || !isEnrolled || !videoElement) return;
         const progressRef = doc(db, "userVideoProgress", `${user.uid}_${course.id}`);
         const snap = await getDoc(progressRef);
         if (snap.exists()) {
@@ -455,21 +478,17 @@ export default function VideoPlayerClient({
                 const resumeTime = vp.timeSpent;
                 farthestTimeWatchedRef.current = resumeTime;
                 
-                if ((isYouTube || isGoogleDrive) && reactPlayerRef.current) {
-                    reactPlayerRef.current.seekTo(resumeTime, 'seconds');
-                } else if (videoElement) {
-                    const setTime = () => {
-                        try {
-                            videoElement.currentTime = resumeTime;
-                        } catch {}
-                    };
-                    if (videoElement.readyState >= 1) setTime();
-                    else videoElement.addEventListener("loadedmetadata", setTime, { once: true });
-                }
+                const setTime = () => {
+                    try {
+                        videoElement.currentTime = resumeTime;
+                    } catch {}
+                };
+                if (videoElement.readyState >= 1) setTime();
+                else videoElement.addEventListener("loadedmetadata", setTime, { once: true });
             }
         }
+        setIsPlaying(true); // Autoplay after seeking
     };
-    resume();
 
     if (isYouTube || isGoogleDrive) return; // Skip HLS and native video setup for YouTube/Drive
     
@@ -483,8 +502,12 @@ export default function VideoPlayerClient({
         hls = new Hls();
         hls.loadSource(videoUrl);
         hls.attachMedia(videoElement);
+        hls.on(Hls.Events.MANIFEST_PARSED, () => {
+            resumeNativeVideo();
+        });
       } else {
         videoElement.src = videoUrl;
+        videoElement.addEventListener('canplay', () => resumeNativeVideo(), { once: true });
       }
     }
 
@@ -503,7 +526,7 @@ export default function VideoPlayerClient({
       videoElement.removeEventListener("pause", handlePause);
       if (hls) hls.destroy();
     };
-  }, [currentVideo.id, currentVideo.url, currentVideo.hlsUrl, isEnrolled, user, course.id, isYouTube, isGoogleDrive]);
+  }, [currentVideo.id, currentVideo.url, currentVideo.hlsUrl, isEnrolled, user, course.id, isYouTube, isGoogleDrive, db]);
   
   useEffect(() => {
     if (isYouTube || isGoogleDrive) {
@@ -896,6 +919,7 @@ export default function VideoPlayerClient({
                         muted={isMuted}
                         width="100%"
                         height="100%"
+                        onReady={handleReady}
                         onPlay={() => setIsPlaying(true)}
                         onPause={() => setIsPlaying(false)}
                         onEnded={handleEnded}
