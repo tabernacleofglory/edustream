@@ -138,124 +138,82 @@ export default function Home() {
             </div>
             <Logo />
           </div>
-          <nav className="hidden md:flex items-center space-x-4">
-              {linksLoading ? (
-                  Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-6 w-20 bg-white/10" />)
-              ) : (
-                  navLinks.map((link) => (
-                    <ConditionalLink
-                      key={link.url}
-                      href={link.url}
-                      className="hover:text-primary transition-colors text-white/80"
-                    >
-                      {link.title}
-                    </ConditionalLink>
-                ))
-              )}
-             {authLoading ? <Skeleton className="h-9 w-24 bg-white/10" /> : user ? (
-                 <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                        <Button variant="ghost" className="relative h-9 w-9 rounded-full">
-                            <Avatar className="h-9 w-9">
-                                <AvatarImage src={user.photoURL || undefined} alt={user.displayName || "User"} />
-                                <AvatarFallback>{getInitials(user.displayName)}</AvatarFallback>
-                            </Avatar>
-                        </Button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent className="w-56" align="end" forceMount>
-                        <DropdownMenuLabel className="font-normal">
-                            <div className="flex flex-col space-y-1">
-                                <p className="text-sm font-medium leading-none">{user.displayName}</p>
-                                <p className="text-xs leading-none text-muted-foreground">{user.email}</p>
-                            </div>
-                        </DropdownMenuLabel>
-                        <DropdownMenuSeparator />
-                        <DropdownMenuItem asChild>
-                            <Link href="/dashboard">
-                                <LayoutDashboard className="mr-2 h-4 w-4" />
-                                <span>Dashboard</span>
-                            </Link>
-                        </DropdownMenuItem>
-                         <DropdownMenuItem asChild>
-                            <Link href="/settings">
-                                <Settings className="mr-2 h-4 w-4" />
-                                <span>Settings</span>
-                            </Link>
-                        </DropdownMenuItem>
-                        {isCurrentUserAdmin && (
-                            <DropdownMenuItem asChild>
-                                <Link href="/admin/analytics">
-                                    <Shield className="mr-2 h-4 w-4" />
-                                    <span>Admin Panel</span>
-                                </Link>
-                            </DropdownMenuItem>
-                        )}
-                        <DropdownMenuSeparator />
-                        <DropdownMenuItem onClick={handleSignOut}>
-                             <LogOut className="mr-2 h-4 w-4" />
-                             <span>Log out</span>
-                        </DropdownMenuItem>
-                    </DropdownMenuContent>
-                 </DropdownMenu>
-             ) : (
-                <>
-                    <ConditionalLink href="/login" className="hover:text-primary transition-colors text-white/80">Sign In</ConditionalLink>
-                    <Button asChild><ConditionalLink href="/signup">Get Started</ConditionalLink></Button>
-                </>
-             )}
-          </nav>
-           <div className="flex items-center gap-2">
+          
+          <div className="flex items-center gap-4">
+            <nav className="hidden md:flex items-center space-x-4">
+                {linksLoading ? (
+                    Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-6 w-20 bg-white/10" />)
+                ) : (
+                    navLinks.map((link) => (
+                      <ConditionalLink
+                        key={link.url}
+                        href={link.url}
+                        className="hover:text-primary transition-colors text-white/80"
+                      >
+                        {link.title}
+                      </ConditionalLink>
+                  ))
+                )}
+            </nav>
+            <div className="flex items-center gap-2">
                 <LanguageSwitcher />
-                <div className="md:hidden">
-                    {authLoading ? <Skeleton className="h-9 w-9 rounded-full bg-white/10" /> : user ? (
-                        <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                            <Button variant="ghost" className="relative h-9 w-9 rounded-full">
-                                <Avatar className="h-9 w-9">
-                                    <AvatarImage src={user.photoURL || undefined} alt={user.displayName || "User"} />
-                                    <AvatarFallback>{getInitials(user.displayName)}</AvatarFallback>
-                                </Avatar>
-                            </Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent className="w-56" align="end" forceMount>
-                            <DropdownMenuLabel className="font-normal">
-                                <div className="flex flex-col space-y-1">
-                                    <p className="text-sm font-medium leading-none">{user.displayName}</p>
-                                    <p className="text-xs leading-none text-muted-foreground">{user.email}</p>
-                                </div>
-                            </DropdownMenuLabel>
-                            <DropdownMenuSeparator />
-                            <DropdownMenuItem asChild>
-                                <Link href="/dashboard">
-                                    <LayoutDashboard className="mr-2 h-4 w-4" />
-                                    <span>Dashboard</span>
-                                </Link>
-                            </DropdownMenuItem>
-                            <DropdownMenuItem asChild>
-                                <Link href="/settings">
-                                    <Settings className="mr-2 h-4 w-4" />
-                                    <span>Settings</span>
-                                </Link>
-                            </DropdownMenuItem>
-                            {isCurrentUserAdmin && (
-                                <DropdownMenuItem asChild>
-                                    <Link href="/admin/analytics">
-                                        <Shield className="mr-2 h-4 w-4" />
-                                        <span>Admin Panel</span>
-                                    </Link>
-                                </DropdownMenuItem>
-                            )}
-                            <DropdownMenuSeparator />
-                            <DropdownMenuItem onClick={handleSignOut}>
-                                <LogOut className="mr-2 h-4 w-4" />
-                                <span>Log out</span>
-                            </DropdownMenuItem>
-                        </DropdownMenuContent>
+                {authLoading ? <Skeleton className="h-9 w-24 bg-white/10" /> : user ? (
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                          <Button variant="ghost" className="relative h-9 w-9 rounded-full">
+                              <Avatar className="h-9 w-9">
+                                  <AvatarImage src={user.photoURL || undefined} alt={user.displayName || "User"} />
+                                  <AvatarFallback>{getInitials(user.displayName)}</AvatarFallback>
+                              </Avatar>
+                          </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent className="w-56" align="end" forceMount>
+                          <DropdownMenuLabel className="font-normal">
+                              <div className="flex flex-col space-y-1">
+                                  <p className="text-sm font-medium leading-none">{user.displayName}</p>
+                                  <p className="text-xs leading-none text-muted-foreground">{user.email}</p>
+                              </div>
+                          </DropdownMenuLabel>
+                          <DropdownMenuSeparator />
+                          <DropdownMenuItem asChild>
+                              <Link href="/dashboard">
+                                  <LayoutDashboard className="mr-2 h-4 w-4" />
+                                  <span>Dashboard</span>
+                              </Link>
+                          </DropdownMenuItem>
+                           <DropdownMenuItem asChild>
+                              <Link href="/settings">
+                                  <Settings className="mr-2 h-4 w-4" />
+                                  <span>Settings</span>
+                              </Link>
+                          </DropdownMenuItem>
+                          {isCurrentUserAdmin && (
+                              <DropdownMenuItem asChild>
+                                  <Link href="/admin/analytics">
+                                      <Shield className="mr-2 h-4 w-4" />
+                                      <span>Admin Panel</span>
+                                  </Link>
+                              </DropdownMenuItem>
+                          )}
+                          <DropdownMenuSeparator />
+                          <DropdownMenuItem onClick={handleSignOut}>
+                               <LogOut className="mr-2 h-4 w-4" />
+                               <span>Log out</span>
+                          </DropdownMenuItem>
+                      </DropdownMenuContent>
                     </DropdownMenu>
                 ) : (
+                  <div className="hidden md:flex items-center gap-4">
+                      <ConditionalLink href="/login" className="hover:text-primary transition-colors text-white/80">Sign In</ConditionalLink>
+                      <Button asChild><ConditionalLink href="/signup">Get Started</ConditionalLink></Button>
+                  </div>
+                )}
+                <div className="md:hidden">
+                    {authLoading ? <Skeleton className="h-9 w-9 rounded-full bg-white/10" /> : user ? null : (
                     <Button asChild variant="ghost"><Link href="/login">Sign In</Link></Button>
                 )}
                 </div>
+            </div>
            </div>
         </div>
       </header>

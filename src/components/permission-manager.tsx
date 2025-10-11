@@ -50,6 +50,7 @@ const ALL_PERMISSIONS: Permission[] = [
     { id: 'participateInLiveEvents', name: 'Participate In Live Events', description: 'Allows user to be a speaker/participant in a live event.' },
     { id: 'managePromotions', name: 'Manage Promotions', description: 'Can approve or reject user promotion requests.' },
     { id: 'manageHpRequests', name: 'Manage HP Requests', description: 'Can view and manage HP placement requests.' },
+    { id: 'manageCompletions', name: 'Manage Onsite Completions', description: 'Can manually log course completions for users.' },
     { id: 'manageCommunity', name: 'Manage Community', description: 'Can pin or delete any post in the community feed.' },
     { id: 'useVideoTranscoder', name: 'Use Video Transcoder', description: 'Can enable adaptive streaming transcoding during video upload.' },
     { id: 'allowRightClick', name: 'Allow Right-Click', description: 'Allows right-clicking anywhere in the app to prevent simple content saving.' },

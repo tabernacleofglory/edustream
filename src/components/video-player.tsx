@@ -1,4 +1,3 @@
-
 "use client";
 
 import { useState, useEffect, useRef, useMemo, useCallback } from "react";
@@ -275,7 +274,7 @@ export default function VideoPlayerClient({
   const { toast } = useToast();
   const playerRef = useRef<HTMLVideoElement | null>(null);
   const reactPlayerRef = useRef<ReactPlayer | null>(null);
-  const videoContainerRef = useRef<HTMLDivElement>(null);
+  const videoContainerRef = useRef<HTMLDivElement | null>(null);
   const controlsTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const gradientFadeTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
@@ -406,10 +405,10 @@ export default function VideoPlayerClient({
     setIsLoadingEnrollment(true);
     promptCheckpointsRef.current.clear(); // Reset checkpoints for new video
     setShowEndOverlay(false); // Reset for new video
-    setIsPlaying(false); // Ensure video starts paused
     setCurrentTime(0); // Reset time for new video load
     setProgress(0);
     setIsReady(false); // Player is not ready on video change
+    setIsPlaying(false); // Start paused
 
     const enrollmentRef = doc(db, "enrollments", `${user.uid}_${course.id}`);
     const unsubscribeEnrollment = onSnapshot(enrollmentRef, (d) => {
@@ -465,7 +464,8 @@ export default function VideoPlayerClient({
   useEffect(() => {
     const videoElement = playerRef.current;
     
-    // Common setup for native video element
+    if (isYouTube || isGoogleDrive || !videoElement) return;
+
     const resumeNativeVideo = async () => {
         if (!user || !isEnrolled || !videoElement) return;
         const progressRef = doc(db, "userVideoProgress", `${user.uid}_${course.id}`);
@@ -479,35 +479,26 @@ export default function VideoPlayerClient({
                 farthestTimeWatchedRef.current = resumeTime;
                 
                 const setTime = () => {
-                    try {
-                        videoElement.currentTime = resumeTime;
-                    } catch {}
+                    try { videoElement.currentTime = resumeTime; } catch {}
                 };
                 if (videoElement.readyState >= 1) setTime();
                 else videoElement.addEventListener("loadedmetadata", setTime, { once: true });
             }
         }
-        setIsPlaying(true); // Autoplay after seeking
+        setIsPlaying(true);
     };
 
-    if (isYouTube || isGoogleDrive) return; // Skip HLS and native video setup for YouTube/Drive
-    
-    if (!videoElement) return;
-
     const videoUrl = currentVideo.hlsUrl || currentVideo.url;
-
     let hls: Hls | null = null;
     if (videoUrl) {
       if (Hls.isSupported() && (videoUrl.includes(".m3u8") || currentVideo.hlsUrl)) {
         hls = new Hls();
         hls.loadSource(videoUrl);
         hls.attachMedia(videoElement);
-        hls.on(Hls.Events.MANIFEST_PARSED, () => {
-            resumeNativeVideo();
-        });
+        hls.on(Hls.Events.MANIFEST_PARSED, () => { if(isReady) resumeNativeVideo(); });
       } else {
         videoElement.src = videoUrl;
-        videoElement.addEventListener('canplay', () => resumeNativeVideo(), { once: true });
+        videoElement.addEventListener('canplay', () => { if(isReady) resumeNativeVideo() }, { once: true });
       }
     }
 
@@ -517,21 +508,19 @@ export default function VideoPlayerClient({
     videoElement.addEventListener("play", handlePlay);
     videoElement.addEventListener("pause", handlePause);
 
-    if (currentVideo.duration) {
-      setDuration(currentVideo.duration);
-    }
+    if (currentVideo.duration) setDuration(currentVideo.duration);
 
     return () => {
       videoElement.removeEventListener("play", handlePlay);
       videoElement.removeEventListener("pause", handlePause);
       if (hls) hls.destroy();
     };
-  }, [currentVideo.id, currentVideo.url, currentVideo.hlsUrl, isEnrolled, user, course.id, isYouTube, isGoogleDrive, db]);
+  }, [currentVideo.id, currentVideo.url, currentVideo.hlsUrl, isEnrolled, user, course.id, isYouTube, isGoogleDrive, db, isReady]);
   
   useEffect(() => {
     if (isYouTube || isGoogleDrive) {
         if(reactPlayerRef.current) {
-            // handle volume for react-player if needed
+            // Volume handled by ReactPlayer props
         }
     } else {
         const v = playerRef.current;
@@ -549,7 +538,7 @@ export default function VideoPlayerClient({
         ? reactPlayerRef.current?.getDuration() ?? 0
         : playerRef.current?.duration ?? 0;
 
-      if(currentDuration === 0) return; // Don't save if duration is not known
+      if(currentDuration === 0) return;
 
       const farthest = Math.max(time, farthestTimeWatchedRef.current || 0);
       const percent = Math.min(100, (farthest / currentDuration) * 100);
@@ -559,12 +548,7 @@ export default function VideoPlayerClient({
       const timeDelta = Math.abs(farthest - lastSavedRef.current.time);
       const percentDelta = Math.abs(percent - lastSavedRef.current.percent);
 
-      const shouldWrite =
-        immediate ||
-        completed ||
-        timeDelta >= 5 || 
-        percentDelta >= 2 ||
-        sinceLastMs >= 15000; 
+      const shouldWrite = immediate || completed || timeDelta >= 5 || percentDelta >= 2 || sinceLastMs >= 15000; 
 
       if (!shouldWrite) return;
 
@@ -643,9 +627,7 @@ export default function VideoPlayerClient({
 
   useEffect(() => {
     const onPageHide = () => flushProgress();
-    const onVisibility = () => {
-      if (document.hidden) flushProgress();
-    };
+    const onVisibility = () => { if (document.hidden) flushProgress(); };
     window.addEventListener("pagehide", onPageHide);
     document.addEventListener("visibilitychange", onVisibility);
     return () => {
@@ -658,37 +640,20 @@ export default function VideoPlayerClient({
     if(isYouTube || isGoogleDrive) return;
     const v = playerRef.current;
     if (!v) return;
-
     const onPause = () => flushProgress();
-    
-    // Disable fast-forwarding
     const onSeeking = () => {
         if (!v) return;
         if (v.currentTime > farthestTimeWatchedRef.current) {
             v.currentTime = farthestTimeWatchedRef.current;
-            toast({
-              title: "Fast-forwarding is disabled",
-              description: "You must watch the video to proceed.",
-              duration: 2000,
-            });
+            toast({ title: "Fast-forwarding is disabled", duration: 2000 });
         }
     };
-    const onSeeked = () => {
-      if (!v) return;
-      if (v.currentTime > farthestTimeWatchedRef.current) {
-        farthestTimeWatchedRef.current = v.currentTime;
-      }
-      flushProgress();
-    };
-    const onLoadedMetadata = () => {
-      if (Number.isFinite(v.duration)) setDuration(v.duration);
-    };
-
+    const onSeeked = () => { if (v && v.currentTime > farthestTimeWatchedRef.current) { farthestTimeWatchedRef.current = v.currentTime; } flushProgress(); };
+    const onLoadedMetadata = () => { if (Number.isFinite(v.duration)) setDuration(v.duration); };
     v.addEventListener("pause", onPause);
     v.addEventListener("seeking", onSeeking);
     v.addEventListener("seeked", onSeeked);
     v.addEventListener("loadedmetadata", onLoadedMetadata);
-
     return () => {
       v.removeEventListener("pause", onPause);
       v.removeEventListener("seeking", onSeeking);
@@ -726,9 +691,7 @@ export default function VideoPlayerClient({
     setIsMuted(newVolume === 0);
   };
 
-  const toggleMute = () => {
-    setIsMuted(prev => !prev);
-  };
+  const toggleMute = () => setIsMuted(prev => !prev);
 
   const handleShare = async () => {
     const shareData = {
@@ -736,11 +699,9 @@ export default function VideoPlayerClient({
       text: `Check out this video from the course "${course.title}" on Glory Training Hub!`,
       url: window.location.href,
     };
-
     const recordShare = async () => {
       if (!user) return;
-      const sharesCol = collection(db, "Contents", currentVideo.id, "shares");
-      await addDoc(sharesCol, { uid: user.uid, createdAt: serverTimestamp() });
+      await addDoc(collection(db, "Contents", currentVideo.id, "shares"), { uid: user.uid, createdAt: serverTimestamp() });
     };
 
     if (navigator.share) {
@@ -748,9 +709,7 @@ export default function VideoPlayerClient({
         await navigator.share(shareData);
         await recordShare();
       } catch (error: any) {
-        if (error.name !== "NotAllowedError" && error.name !== "AbortError") {
-          console.error("Error sharing:", error);
-        }
+        if (error.name !== "NotAllowedError" && error.name !== "AbortError") console.error("Error sharing:", error);
         await navigator.clipboard.writeText(shareData.url);
         await recordShare();
         toast({ title: "Link copied to clipboard!" });
@@ -776,9 +735,7 @@ export default function VideoPlayerClient({
     const playerContainer = videoContainerRef.current;
     if (!playerContainer) return;
     if (!document.fullscreenElement) {
-      playerContainer.requestFullscreen().catch((err) => {
-        alert(`Error attempting to enable full-screen: ${err.message} (${err.name})`);
-      });
+      playerContainer.requestFullscreen().catch((err) => alert(`Error enabling full-screen: ${err.message}`));
     } else {
       document.exitFullscreen();
     }
@@ -793,19 +750,13 @@ export default function VideoPlayerClient({
   useEffect(() => {
     const container = videoContainerRef.current;
     if (!container) return;
-
     const handleInteraction = () => {
       setShowControls(true);
       if (controlsTimeoutRef.current) clearTimeout(controlsTimeoutRef.current);
       controlsTimeoutRef.current = setTimeout(() => {
-        if (!isYouTube && !isGoogleDrive && playerRef.current && !playerRef.current.paused) {
-          setShowControls(false);
-        } else if ((isYouTube || isGoogleDrive) && isPlaying) {
-          setShowControls(false);
-        }
+        if (isPlaying) setShowControls(false);
       }, 3000);
     };
-
     container.addEventListener("mousemove", handleInteraction);
     container.addEventListener("click", handleInteraction);
     return () => {
@@ -813,55 +764,36 @@ export default function VideoPlayerClient({
       container.removeEventListener("click", handleInteraction);
       if (controlsTimeoutRef.current) clearTimeout(controlsTimeoutRef.current);
     };
-  }, [isPlaying, isYouTube, isGoogleDrive]);
+  }, [isPlaying]);
   
-  // Logic for the gradient overlay
   useEffect(() => {
-    if (gradientFadeTimeoutRef.current) {
-        clearTimeout(gradientFadeTimeoutRef.current);
-    }
-
+    if (gradientFadeTimeoutRef.current) clearTimeout(gradientFadeTimeoutRef.current);
     if (isPlaying) {
-        // When playing starts, wait 5 seconds before hiding the gradient
-        gradientFadeTimeoutRef.current = setTimeout(() => {
-            setShowGradientOverlay(false);
-        }, 5000);
+        gradientFadeTimeoutRef.current = setTimeout(() => setShowGradientOverlay(false), 5000);
     } else {
-        // When paused, show the gradient immediately
         setShowGradientOverlay(true);
     }
-
-    return () => {
-        if (gradientFadeTimeoutRef.current) {
-            clearTimeout(gradientFadeTimeoutRef.current);
-        }
-    };
+    return () => { if (gradientFadeTimeoutRef.current) clearTimeout(gradientFadeTimeoutRef.current); };
   }, [isPlaying]);
-
 
   const getInitials = (name?: string | null) => {
     if (!name) return "U";
-    const parts = name.trim().split(/\s+/);
-    return parts.map((n) => n[0]).join("").toUpperCase();
+    return name.trim().split(/\s+/).map((n) => n[0]).join("").toUpperCase();
   };
   
    const handlePlayerProgress = (state: { played: number, playedSeconds: number }) => {
+    if(!isReady) return;
     const t = state.playedSeconds;
     const d = reactPlayerRef.current?.getDuration() ?? 0;
     
-    if (t > farthestTimeWatchedRef.current) {
-        farthestTimeWatchedRef.current = t;
-    }
+    if (t > farthestTimeWatchedRef.current) farthestTimeWatchedRef.current = t;
     
     const pct = d > 0 ? (t / d) * 100 : 0;
     setProgress(pct);
     setCurrentTime(t);
 
-    if (user && isEnrolled) {
-        saveProgressToFirestore(farthestTimeWatchedRef.current, false, false);
-    }
+    if (user && isEnrolled) saveProgressToFirestore(farthestTimeWatchedRef.current, false, false);
     
-    // "Are you still watching?" logic
     if (currentVideo.enableStillWatchingPrompt && d > 0) {
         const checkpoints = [25, 50, 75];
         checkpoints.forEach(checkpoint => {
@@ -873,19 +805,14 @@ export default function VideoPlayerClient({
         });
     }
     
-     // Video end overlay logic
-    if (d > 0 && d - t <= 2) {
-        setShowEndOverlay(true);
-    } else {
-        setShowEndOverlay(false);
-    }
-
+    if (d > 0 && d - t <= 2) setShowEndOverlay(true);
+    else setShowEndOverlay(false);
   };
   
   const handlePlayerSeek = (seconds: number) => {
     if (seconds > farthestTimeWatchedRef.current) {
         reactPlayerRef.current?.seekTo(farthestTimeWatchedRef.current, 'seconds');
-        toast({ title: "Fast-forwarding is disabled", description: "You must watch the video to proceed." });
+        toast({ title: "Fast-forwarding is disabled"});
     }
   };
 
@@ -912,7 +839,7 @@ export default function VideoPlayerClient({
                     <ReactPlayer
                         ref={reactPlayerRef}
                         url={currentVideo.url}
-                        playing={isPlaying}
+                        playing={isReady && isPlaying}
                         controls={false}
                         loop={isLooping}
                         volume={volume}
@@ -926,19 +853,8 @@ export default function VideoPlayerClient({
                         onProgress={handlePlayerProgress}
                         onDuration={setDuration}
                         onSeek={handlePlayerSeek}
-                        config={{
-                            youtube: {
-                                playerVars: { 
-                                    showinfo: 0,
-                                    modestbranding: 1,
-                                    rel: 0,
-                                    controls: 0,
-                                    disablekb: 1, // Disable keyboard controls
-                                }
-                            }
-                        }}
+                        config={{ youtube: { playerVars: { showinfo: 0, modestbranding: 1, rel: 0, controls: 0, disablekb: 1 } } }}
                     />
-                    {/* Click Interceptor Overlay */}
                     <div className="absolute inset-0" onClick={togglePlayPause} />
                     {showGradientOverlay && (
                       <>
@@ -963,7 +879,7 @@ export default function VideoPlayerClient({
                       setCurrentTime(t);
                       if (user && isEnrolled) saveProgressToFirestore(farthestTimeWatchedRef.current, false, false);
                       
-                       // "Are you still watching?" logic for native video
+                       // "Are you still watching?" logic
                         if (currentVideo.enableStillWatchingPrompt && d > 0) {
                             const checkpoints = [25, 50, 75];
                             checkpoints.forEach(checkpoint => {
@@ -975,28 +891,17 @@ export default function VideoPlayerClient({
                             });
                         }
                         
-                         // Video end overlay logic
-                        if (d > 0 && d - t <= 2) {
-                            setShowEndOverlay(true);
-                        } else {
-                            setShowEndOverlay(false);
-                        }
+                        if (d > 0 && d - t <= 2) setShowEndOverlay(true);
+                        else setShowEndOverlay(false);
 
                     }}
-                    onLoadedMetadata={(e) => {
-                      const dur = (e.target as HTMLVideoElement).duration;
-                      if (Number.isFinite(dur)) setDuration(dur);
-                    }}
+                    onLoadedMetadata={(e) => { const dur = (e.target as HTMLVideoElement).duration; if (Number.isFinite(dur)) setDuration(dur); setIsReady(true); }}
                     onEnded={handleEnded}
                     playsInline
                     preload="metadata"
                 />
             )}
-             <div className={cn(
-                "absolute inset-0 bg-black transition-opacity duration-500 pointer-events-none",
-                !isPlaying || showEndOverlay ? "opacity-100" : "opacity-0"
-             )} />
-
+             <div className={cn("absolute inset-0 bg-black transition-opacity duration-500 pointer-events-none", !isPlaying || showEndOverlay ? "opacity-100" : "opacity-0")} />
 
             {!isPlaying && !showEndOverlay && (
                 <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
@@ -1010,36 +915,26 @@ export default function VideoPlayerClient({
               <div className="absolute inset-0 bg-black/80 flex flex-col items-center justify-center text-white p-4 text-center">
                 <Lock className="h-12 w-12 mb-4" />
                 <h2 className="text-xl font-bold">Enroll to watch this video</h2>
-                <p className="text-muted-foreground mb-4">
-                  Gain access to this lesson and the full course by enrolling.
-                </p>
+                <p className="text-muted-foreground mb-4">Gain access to this lesson and the full course by enrolling.</p>
                 <Button onClick={() => router.push(`/courses`)}>Explore Courses</Button>
               </div>
             )}
 
             <div
-            className={cn(
-                "video-controls absolute bottom-0 left-0 right-0 p-2 md:p-4 bg-gradient-to-t from-black from-10% via-black/70 to-transparent transition-opacity",
-                showControls ? "opacity-100" : "opacity-0"
-            )}
+            className={cn("video-controls absolute bottom-0 left-0 right-0 p-2 md:p-4 bg-gradient-to-t from-black from-10% via-black/70 to-transparent transition-opacity", showControls ? "opacity-100" : "opacity-0")}
             >
             <Slider
                 value={[progress]}
                 onValueChange={(value) => {
                     const newTime = (value[0] / 100) * duration;
-                    // Fast-forward prevention
                     if (newTime > farthestTimeWatchedRef.current) {
-                        toast({ title: "Fast-forwarding is disabled", description: "You must watch the video to proceed.", duration: 2000 });
+                        toast({ title: "Fast-forwarding is disabled", duration: 2000 });
                         if (isYouTube || isGoogleDrive) reactPlayerRef.current?.seekTo(farthestTimeWatchedRef.current, 'seconds');
                         else if (playerRef.current) playerRef.current.currentTime = farthestTimeWatchedRef.current;
                         return;
                     }
-
-                    if (isYouTube || isGoogleDrive) {
-                        reactPlayerRef.current?.seekTo(newTime, 'seconds');
-                    } else if (playerRef.current) {
-                        playerRef.current.currentTime = newTime;
-                    }
+                    if (isYouTube || isGoogleDrive) reactPlayerRef.current?.seekTo(newTime, 'seconds');
+                    else if (playerRef.current) playerRef.current.currentTime = newTime;
                     setProgress(value[0]);
                 }}
                 max={100}
@@ -1048,102 +943,40 @@ export default function VideoPlayerClient({
             />
             <div className="flex items-center justify-between text-sm text-white mt-2">
                 <div className="flex items-center gap-1 md:gap-2">
-                <Button
-                    variant="ghost"
-                    size="icon"
-                    onClick={togglePlayPause}
-                    className="text-white hover:text-white hover:bg-white/20"
-                >
+                <Button variant="ghost" size="icon" onClick={togglePlayPause} className="text-white hover:text-white hover:bg-white/20">
                     {isPlaying ? <Pause /> : <Play />}
                 </Button>
-                <Button
-                    variant="ghost"
-                    size="icon"
-                    className="text-white hover:text-white hover:bg-white/20"
-                    disabled={videoIndex === 0}
-                >
-                    <Link
-                    href={
-                        videoIndex > 0
-                        ? `/courses/${course.id}/video/${courseVideos[videoIndex - 1].id}`
-                        : "#"
-                    }
-                    >
+                <Button variant="ghost" size="icon" className="text-white hover:text-white hover:bg-white/20" disabled={videoIndex === 0}>
+                    <Link href={videoIndex > 0 ? `/courses/${course.id}/video/${courseVideos[videoIndex - 1].id}`: "#"}>
                     <SkipBack />
                     </Link>
                 </Button>
-                <Button
-                    variant="ghost"
-                    size="icon"
-                    className="text-white hover:text-white hover:bg-white/20"
-                    disabled={videoIndex === courseVideos.length - 1 || !watchedVideos.has(currentVideo.id)}
-                >
-                    <Link
-                    href={
-                        videoIndex < courseVideos.length - 1 && watchedVideos.has(currentVideo.id)
-                        ? `/courses/${course.id}/video/${courseVideos[videoIndex + 1].id}`
-                        : "#"
-                    }
-                    >
+                <Button variant="ghost" size="icon" className="text-white hover:text-white hover:bg-white/20" disabled={videoIndex === courseVideos.length - 1 || !watchedVideos.has(currentVideo.id)}>
+                    <Link href={videoIndex < courseVideos.length - 1 && watchedVideos.has(currentVideo.id) ? `/courses/${course.id}/video/${courseVideos[videoIndex + 1].id}`: "#"}>
                     <SkipForward />
                     </Link>
                 </Button>
                 <div className="hidden md:flex items-center gap-2">
-                    <Button
-                    variant="ghost"
-                    size="icon"
-                    onClick={toggleMute}
-                    className="text-white hover:text-white hover:bg-white/20"
-                    >
+                    <Button variant="ghost" size="icon" onClick={toggleMute} className="text-white hover:text-white hover:bg-white/20">
                     {isMuted || volume === 0 ? <VolumeX /> : <Volume2 />}
                     </Button>
-                    <Slider
-                    value={[isMuted ? 0 : volume]}
-                    onValueChange={(v) => handleVolumeChange(v as number[])}
-                    max={1}
-                    step={0.05}
-                    className="w-24"
-                    />
+                    <Slider value={[isMuted ? 0 : volume]} onValueChange={(v) => handleVolumeChange(v as number[])} max={1} step={0.05} className="w-24" />
                 </div>
                 </div>
                 <div className="flex items-center text-xs">
-                {new Date(currentTime * 1000).toISOString().substr(14, 5)} /{" "}
-                {new Date((duration || 0) * 1000).toISOString().substr(14, 5)}
+                {new Date(currentTime * 1000).toISOString().substr(14, 5)} / {new Date((duration || 0) * 1000).toISOString().substr(14, 5)}
                 </div>
                 <div className="flex items-center justify-center gap-1 md:gap-2">
-                <Button
-                    variant="ghost"
-                    size="icon"
-                    onClick={() => setIsLooping(!isLooping)}
-                    className={cn(
-                    "text-white hover:text-white hover:bg-white/20",
-                    isLooping && "bg-white/20"
-                    )}
-                >
+                <Button variant="ghost" size="icon" onClick={() => setIsLooping(!isLooping)} className={cn("text-white hover:text-white hover:bg-white/20", isLooping && "bg-white/20")}>
                     <Repeat />
                 </Button>
-                <Button
-                    variant="ghost"
-                    size="icon"
-                    onClick={() => setIsAutoNextEnabled(!isAutoNextEnabled)}
-                    className="text-white hover:text-white hover:bg-white/20"
-                >
+                <Button variant="ghost" size="icon" onClick={() => setIsAutoNextEnabled(!isAutoNextEnabled)} className="text-white hover:text-white hover:bg-white/20">
                     {isAutoNextEnabled ? <ToggleRight /> : <ToggleLeft />}
                 </Button>
-                <Button
-                    variant="ghost"
-                    size="icon"
-                    onClick={() => (playerRef.current as any)?.requestPictureInPicture?.().catch(() => {})}
-                    className="text-white hover:text-white hover:bg-white/20 hidden md:flex"
-                >
+                <Button variant="ghost" size="icon" onClick={() => (playerRef.current as any)?.requestPictureInPicture?.().catch(() => {})} className="text-white hover:text-white hover:bg-white/20 hidden md:flex">
                     <PictureInPicture />
                 </Button>
-                <Button
-                    variant="ghost"
-                    size="icon"
-                    onClick={handleFullScreen}
-                    className="text-white hover:text-white hover:bg-white/20"
-                >
+                <Button variant="ghost" size="icon" onClick={handleFullScreen} className="text-white hover:text-white hover:bg-white/20">
                     {isFullScreen ? <Minimize /> : <Maximize />}
                 </Button>
                 </div>
@@ -1155,32 +988,21 @@ export default function VideoPlayerClient({
         <div className="flex flex-col flex-1 lg:h-screen">
           <ScrollArea className="flex-1 p-4 md:p-6 lg:p-8 lg:pb-0">
             <div className={cn(isMobile && "pb-20")}>
-              <h1 className="text-2xl md:text-3xl font-bold font-headline">
-                {currentVideo.title}
-              </h1>
-
+              <h1 className="text-2xl md:text-3xl font-bold font-headline">{currentVideo.title}</h1>
               {isCompleted && (
                  <div className="mt-4 p-4 bg-green-100 dark:bg-green-900/50 border border-green-200 dark:border-green-800 rounded-lg flex flex-col sm:flex-row items-center justify-between gap-4">
                   <div className="flex items-center gap-3">
                     <CheckCircle2 className="h-8 w-8 text-green-600 dark:text-green-400" />
                     <div>
-                      <h3 className="font-bold text-green-800 dark:text-green-300">
-                        Congratulations! You've completed the course.
-                      </h3>
-                      <p className="text-sm text-green-700 dark:text-green-400">
-                        You can now view and download your certificate.
-                      </p>
+                      <h3 className="font-bold text-green-800 dark:text-green-300">Congratulations! You've completed the course.</h3>
+                      <p className="text-sm text-green-700 dark:text-green-400">You can now view and download your certificate.</p>
                     </div>
                   </div>
                   <Button asChild className="bg-green-600 hover:bg-green-700 text-white flex-shrink-0">
-                    <Link href={`/certificate/${course.id}`}>
-                        <Award className="mr-2 h-4 w-4" />
-                        View Certificate
-                    </Link>
+                    <Link href={`/certificate/${course.id}`}><Award className="mr-2 h-4 w-4" />View Certificate</Link>
                   </Button>
                 </div>
               )}
-
               <div className="flex flex-wrap items-center justify-between gap-4 mt-4">
                 <div className="flex items-center gap-2">
                   <Avatar>
@@ -1188,93 +1010,38 @@ export default function VideoPlayerClient({
                     <AvatarFallback>{getInitials(speaker?.name || "GTH")}</AvatarFallback>
                   </Avatar>
                   <div>
-                    <p className="font-semibold">
-                      {speaker?.name || "Glory Training Hub"}
-                    </p>
+                    <p className="font-semibold">{speaker?.name || "Glory Training Hub"}</p>
                     <p className="text-sm text-muted-foreground">{Math.max(0, course.enrollmentCount || 0)} Learners</p>
                   </div>
                 </div>
-
                 <div className="flex items-center gap-2">
                   <Button onClick={handleLike} variant="outline" size="sm" disabled={!user}>
-                    <Heart
-                      className={cn(
-                        "mr-2 h-4 w-4",
-                        isLiked && "fill-destructive text-destructive"
-                      )}
-                    />
-                    {likeCount}
+                    <Heart className={cn("mr-2 h-4 w-4", isLiked && "fill-destructive text-destructive")}/>{likeCount}
                   </Button>
-                  <Button onClick={handleShare} variant="outline" size="sm">
-                    <Share2 className="mr-2 h-4 w-4" />
-                    {shareCount}
-                  </Button>
-                  {canDownload && (
-                    <a
-                      href={currentVideo.url}
-                      download
-                      target="_blank"
-                      rel="noopener noreferrer"
-                    >
-                      <Button variant="outline" size="sm">
-                        <Download className="mr-2 h-4 w-4" />
-                        Download
-                      </Button>
-                    </a>
-                  )}
+                  <Button onClick={handleShare} variant="outline" size="sm"><Share2 className="mr-2 h-4 w-4" />{shareCount}</Button>
+                  {canDownload && (<a href={currentVideo.url} download target="_blank" rel="noopener noreferrer"><Button variant="outline" size="sm"><Download className="mr-2 h-4 w-4" />Download</Button></a>)}
                 </div>
               </div>
 
               <div className="lg:hidden mt-6">
-                <PlaylistAndResources
-                  course={course}
-                  courseVideos={courseVideos}
-                  currentVideo={currentVideo}
-                  watchedVideos={watchedVideos}
-                  relatedCourses={relatedCourses}
-                  onRelatedChange={refresh}
-                  quizzes={quizzes}
-                  quizResults={quizResults}
-                  lastVideoCompleted={lastVideoCompleted}
-                />
+                <PlaylistAndResources course={course} courseVideos={courseVideos} currentVideo={currentVideo} watchedVideos={watchedVideos} relatedCourses={relatedCourses} onRelatedChange={refresh} quizzes={quizzes} quizResults={quizResults} lastVideoCompleted={lastVideoCompleted} />
               </div>
-
               <CommentSection videoId={currentVideo.id} />
             </div>
           </ScrollArea>
            <CommentForm videoId={currentVideo.id} />
         </div>
       </div>
-
       <div className="w-full lg:w-[420px] lg:flex-shrink-0 lg:border-l flex-col lg:h-screen lg:sticky lg:top-0 bg-background hidden lg:flex">
         <ScrollArea className="flex-1">
-          <PlaylistAndResources
-            course={course}
-            courseVideos={courseVideos}
-            currentVideo={currentVideo}
-            watchedVideos={watchedVideos}
-            relatedCourses={relatedCourses}
-            onRelatedChange={refresh}
-            quizzes={quizzes}
-            quizResults={quizResults}
-            lastVideoCompleted={lastVideoCompleted}
-          />
+          <PlaylistAndResources course={course} courseVideos={courseVideos} currentVideo={currentVideo} watchedVideos={watchedVideos} relatedCourses={relatedCourses} onRelatedChange={refresh} quizzes={quizzes} quizResults={quizResults} lastVideoCompleted={lastVideoCompleted} />
         </ScrollArea>
       </div>
 
       <Dialog open={isStillWatchingPromptVisible} onOpenChange={setIsStillWatchingPromptVisible}>
         <DialogContent onInteractOutside={(e) => e.preventDefault()}>
-            <DialogHeader>
-                <DialogTitle>Are you still watching?</DialogTitle>
-                <DialogDescription>
-                    Click the button below to continue watching the video.
-                </DialogDescription>
-            </DialogHeader>
-            <DialogFooter>
-                <Button onClick={() => { setIsStillWatchingPromptVisible(false); setIsPlaying(true); }}>
-                    Yes, I am
-                </Button>
-            </DialogFooter>
+            <DialogHeader><DialogTitle>Are you still watching?</DialogTitle><DialogDescription>Click the button below to continue watching the video.</DialogDescription></DialogHeader>
+            <DialogFooter><Button onClick={() => { setIsStillWatchingPromptVisible(false); setIsPlaying(true); }}>Yes, I am</Button></DialogFooter>
         </DialogContent>
       </Dialog>
     </div>

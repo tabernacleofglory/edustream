@@ -99,7 +99,6 @@ export default function CertificatePrint({ userName, course }: CertificatePrintP
             <div className="w-full bg-white shadow-lg max-w-4xl certificate-print-area">
                 <Certificate
                     userName={userName}
-                    courseName={course.title}
                     completionDate={course.completedAt}
                     templateUrl={course.certificateTemplateUrl}
                     logoUrl={course.logoUrl}

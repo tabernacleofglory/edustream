@@ -1,5 +1,3 @@
-
-
 "use client";
 
 import { useAuth } from "@/hooks/use-auth";
@@ -12,7 +10,7 @@ import { useForm, SubmitHandler, Controller } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { getFirebaseFirestore, getFirebaseStorage } from "@/lib/firebase";
-import { collection, doc, getDocs, query, updateDoc, orderBy, where, onSnapshot } from "firebase/firestore";
+import { collection, doc, getDocs, query, updateDoc, orderBy, where } from "firebase/firestore";
 import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
 import { useToast } from "@/hooks/use-toast";
 import { useState, useEffect, useCallback } from "react";
@@ -56,8 +54,6 @@ const settingsSchema = z.discriminatedUnion("isInHpGroup", [
         charge: z.string().optional(),
         role: z.string(),
         classLadderId: z.string().optional(),
-        hpAvailabilityDay: z.string().optional(),
-        hpAvailabilityTime: z.string().optional(),
     }),
     z.object({
         isInHpGroup: z.literal(false),
@@ -68,18 +64,27 @@ const settingsSchema = z.discriminatedUnion("isInHpGroup", [
         ageRange: z.string().min(1, "Age range is required."),
         bio: z.string().max(200, "Bio cannot be more than 200 characters.").optional(),
         phoneNumber: z.string().min(1, "Phone number is required."),
-        hpNumber: z.string().optional(),
-        facilitatorName: z.string().optional(),
         campus: z.string().min(1, "Campus is required."),
         language: z.string().min(1, "Language is required."),
         locationPreference: z.enum(['Onsite', 'Online'], { required_error: "Please select your location preference."}),
+        hpAvailabilityDay: z.string().min(1, "Please select an availability day."),
+        hpAvailabilityTime: z.string().min(1, "Please enter an availability time."),
+        // Optional fields that are not required when not in HP
+        hpNumber: z.string().optional(),
+        facilitatorName: z.string().optional(),
         charge: z.string().optional(),
         role: z.string(),
         classLadderId: z.string().optional(),
-        hpAvailabilityDay: z.string().min(1, "Please select an availability day."),
-        hpAvailabilityTime: z.string().min(1, "Please enter an availability time."),
     })
-]);
+]).refine(data => {
+    // When not in HP, we don't need to validate these fields
+    if (data.isInHpGroup === false) return true;
+    // When in HP, these fields are required
+    return !!data.hpNumber && !!data.facilitatorName;
+}, {
+    message: "HP Number and Facilitator Name are required when you are in an HP.",
+    path: ['hpNumber'], // Can only point to one field, but the message clarifies
+});
 
 
 type SettingsFormValues = z.infer<typeof settingsSchema>;

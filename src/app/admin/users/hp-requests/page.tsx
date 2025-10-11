@@ -2,17 +2,17 @@
 
 "use client";
 
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/use-auth";
 import { db } from "@/lib/firebase";
 import { getFunctions, httpsCallable } from "firebase/functions";
 import { collection, query, where, getDocs, orderBy } from "firebase/firestore";
 import type { User } from "@/lib/types";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
-import { Download, Mail, Loader2, Calendar as CalendarIcon, Filter, X as XIcon, Lock } from "lucide-react";
+import { Download, Mail, Loader2, Calendar as CalendarIcon, Filter, X as XIcon, Lock, ChevronLeft, ChevronRight, Search } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { format, startOfDay, endOfDay } from "date-fns";
 import { DateRange } from "react-day-picker";
@@ -23,6 +23,8 @@ import jsPDF from "jspdf";
 import autoTable from 'jspdf-autotable';
 import Papa from "papaparse";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Input } from "@/components/ui/input";
 
 interface HPRequest extends User {
     createdAt: { seconds: number; nanoseconds: number; };
@@ -30,61 +32,41 @@ interface HPRequest extends User {
 
 export default function HPRequestsPage() {
     const [requests, setRequests] = useState<HPRequest[]>([]);
-    const [filteredRequests, setFilteredRequests] = useState<HPRequest[]>([]);
     const [loading, setLoading] = useState(true);
     const [isProcessingEmail, setIsProcessingEmail] = useState<string | null>(null);
     const [dateRange, setDateRange] = useState<DateRange | undefined>();
-    const { hasPermission, loading: authLoading } = useAuth();
+    const { user, hasPermission, loading: authLoading, isCurrentUserAdmin } = useAuth();
     const { toast } = useToast();
     const functions = getFunctions();
     const tableRef = useRef(null);
 
+    const [currentPage, setCurrentPage] = useState(1);
+    const [usersPerPage, setUsersPerPage] = useState(25);
+    const [selectedCampus, setSelectedCampus] = useState('all');
+    const [searchTerm, setSearchTerm] = useState('');
+
     const canManage = hasPermission('manageHpRequests');
+    const isModerator = user?.role === 'moderator';
 
     const fetchRequests = useCallback(async () => {
         setLoading(true);
         try {
-            // Query for users where isInHpGroup is explicitly false
-            const qFalse = query(
-                collection(db, "users"),
-                where("isInHpGroup", "==", false),
-                orderBy("createdAt", "desc")
+            const usersRef = collection(db, "users");
+            const q = query(
+                usersRef,
+                where("isInHpGroup", "in", [false, null])
             );
-
-            // Query for users where isInHpGroup field does not exist
-            const qMissing = query(
-                collection(db, "users"),
-                where("isInHpGroup", "==", null),
-                orderBy("createdAt", "desc")
-            );
-
-            const [falseSnapshot, missingSnapshot] = await Promise.all([
-                getDocs(qFalse),
-                getDocs(qMissing)
-            ]);
-
-            const requestListFalse = falseSnapshot.docs.map(doc => ({
+            const querySnapshot = await getDocs(q);
+            
+            const requestList = querySnapshot.docs.map(doc => ({
                 id: doc.id,
                 ...doc.data()
             } as HPRequest));
-            
-            const requestListMissing = missingSnapshot.docs.map(doc => ({
-                id: doc.id,
-                ...doc.data()
-            } as HPRequest));
-            
-            // Merge and deduplicate results
-            const allRequestsMap = new Map<string, HPRequest>();
-            [...requestListFalse, ...requestListMissing].forEach(req => {
-                allRequestsMap.set(req.id, req);
-            });
-
-            const mergedList = Array.from(allRequestsMap.values());
             
             // Sort combined list by date
-            mergedList.sort((a, b) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0));
+            requestList.sort((a, b) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0));
 
-            setRequests(mergedList);
+            setRequests(requestList);
         } catch (error) {
             console.error("Error fetching HP requests:", error);
             toast({ variant: 'destructive', title: 'Failed to fetch requests.' });
@@ -100,19 +82,45 @@ export default function HPRequestsPage() {
             setLoading(false);
         }
     }, [canManage, authLoading, fetchRequests]);
+
+    // If moderator, automatically set their campus and disable the filter
+    useEffect(() => {
+        if (isModerator && user?.campus) {
+            setSelectedCampus(user.campus);
+        }
+    }, [isModerator, user]);
+    
+    const allCampuses = useMemo(() => {
+        const campusSet = new Set(requests.map(u => u.campus).filter(Boolean));
+        return Array.from(campusSet).sort();
+    }, [requests]);
+
+    const filteredRequests = useMemo(() => {
+        return requests.filter(request => {
+            const matchesDate = 
+                (!dateRange?.from || (request.createdAt && new Date(request.createdAt.seconds * 1000) >= startOfDay(dateRange.from))) &&
+                (!dateRange?.to || (request.createdAt && new Date(request.createdAt.seconds * 1000) <= endOfDay(dateRange.to)));
+            
+            const matchesCampus = selectedCampus === 'all' || 
+                (request.campus && request.campus === selectedCampus);
+            
+            const lowercasedSearch = searchTerm.toLowerCase();
+            const matchesSearch = searchTerm === '' ||
+                request.firstName?.toLowerCase().includes(lowercasedSearch) ||
+                request.lastName?.toLowerCase().includes(lowercasedSearch) ||
+                request.email?.toLowerCase().includes(lowercasedSearch);
+
+            return matchesDate && matchesCampus && matchesSearch;
+        });
+    }, [dateRange, requests, selectedCampus, searchTerm]);
+
+    const totalPages = Math.ceil(filteredRequests.length / usersPerPage);
+    const paginatedRequests = filteredRequests.slice((currentPage - 1) * usersPerPage, currentPage * usersPerPage);
     
     useEffect(() => {
-        let filtered = [...requests];
-        if (dateRange?.from) {
-            const start = startOfDay(dateRange.from);
-            filtered = filtered.filter(r => r.createdAt && new Date(r.createdAt.seconds * 1000) >= start);
-        }
-        if (dateRange?.to) {
-            const end = endOfDay(dateRange.to);
-            filtered = filtered.filter(r => r.createdAt && new Date(r.createdAt.seconds * 1000) <= end);
-        }
-        setFilteredRequests(filtered);
-    }, [dateRange, requests]);
+        setCurrentPage(1);
+    }, [selectedCampus, usersPerPage, dateRange, searchTerm]);
+
 
     const sendFollowUpEmail = async (request: HPRequest) => {
         if (!request.email) {
@@ -210,9 +218,29 @@ export default function HPRequestsPage() {
                             <CardDescription>{filteredRequests.length} requests showing.</CardDescription>
                         </div>
                         <div className="flex flex-wrap items-center gap-2">
+                            <div className="relative flex-grow">
+                                <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+                                <Input
+                                    placeholder="Search name or email..."
+                                    className="pl-8"
+                                    value={searchTerm}
+                                    onChange={(e) => setSearchTerm(e.target.value)}
+                                />
+                            </div>
+                             <Select value={selectedCampus} onValueChange={setSelectedCampus} disabled={isModerator}>
+                                <SelectTrigger className="w-full sm:w-[200px]">
+                                    <SelectValue placeholder="Filter by campus" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="all">All Campuses</SelectItem>
+                                    {allCampuses.map(campus => (
+                                        <SelectItem key={campus} value={campus}>{campus}</SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
                              <Popover>
                                 <PopoverTrigger asChild>
-                                    <Button id="date" variant={"outline"} className={cn("w-full sm:w-[300px] justify-start text-left font-normal", !dateRange && "text-muted-foreground")}>
+                                    <Button id="date" variant={"outline"} className={cn("w-full sm:w-auto justify-start text-left font-normal", !dateRange && "text-muted-foreground")}>
                                     <CalendarIcon className="mr-2 h-4 w-4" />
                                     {dateRange?.from ? (
                                         dateRange.to ? (
@@ -262,8 +290,8 @@ export default function HPRequestsPage() {
                                             <TableCell colSpan={10}><Skeleton className="h-8 w-full" /></TableCell>
                                         </TableRow>
                                     ))
-                                ) : filteredRequests.length > 0 ? (
-                                    filteredRequests.map(request => (
+                                ) : paginatedRequests.length > 0 ? (
+                                    paginatedRequests.map(request => (
                                         <TableRow key={request.id}>
                                             <TableCell className="font-medium">{request.firstName}</TableCell>
                                             <TableCell className="font-medium">{request.lastName}</TableCell>
@@ -293,6 +321,34 @@ export default function HPRequestsPage() {
                         </Table>
                     </div>
                 </CardContent>
+                {totalPages > 1 && (
+                    <CardFooter className="flex justify-end items-center gap-4">
+                        <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                            <span>Rows per page</span>
+                            <Select value={`${usersPerPage}`} onValueChange={value => setUsersPerPage(Number(value))}>
+                                <SelectTrigger className="w-[70px]">
+                                    <SelectValue placeholder={`${usersPerPage}`} />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    {[10, 25, 50, 100].map(size => (
+                                        <SelectItem key={size} value={`${size}`}>{size}</SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
+                        </div>
+                        <span className="text-sm text-muted-foreground">Page {currentPage} of {totalPages}</span>
+                        <div className="flex items-center gap-2">
+                            <Button variant="outline" size="sm" onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))} disabled={currentPage === 1}>
+                                <ChevronLeft className="h-4 w-4" />
+                                Previous
+                            </Button>
+                            <Button variant="outline" size="sm" onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))} disabled={currentPage === totalPages}>
+                                Next
+                                <ChevronRight className="h-4 w-4" />
+                            </Button>
+                        </div>
+                    </CardFooter>
+                )}
             </Card>
         </div>
     );

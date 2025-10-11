@@ -1,10 +1,12 @@
 
+
 "use client";
 
 import { useState, useEffect, useCallback, useMemo } from "react";
 import Link from "next/link";
 import { getFirebaseFirestore, getFirebaseApp } from "@/lib/firebase";
 import { collection, getDocs, doc, updateDoc, query, orderBy, deleteDoc, setDoc, addDoc, serverTimestamp, where, documentId } from "firebase/firestore";
+import { getAuth, deleteUser } from "firebase/auth";
 import type { User, Course, Enrollment, UserProgress as UserProgressType, Ladder, UserLadderProgress } from "@/lib/types";
 import {
   Card,
@@ -59,7 +61,7 @@ import {
 } from "@/components/ui/sheet";
 import { Avatar, AvatarFallback, AvatarImage } from "./ui/avatar";
 import { Button } from "./ui/button";
-import { Edit, Eye, Loader2, Plus, Trash, Upload, Download, UserMinus, ChevronLeft, ChevronRight, Mail, BookCheck, Search } from "lucide-react";
+import { Edit, Eye, Loader2, Plus, Trash, Upload, Download, UserMinus, ChevronLeft, ChevronRight, Mail, BookCheck, Search, Star } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { Skeleton } from "./ui/skeleton";
 import AddUserForm from "./add-user-form";
@@ -67,12 +69,14 @@ import { Badge } from "./ui/badge";
 import Papa from "papaparse";
 import { Input } from "./ui/input";
 import { Label } from "./ui/label";
-import { getApps, initializeApp, getApp } from "firebase/app";
-import { getAuth, createUserWithEmailAndPassword, updateProfile, signOut, sendPasswordResetEmail } from "firebase/auth";
+import { initializeApp, getApps, getApp } from "firebase/app";
+import { createUserWithEmailAndPassword, updateProfile, signOut, sendPasswordResetEmail } from "firebase/auth";
 import { Progress } from "./ui/progress";
 import { ScrollArea } from "./ui/scroll-area";
 import { unenrollUserFromCourse } from "@/lib/user-actions";
 import EditUserForm from "./edit-user-form";
+import { cn } from "@/lib/utils";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "./ui/tooltip";
 
 interface UserCourseProgress {
     courseId: string;
@@ -185,6 +189,7 @@ export default function UserManagement() {
   const [viewingUser, setViewingUser] = useState<User | null>(null);
   const [viewingUserProgress, setViewingUserProgress] = useState<UserCourseProgress[]>([]);
   const [viewingUserLadderProgress, setViewingUserLadderProgress] = useState<UserLadderProgress[]>([]);
+  const [viewingUserCompletions, setViewingUserCompletions] = useState<Set<string>>(new Set());
   const [isProgressLoading, setIsProgressLoading] = useState(false);
   const { toast } = useToast();
   const db = getFirebaseFirestore();
@@ -209,7 +214,6 @@ export default function UserManagement() {
       const coursesSnapshot = await getDocs(collection(db, 'courses'));
       const coursesList = coursesSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Course));
       
-      // Sort users by name before setting state
       usersList.sort((a, b) => (a.displayName || "").localeCompare(b.displayName || ""));
       setUsers(usersList);
       setLadders(laddersList);
@@ -253,17 +257,29 @@ export default function UserManagement() {
   const totalPages = Math.ceil(filteredUsers.length / usersPerPage);
   const paginatedUsers = filteredUsers.slice((currentPage - 1) * usersPerPage, currentPage * usersPerPage);
 
-  const fetchUserProgress = useCallback(async (user: User) => {
+  const fetchUserProgressAndCompletions = useCallback(async (user: User) => {
     if (!user?.uid || courses.length === 0) return;
     setIsProgressLoading(true);
     try {
         const enrollmentsQuery = query(collection(db, 'enrollments'), where('userId', '==', user.uid));
-        const enrollmentsSnapshot = await getDocs(enrollmentsQuery);
+        const onsiteQuery = query(collection(db, 'onsiteCompletions'), where('userId', '==', user.uid));
+
+        const [enrollmentsSnapshot, onsiteSnapshot] = await Promise.all([
+          getDocs(enrollmentsQuery),
+          getDocs(onsiteQuery)
+        ]);
+
+        const allCompletedCourseIds = new Set<string>();
+        onsiteSnapshot.forEach(doc => {
+            allCompletedCourseIds.add(doc.data().courseId);
+        });
+
         const enrolledCourseIds = enrollmentsSnapshot.docs.map(doc => (doc.data() as Enrollment).courseId);
 
         if (enrolledCourseIds.length === 0) {
             setViewingUserProgress([]);
             setViewingUserLadderProgress([]);
+            setViewingUserCompletions(allCompletedCourseIds);
             setIsProgressLoading(false);
             return;
         }
@@ -287,14 +303,13 @@ export default function UserManagement() {
                 });
             }
         });
-
-        const completedCourseIds = new Set<string>();
+        
         const detailedCourseProgress = enrolledCourses.map(course => {
             const totalVideos = course.videos?.length || 0;
             const completedCount = progressByCourse[course.id]?.completedVideos.size || 0;
             const totalProgress = totalVideos > 0 ? Math.round((completedCount / totalVideos) * 100) : 0;
             if (totalProgress === 100) {
-                completedCourseIds.add(course.id);
+                allCompletedCourseIds.add(course.id);
             }
             return {
                 courseId: course.id,
@@ -303,14 +318,14 @@ export default function UserManagement() {
             }
         });
         setViewingUserProgress(detailedCourseProgress);
+        setViewingUserCompletions(allCompletedCourseIds);
 
         const ladderProgressData: UserLadderProgress[] = ladders.map(ladder => {
-            // Filter courses by BOTH ladder AND user's language
             const coursesInLadder = courses.filter(c => 
-              c.ladderIds?.includes(ladder.id) && c.language === user.language
+                c.ladderIds?.includes(ladder.id) && c.language === user.language
             );
             const totalCourses = coursesInLadder.length;
-            const completedCourses = coursesInLadder.filter(c => completedCourseIds.has(c.id)).length;
+            const completedCourses = coursesInLadder.filter(c => allCompletedCourseIds.has(c.id)).length;
             const progress = totalCourses > 0 ? Math.round((completedCourses / totalCourses) * 100) : 0;
 
             return {
@@ -321,7 +336,7 @@ export default function UserManagement() {
                 totalCourses: totalCourses,
                 completedCourses: completedCourses
             }
-        }).filter(lp => lp.totalCourses > 0); // Only show ladders that have courses for the user's language
+        }).filter(lp => lp.totalCourses > 0);
 
         setViewingUserLadderProgress(ladderProgressData);
 
@@ -335,9 +350,9 @@ export default function UserManagement() {
 
   useEffect(() => {
     if (viewingUser) {
-        fetchUserProgress(viewingUser);
+        fetchUserProgressAndCompletions(viewingUser);
     }
-  }, [viewingUser, fetchUserProgress]);
+  }, [viewingUser, fetchUserProgressAndCompletions]);
 
   const handleRoleChange = async (userId: string, newRole: 'user' | 'admin' | string) => {
     const userDocRef = doc(db, "users", userId);
@@ -377,19 +392,19 @@ export default function UserManagement() {
   };
   
   const handleDeleteUser = async (userId: string, userName: string) => {
-    const userDocRef = doc(db, "users", userId);
     try {
+        const userDocRef = doc(db, "users", userId);
         await deleteDoc(userDocRef);
         setUsers(prevUsers => prevUsers.filter(u => u.id !== userId));
         toast({
-            title: "User Data Deleted",
-            description: `Removed ${userName} from the database. Note: The user's authentication record must be deleted from the Firebase Console.`
+            title: "User Data Removed",
+            description: `User ${userName}'s data has been removed from the database.`
         });
-    } catch (error) {
+    } catch (error: any) {
         toast({
             variant: "destructive",
             title: "Deletion Failed",
-            description: "Could not delete user data from the database."
+            description: "Could not delete user data from the database. " + error.message
         });
     }
   }
@@ -399,7 +414,7 @@ export default function UserManagement() {
       if (result.success) {
           toast({ title: 'Success', description: result.message });
           if(viewingUser) {
-              fetchUserProgress(viewingUser); // Refresh the progress list
+              fetchUserProgressAndCompletions(viewingUser); // Refresh the progress list
           }
       } else {
           toast({ variant: 'destructive', title: 'Error', description: result.message });
@@ -556,6 +571,45 @@ export default function UserManagement() {
         } catch (error: any) {
             toast({ variant: 'destructive', title: 'Error Sending Email', description: error.message });
         }
+    };
+    
+    const LadderProgressStars = ({user}: {user: User}) => {
+        const ladder = ladders.find(l => l.id === user.classLadderId);
+        if (!ladder) return <p className="text-sm text-muted-foreground">Not assigned to a ladder.</p>;
+
+        const coursesInLadder = courses.filter(c => 
+            c.ladderIds?.includes(ladder.id) &&
+            c.language === user.language // Filter by user's language
+        );
+        const totalCourses = coursesInLadder.length;
+
+        if (totalCourses === 0) return <p className="text-sm text-muted-foreground">No courses for this ladder in your language.</p>;
+
+        return (
+            <div>
+                 <p className="font-semibold mb-2">Ladder Progress: {ladder.name}</p>
+                 <div className="flex items-center gap-1">
+                    <TooltipProvider>
+                    {Array.from({ length: totalCourses }).map((_, index) => {
+                        const course = coursesInLadder[index];
+                        const isCompleted = viewingUserCompletions.has(course.id);
+                        return (
+                             <Tooltip key={index}>
+                                <TooltipTrigger asChild>
+                                    <span tabIndex={0}>
+                                        <Star className={cn("h-6 w-6", isCompleted ? "text-yellow-500 fill-yellow-400" : "text-gray-300 dark:text-gray-600")} />
+                                    </span>
+                                </TooltipTrigger>
+                                <TooltipContent>
+                                    <p>{course.title}</p>
+                                </TooltipContent>
+                            </Tooltip>
+                        )
+                    })}
+                    </TooltipProvider>
+                </div>
+            </div>
+        )
     };
 
   return (
@@ -725,7 +779,7 @@ export default function UserManagement() {
                                     </AlertDialogHeader>
                                     <AlertDialogFooter>
                                         <AlertDialogCancel>Cancel</AlertDialogCancel>
-                                        <AlertDialogAction onClick={() => handleDeleteUser(user.id, user.displayName || 'user')}>
+                                        <AlertDialogAction onClick={() => handleDeleteUser(user.uid, user.displayName || 'user')}>
                                             Delete
                                         </AlertDialogAction>
                                     </AlertDialogFooter>
@@ -795,49 +849,41 @@ export default function UserManagement() {
                       <div>
                           <h3 className="text-xl font-bold">{viewingUser.displayName}</h3>
                           <p className="text-muted-foreground">{viewingUser.email}</p>
+                          {viewingUser.classLadderId && <LadderProgressStars user={viewingUser} />}
                       </div>
                   </div>
                   <div className="grid grid-cols-2 gap-4 text-sm">
-                        <div>
-                            <p className="font-semibold">Gender</p>
-                            <p className="capitalize">{viewingUser.gender || "Not provided"}</p>
+                      {[
+                        { label: 'First Name', value: viewingUser.firstName },
+                        { label: 'Last Name', value: viewingUser.lastName },
+                        { label: 'Gender', value: viewingUser.gender, capitalize: true },
+                        { label: 'Age Range', value: viewingUser.ageRange },
+                        { label: 'Phone Number', value: viewingUser.phoneNumber },
+                        { label: 'Campus', value: viewingUser.campus },
+                        { label: 'Language', value: viewingUser.language },
+                        { label: 'Location Preference', value: viewingUser.locationPreference },
+                        { label: 'Marital Status', value: viewingUser.maritalStatus },
+                        { label: 'Ministry', value: viewingUser.ministry },
+                        { label: 'HP Number', value: viewingUser.hpNumber },
+                        { label: 'HP Facilitator', value: viewingUser.facilitatorName },
+                        { label: 'Membership Ladder', value: getUserLadderName(viewingUser.classLadderId) },
+                        { label: 'Charge', value: viewingUser.charge },
+                        { label: 'Role', value: viewingUser.role, isBadge: true, variant: (viewingUser.role === 'admin' || viewingUser.role === 'developer' ? 'default' : 'secondary') },
+                        { label: 'Membership Status', value: viewingUser.membershipStatus, isBadge: true, variant: 'secondary' },
+                      ].map(field => (
+                        <div key={field.label}>
+                            <p className="font-semibold">{field.label}</p>
+                            {field.isBadge ? (
+                                <Badge variant={field.variant as any} className="capitalize">{field.value || "Not provided"}</Badge>
+                            ) : (
+                                <p className={field.capitalize ? 'capitalize' : ''}>{field.value || "Not provided"}</p>
+                            )}
                         </div>
-                        <div>
-                            <p className="font-semibold">Age Range</p>
-                            <p>{viewingUser.ageRange || "Not provided"}</p>
-                        </div>
-                        <div>
-                            <p className="font-semibold">Phone Number</p>
-                            <p>{viewingUser.phoneNumber || "Not provided"}</p>
-                        </div>
-                         <div>
-                          <p className="font-semibold">Campus</p>
-                          <p>{viewingUser.campus || "Not provided"}</p>
-                        </div>
-                        <div>
-                            <p className="font-semibold">HP Number</p>
-                            <p>{viewingUser.hpNumber || "Not provided"}</p>
-                        </div>
-                        <div>
-                            <p className="font-semibold">HP Facilitator</p>
-                            <p>{viewingUser.facilitatorName || "Not provided"}</p>
-                        </div>
-                        <div>
-                          <p className="font-semibold">Membership Ladder</p>
-                          <p>{getUserLadderName(viewingUser.classLadderId)}</p>
-                        </div>
-                         <div>
-                          <p className="font-semibold">Charge</p>
-                          <p>{viewingUser.charge || "Not provided"}</p>
-                        </div>
-                        <div>
-                            <p className="font-semibold">Role</p>
-                            <div><Badge variant={viewingUser.role === 'admin' || viewingUser.role === 'developer' ? 'default' : 'secondary'} className="capitalize">{viewingUser.role}</Badge></div>
-                        </div>
-                        <div>
-                            <p className="font-semibold">Membership Status</p>
-                            <div><Badge variant={viewingUser.membershipStatus === 'premium' ? "default" : "secondary"}>{viewingUser.membershipStatus}</Badge></div>
-                        </div>
+                      ))}
+                      <div className="col-span-2">
+                          <Label>Bio</Label>
+                          <p className="text-sm text-muted-foreground p-3 bg-muted rounded-md min-h-[60px]">{viewingUser.bio || "No bio provided."}</p>
+                      </div>
                       <div className="col-span-2">
                           <p className="font-semibold">User ID</p>
                           <p className="text-xs text-muted-foreground break-all">{viewingUser.uid}</p>
@@ -939,4 +985,3 @@ export default function UserManagement() {
   );
 }
 
-    

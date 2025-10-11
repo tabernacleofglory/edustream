@@ -1,10 +1,9 @@
-
 "use client";
 
 import React, { createContext, useContext, useEffect, useState, useCallback } from 'react';
 import { onAuthStateChanged, User as FirebaseUser } from 'firebase/auth';
 import { getFirebaseAuth, getFirebaseFirestore } from '@/lib/firebase';
-import { doc, getDoc, onSnapshot, collection, query, where, updateDoc, limit, orderBy, getDocs } from 'firebase/firestore';
+import { doc, getDoc, onSnapshot, collection, query, where, updateDoc, limit, orderBy, getDocs, setDoc, serverTimestamp } from 'firebase/firestore';
 import type { AppUser, RolePermission, Ladder } from '@/lib/types';
 import { usePathname, useRouter } from 'next/navigation';
 
@@ -15,6 +14,7 @@ interface AuthContextType {
   refreshUser: () => void;
   hasPermission: (permission: string) => boolean;
   isProfileComplete: boolean;
+  checkAndCreateUserDoc: (firebaseUser: FirebaseUser) => Promise<boolean>;
 }
 
 const AuthContext = createContext<AuthContextType>({
@@ -24,6 +24,7 @@ const AuthContext = createContext<AuthContextType>({
   refreshUser: () => {},
   hasPermission: () => false,
   isProfileComplete: false,
+  checkAndCreateUserDoc: async () => false,
 });
 
 const languageMigrationMap: { [key: string]: string } = {
@@ -33,6 +34,16 @@ const languageMigrationMap: { [key: string]: string } = {
     "English": "English",
 };
 
+const getDefaultLadderId = async (db: any): Promise<{id: string, name: string} | null> => {
+    const laddersRef = collection(db, "courseLevels");
+    const q = query(laddersRef, orderBy("order"), limit(1));
+    const querySnapshot = await getDocs(q);
+    if(!querySnapshot.empty) {
+        const doc = querySnapshot.docs[0];
+        return { id: doc.id, name: doc.data().name };
+    }
+    return null;
+}
 
 export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   const [user, setUser] = useState<AppUser | null>(null);
@@ -61,6 +72,29 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     fetchValidLanguages();
   }, [db]);
 
+  const checkAndCreateUserDoc = useCallback(async (firebaseUser: FirebaseUser) => {
+    const userDocRef = doc(db, "users", firebaseUser.uid);
+    const userDoc = await getDoc(userDocRef);
+    if (!userDoc.exists()) {
+        const defaultLadder = await getDefaultLadderId(db);
+        const newUser: AppUser = {
+          uid: firebaseUser.uid,
+          id: firebaseUser.uid,
+          displayName: firebaseUser.displayName || firebaseUser.email?.split('@')[0],
+          fullName: firebaseUser.displayName || firebaseUser.email?.split('@')[0],
+          email: firebaseUser.email,
+          photoURL: firebaseUser.photoURL,
+          role: 'user',
+          charge: 'App User',
+          membershipStatus: 'Active',
+          classLadderId: defaultLadder?.id || null,
+          classLadder: defaultLadder?.name || 'New Member',
+        };
+        await setDoc(userDocRef, { ...newUser, createdAt: serverTimestamp() });
+        return true; // New user created
+    }
+    return false; // Existing user
+  }, [db]);
 
   const fetchUserDocument = useCallback(async (firebaseUser: FirebaseUser | null) => {
     if (!firebaseUser) {
@@ -102,16 +136,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
             setUserPermissions([]);
         }
       } else {
-        const tempUser: AppUser = { 
-          uid: firebaseUser.uid, 
-          id: firebaseUser.uid,
-          displayName: firebaseUser.displayName,
-          email: firebaseUser.email,
-          role: 'user', 
-          membershipStatus: 'Active',
-        };
-        setUser(tempUser);
-        setUserPermissions([]);
+        await checkAndCreateUserDoc(firebaseUser);
       }
       setLoading(false);
     }, (error) => {
@@ -122,7 +147,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
 
     return unsubscribeUser;
 
-  }, [db]);
+  }, [db, checkAndCreateUserDoc]);
 
 
   useEffect(() => {
@@ -191,7 +216,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
 
 
   return (
-    <AuthContext.Provider value={{ user, loading, refreshUser, isCurrentUserAdmin, hasPermission, isProfileComplete }}>
+    <AuthContext.Provider value={{ user, loading, refreshUser, isCurrentUserAdmin, hasPermission, isProfileComplete, checkAndCreateUserDoc }}>
       {children}
     </AuthContext.Provider>
   );

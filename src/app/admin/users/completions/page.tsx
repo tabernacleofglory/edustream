@@ -34,9 +34,12 @@ import {
   Table, TableHeader, TableRow, TableHead, TableBody, TableCell,
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { Loader2, Search, CheckCircle2, Trash2, Download } from "lucide-react";
+import { Loader2, Search, CheckCircle2, Trash2, Download, Lock } from "lucide-react";
 import { format } from "date-fns";
 import { cn } from "@/lib/utils";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import Papa from "papaparse";
+
 
 const PAGE_SIZE_DEFAULT = 25;
 
@@ -48,8 +51,9 @@ const chunk = <T,>(arr: T[], size: number) =>
 
 export default function ManageCompletionsPage() {
   const db = getFirebaseFirestore(getFirebaseApp());
-  const { user: adminUser } = useAuth();
+  const { user: adminUser, hasPermission, isCurrentUserAdmin } = useAuth();
   const { toast } = useToast();
+  const isModerator = adminUser?.role === 'moderator';
 
   // Lists
   const [users, setUsers] = useState<User[]>([]);
@@ -84,12 +88,23 @@ export default function ManageCompletionsPage() {
   const [selectedLogIds, setSelectedLogIds] = useState<Set<string>>(new Set());
   const [selectAllOnPage, setSelectAllOnPage] = useState(false);
 
+  const canManage = hasPermission('manageCompletions');
+
   // --- Load users, courses, ladders ---
   useEffect(() => {
     (async () => {
+      if (!canManage) {
+          setIsLoadingLists(false);
+          return;
+      }
       setIsLoadingLists(true);
       try {
-        const usersSnap = await getDocs(query(collection(db, "users"), orderBy("displayName")));
+        let usersQuery = query(collection(db, "users"), orderBy("displayName"));
+        if (isModerator && adminUser?.campus) {
+            usersQuery = query(usersQuery, where("campus", "==", adminUser.campus));
+        }
+
+        const usersSnap = await getDocs(usersQuery);
         const coursesSnap = await getDocs(
           query(collection(db, "courses"), where("status", "==", "published"), orderBy("title"))
         );
@@ -105,7 +120,7 @@ export default function ManageCompletionsPage() {
         setIsLoadingLists(false);
       }
     })();
-  }, [db, toast]);
+  }, [db, toast, canManage, isModerator, adminUser?.campus]);
 
   const ladderById = useMemo(() => {
     const map = new Map<string, Ladder>();
@@ -113,38 +128,43 @@ export default function ManageCompletionsPage() {
     return map;
   }, [ladders]);
 
-  // --- When user changes: refresh “already logged” + page 1 ---
+  // --- Initial log load & user change effect ---
   useEffect(() => {
-    (async () => {
-      setUserLoggedCourseIds(new Set());
-      setSelectedCourseIds(new Set());
-      setPage(1);
-      setCursors([]);
-      if (!selectedUser) return;
+    if (!canManage) return;
 
-      const snap = await getDocs(
-        query(collection(db, "onsiteCompletions"), where("userId", "==", selectedUser.uid))
-      );
-      const seen = new Set<string>();
-      snap.forEach(d => {
-        const data = d.data() as any;
-        if (data?.courseId) seen.add(data.courseId);
-      });
-      setUserLoggedCourseIds(seen);
+    setUserLoggedCourseIds(new Set());
+    setSelectedCourseIds(new Set());
+    setPage(1);
+    setCursors([]);
 
+    const loadData = async () => {
+      if (selectedUser) {
+        const snap = await getDocs(
+          query(collection(db, "onsiteCompletions"), where("userId", "==", selectedUser.uid))
+        );
+        const seen = new Set<string>();
+        snap.forEach(d => {
+          const data = d.data() as any;
+          if (data?.courseId) seen.add(data.courseId);
+        });
+        setUserLoggedCourseIds(seen);
+      }
       await loadLogPage(1, [], selectedUser, dateFrom, dateTo, pageSize);
-    })();
+    };
+
+    loadData();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedUser]);
+  }, [selectedUser, canManage]);
+
 
   // --- Filters change -> reload page 1 ---
   useEffect(() => {
-    if (!selectedUser) return;
+    if (!canManage) return;
     setPage(1);
     setCursors([]);
     loadLogPage(1, [], selectedUser, dateFrom, dateTo, pageSize);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [dateFrom, dateTo, pageSize, selectedUser]);
+  }, [dateFrom, dateTo, pageSize, canManage]);
 
   // --- Helpers: filtered lists ---
   const filteredUsers = useMemo(() => {
@@ -282,7 +302,7 @@ export default function ManageCompletionsPage() {
   async function loadLogPage(
     targetPage: number,
     cursorStack: DocumentSnapshot[],
-    user: User,
+    user: User | null,
     from: string,
     to: string,
     size: number
@@ -293,7 +313,13 @@ export default function ManageCompletionsPage() {
 
     try {
       const col = collection(db, "onsiteCompletions");
-      const baseClauses: any[] = [where("userId", "==", user.uid)];
+      const baseClauses: any[] = [];
+      
+      if (user) {
+        baseClauses.push(where("userId", "==", user.uid));
+      } else if (isModerator && adminUser?.campus) {
+        baseClauses.push(where("userCampus", "==", adminUser.campus));
+      }
 
       if (from) {
         const startDate = new Date(from);
@@ -336,12 +362,10 @@ export default function ManageCompletionsPage() {
 
   // Pagination
   const goPrev = async () => {
-    if (!selectedUser) return;
     if (page <= 1) return;
     await loadLogPage(page - 1, cursors, selectedUser, dateFrom, dateTo, pageSize);
   };
   const goNext = async () => {
-    if (!selectedUser) return;
     if (!hasNextPage) return;
     await loadLogPage(page + 1, cursors, selectedUser, dateFrom, dateTo, pageSize);
   };
@@ -378,9 +402,7 @@ export default function ManageCompletionsPage() {
 
       toast({ title: "Deleted", description: `Removed ${selectedLogIds.size} record(s).` });
 
-      if (selectedUser) {
-        await loadLogPage(page, cursors, selectedUser, dateFrom, dateTo, pageSize);
-      }
+      await loadLogPage(page, cursors, selectedUser, dateFrom, dateTo, pageSize);
     } catch (e: any) {
       console.error(e);
       toast({ variant: "destructive", title: "Delete failed", description: e?.message || "Could not delete records." });
@@ -403,9 +425,9 @@ export default function ManageCompletionsPage() {
         const dateStr = r.completedAt ? format(new Date((r.completedAt as Timestamp).seconds * 1000), "yyyy-MM-dd HH:mm:ss") : "";
         // fallbacks to users/ladders if missing on the row
         const u = users.find(u => u.uid === r.userId);
-        const email = r.userEmail ?? u?.email ?? "";
-        const phone = r.userPhone ?? (u as any)?.phoneNumber ?? "";
-        const gender = r.userGender ?? (u as any)?.gender ?? "";
+        const email = r.userEmail ?? u?.email ?? "—";
+        const phone = r.userPhone ?? (u as any)?.phoneNumber ?? "—";
+        const gender = r.userGender ?? (u as any)?.gender ?? "—";
         const campus = r.userCampus || (u as any)?.campus || "N/A";
         const ladderName =
           r.userLadderName ??
@@ -454,6 +476,16 @@ export default function ManageCompletionsPage() {
     );
   }, [logRows, logSearchTerm]);
 
+  if (!canManage) {
+    return (
+      <Alert variant="destructive">
+        <Lock className="h-4 w-4" />
+        <AlertTitle>Access Denied</AlertTitle>
+        <AlertDescription>You do not have permission to manage course completions.</AlertDescription>
+      </Alert>
+    );
+  }
+
   return (
     <div className="flex flex-col gap-8">
       <div>
@@ -461,7 +493,7 @@ export default function ManageCompletionsPage() {
         <p className="text-muted-foreground">Select a user, select one or more courses, then save. Each log row stores user email, phone, gender, and ladder at the time of logging.</p>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-4 gap-8">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
         {/* Users */}
         <Card className="lg:col-span-1">
           <CardHeader>
@@ -484,7 +516,7 @@ export default function ManageCompletionsPage() {
                         key={u.id}
                         variant={selected ? "secondary" : "ghost"}
                         className={cn("w-full justify-start gap-2 h-auto", selected && "ring-1 ring-primary")}
-                        onClick={() => { setSelectedUser(u); setSelectedCourseIds(new Set()); }}
+                        onClick={() => { setSelectedUser(selected ? null : u); }}
                       >
                         <Avatar className="h-8 w-8">
                           <AvatarImage src={u.photoURL || ""} />
@@ -555,67 +587,59 @@ export default function ManageCompletionsPage() {
             </Button>
           </CardFooter>
         </Card>
-
-        {/* Filters & CSV */}
-        <Card className="lg:col-span-1">
-          <CardHeader>
-            <CardTitle>Log Filters</CardTitle>
-            <CardDescription>Filter by completion date and export the current page.</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            <div>
-              <label className="text-sm font-medium">Date from</label>
-              <Input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} />
-            </div>
-            <div>
-              <label className="text-sm font-medium">Date to</label>
-              <Input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)} />
-            </div>
-            <div>
-              <label className="text-sm font-medium">Search (on page)</label>
-              <Input placeholder="Find in page…" value={logSearchTerm} onChange={e => setLogSearchTerm(e.target.value)} />
-            </div>
-            <div>
-              <label className="text-sm font-medium">Rows per page</label>
-              <Input type="number" min={5} max={200} value={pageSize} onChange={e => setPageSize(Math.max(5, Math.min(200, Number(e.target.value) || PAGE_SIZE_DEFAULT)))} />
-            </div>
-          </CardContent>
-          <CardFooter className="flex gap-2">
-            <Button variant="outline" className="w-full" onClick={handleDownloadCSV}>
-              <Download className="h-4 w-4 mr-2" /> CSV (this page)
-            </Button>
-          </CardFooter>
-        </Card>
       </div>
 
       {/* Log table */}
       <Card>
-        <CardHeader className="flex items-center justify-between">
-          <div>
-            <CardTitle>Onsite Completion Log</CardTitle>
-            <CardDescription>
-              {selectedUser ? `Viewing logs for ${selectedUser.displayName || selectedUser.email}` : "Pick a user to load logs"}
-            </CardDescription>
-          </div>
-          <div className="flex gap-2">
-            <Button variant="destructive" disabled={selectedLogIds.size === 0} onClick={handleDeleteSelected}>
-              <Trash2 className="h-4 w-4 mr-2" /> Delete selected
-            </Button>
-          </div>
+        <CardHeader className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+            <div>
+              <CardTitle>Onsite Completion Log</CardTitle>
+              <CardDescription>
+                {selectedUser ? `Viewing logs for ${selectedUser.displayName || selectedUser.email}` : isModerator ? `Viewing logs for ${adminUser?.campus} campus` : "Viewing all logs"}
+              </CardDescription>
+            </div>
+            <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
+                 <Input 
+                  placeholder="Date From" 
+                  type="date" 
+                  value={dateFrom} 
+                  onChange={e => setDateFrom(e.target.value)} 
+                  className="w-full sm:w-auto"
+                />
+                <Input 
+                  placeholder="Date To" 
+                  type="date" 
+                  value={dateTo} 
+                  onChange={e => setDateTo(e.target.value)} 
+                  className="w-full sm:w-auto"
+                />
+                <Input 
+                  placeholder="Search page..." 
+                  value={logSearchTerm} 
+                  onChange={e => setLogSearchTerm(e.target.value)} 
+                  className="w-full sm:w-auto"
+                />
+                <Button variant="outline" className="w-full sm:w-auto" onClick={handleDownloadCSV}><Download className="h-4 w-4 mr-2" />CSV</Button>
+            </div>
         </CardHeader>
         <CardContent>
-          {!selectedUser ? (
-            <div className="flex items-center justify-center h-48 text-muted-foreground">No user selected.</div>
-          ) : isLoadingLog ? (
+           <div className="flex items-center gap-2 mb-4">
+              <input type="checkbox" checked={selectAllOnPage} onChange={toggleSelectAllOnPage} className="w-4 h-4" />
+              <label className="text-sm font-medium">Select all on page</label>
+              {selectedLogIds.size > 0 && (
+                <Button variant="destructive" size="sm" onClick={handleDeleteSelected}>
+                  <Trash2 className="h-4 w-4 mr-2" /> Delete selected ({selectedLogIds.size})
+                </Button>
+              )}
+           </div>
+           {isLoadingLog ? (
             <div className="flex items-center justify-center h-48"><Loader2 className="h-6 w-6 animate-spin" /></div>
           ) : (
             <ScrollArea className="h-96">
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead className="w-[42px]">
-                      <input type="checkbox" checked={selectAllOnPage} onChange={toggleSelectAllOnPage} />
-                    </TableHead>
+                    <TableHead className="w-[42px]"></TableHead>
                     <TableHead>User</TableHead>
                     <TableHead>Email</TableHead>
                     <TableHead>Phone</TableHead>
@@ -676,13 +700,17 @@ export default function ManageCompletionsPage() {
           )}
         </CardContent>
         <CardFooter className="flex items-center justify-between">
-          <div className="text-sm text-muted-foreground">Page {page}{hasNextPage ? "" : " (last)"} • {visibleLogRows.length} row(s)</div>
+          <div className="text-sm text-muted-foreground">
+            Page {page}{hasNextPage ? "" : " (last)"} • {visibleLogRows.length} row(s)
+          </div>
           <div className="flex gap-2">
-            <Button variant="outline" onClick={goPrev} disabled={!selectedUser || page <= 1}>Previous</Button>
-            <Button variant="outline" onClick={goNext} disabled={!selectedUser || !hasNextPage}>Next</Button>
+            <Button variant="outline" onClick={goPrev} disabled={page <= 1}>Previous</Button>
+            <Button variant="outline" onClick={goNext} disabled={!hasNextPage}>Next</Button>
           </div>
         </CardFooter>
       </Card>
     </div>
   );
 }
+
+    

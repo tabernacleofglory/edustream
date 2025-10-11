@@ -305,22 +305,29 @@ export interface SiteSettings {
     // Certificate settings
     cert_title: string;
     cert_title_size?: number;
+    cert_show_title?: boolean;
     cert_subtitle: string;
     cert_subtitle_size?: number;
+    cert_show_subtitle?: boolean;
     cert_decoration_icon: string;
     cert_decoration_icon_size?: number;
+    cert_show_decoration?: boolean;
     cert_showLineUnderUserName: boolean;
     cert_presentedToText: string;
     cert_presentedToText_size?: number;
+    cert_show_presentedToText?: boolean;
     cert_completionText: string;
     cert_completionText_size?: number;
+    cert_show_completionText?: boolean;
     cert_userName_size?: number;
     cert_courseName_size?: number;
     cert_date_size?: number;
+    cert_show_date?: boolean;
     cert_signatureName: string;
     cert_signatureName_size?: number;
     cert_signatureTitle: string;
     cert_signatureTitle_size?: number;
+    cert_show_signatures?: boolean;
     cert_defaultLogoUrl?: string;
     cert_defaultBackgroundUrl?: string;
     cert_spacing_title_subtitle?: number;
@@ -332,5 +339,3 @@ export interface SiteSettings {
     cert_spacing_courseName_signatures?: number;
     quiz_pass_threshold?: number;
 }
-
-    

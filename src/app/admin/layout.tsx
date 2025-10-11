@@ -38,6 +38,7 @@ import {
   Globe,
   Group,
   BookCheck,
+  Sparkles
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
@@ -135,7 +136,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
             { href: "/admin/speakers", label: t('admin.nav.users.speakers', "Speakers"), icon: UserRound, permission: 'manageContent' },
             { href: "/admin/promotions", label: t('admin.nav.users.promotions', "Promotion Requests"), icon: UserCheck, permission: 'managePromotions'},
             { href: "/admin/users/hp-requests", label: t('admin.nav.users.hp_requests', "HP Requests"), icon: UserPlus, permission: 'manageHpRequests' },
-            { href: "/admin/users/completions", label: "Completions", icon: BookCheck, permission: 'manageUsers' },
+            { href: "/admin/users/completions", label: "Completions", icon: BookCheck, permission: 'manageCompletions' },
           ],
         },
       ],
@@ -180,7 +181,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
               { href: "/admin/developer/certificate-builder", label: t('admin.nav.platform.dev.cert_builder', "Certificate Builder"), icon: Award },
               { href: "/admin/links", label: t('admin.nav.platform.dev.links', "Links"), icon: Link2 },
               { href: "/admin/permissions", label: t('admin.nav.platform.dev.permissions', "Permissions"), icon: Shield },
-              { href: "/admin/developer/ai-tools", label: t('admin.nav.platform.dev.ai_tools', "AI Tools"), icon: Shield },
+              { href: "/admin/developer/ai-tools", label: t('admin.nav.platform.dev.ai_tools', "AI Tools"), icon: Sparkles },
               { href: "/admin/developer/localization", label: t('admin.nav.platform.dev.localization', "Localization"), icon: Globe },
           ]
         },

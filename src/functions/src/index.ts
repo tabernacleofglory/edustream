@@ -1,8 +1,7 @@
-
-
 import * as functions from "firebase-functions";
 import * as admin from "firebase-admin";
 import * as sgMail from "@sendgrid/mail";
+import { onVideoDeleted, onVideoUpdate, transcodeVideo, updateVideoOnTranscodeComplete } from "./transcoding";
 
 admin.initializeApp();
 const db = admin.firestore();
@@ -217,4 +216,4 @@ export const syncVideos = functions.https.onCall(async (data, context) => {
     return { status: 'success', message: message };
 });
     
-
+export { onVideoDeleted, onVideoUpdate, transcodeVideo, updateVideoOnTranscodeComplete };

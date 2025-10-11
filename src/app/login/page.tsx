@@ -1,4 +1,3 @@
-
 "use client";
 
 import Link from "next/link";
@@ -26,30 +25,12 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogTrigger } from "@/components/ui/dialog";
 import { doc, getDoc, setDoc, collection, query, where, getDocs, orderBy, limit, serverTimestamp } from "firebase/firestore";
 import LanguageSwitcher from "@/components/language-switcher";
-
-const getDefaultLadderId = async (db: any): Promise<{id: string, name: string} | null> => {
-    const laddersRef = collection(db, "courseLevels");
-    // Attempt to find a ladder specifically named "New Member" with a category of "membership"
-    const q = query(laddersRef, where("name", "==", "New Member"), where("category", "==", "membership"), limit(1));
-    const querySnapshot = await getDocs(q);
-    if (!querySnapshot.empty) {
-        const doc = querySnapshot.docs[0];
-        return { id: doc.id, name: doc.data().name };
-    }
-    // Fallback: If "New Member" doesn't exist, get the ladder with the lowest order number.
-    const fallbackQuery = query(laddersRef, orderBy("order"), limit(1));
-    const fallbackSnapshot = await getDocs(fallbackQuery);
-    if(!fallbackSnapshot.empty) {
-        const doc = fallbackSnapshot.docs[0];
-        return { id: doc.id, name: doc.data().name };
-    }
-    return null;
-}
-
+import { useAuth } from "@/hooks/use-auth";
 
 export default function LoginPage() {
     const router = useRouter();
     const { toast } = useToast();
+    const { checkAndCreateUserDoc } = useAuth();
     const [email, setEmail] = useState("");
     const [password, setPassword] = useState("");
     const [isLoading, setIsLoading] = useState(false);
@@ -63,31 +44,6 @@ export default function LoginPage() {
 
     const auth = getFirebaseAuth();
     const db = getFirebaseFirestore();
-    
-    const checkAndCreateUserDoc = useCallback(async (user: any) => {
-        const userDocRef = doc(db, "users", user.uid);
-        const userDoc = await getDoc(userDocRef);
-        if (!userDoc.exists()) {
-            const defaultLadder = await getDefaultLadderId(db);
-            await setDoc(userDocRef, {
-                uid: user.uid,
-                id: user.uid,
-                displayName: user.displayName || user.email?.split('@')[0],
-                fullName: user.displayName || user.email?.split('@')[0],
-                email: user.email,
-                photoURL: user.photoURL,
-                role: 'user',
-                charge: 'App User',
-                membershipStatus: 'Active',
-                classLadderId: defaultLadder?.id || null,
-                classLadder: defaultLadder?.name || 'New Member',
-                createdAt: serverTimestamp(),
-            });
-            return true; // Indicates new user
-        }
-        return false; // Indicates existing user
-    }, [db]);
-
 
     useEffect(() => {
         const handleSignInWithLink = async () => {

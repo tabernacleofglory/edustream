@@ -5,14 +5,15 @@ import { TranscoderServiceClient } from "@google-cloud/video-transcoder";
 const db = admin.firestore();
 const transcoderServiceClient = new TranscoderServiceClient();
 
-const PROJECT_NUMBER = "97402238606";
+const PROJECT_NUMBER = functions.config().gcp.project_number;
 const LOCATION = "us-central1";
-const VIDEO_BUCKET = "edustream-videos-uscentral1";
+const VIDEO_BUCKET = functions.config().gcp.video_bucket;
+
 
 /**
  * AUTO TRANSCODE ON UPLOAD
  */
-export const transcodeVideo = functions.storage.bucket(VIDEO_BUCKET).object().onFinalize(async (object) => {
+export const transcodeVideo = functions.runWith({ memory: "512MB", timeoutSeconds: 300 }).storage.bucket(VIDEO_BUCKET).object().onFinalize(async (object) => {
     var _a;
     if (!PROJECT_NUMBER) {
         functions.logger.error("Google Cloud Project Number is not set.");

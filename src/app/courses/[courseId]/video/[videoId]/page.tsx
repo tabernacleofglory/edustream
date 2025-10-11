@@ -1,4 +1,3 @@
-
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
@@ -55,6 +54,11 @@ export default function VideoPage() {
 
         const videoIds = (courseData.videos || []) as string[];
         if (videoIds.length > 0) {
+          if (!videoIds.includes(videoId)) {
+            router.replace(`/courses/${courseId}`);
+            return;
+          }
+          
           const q = query(collection(db, "Contents"), where(documentId(), "in", videoIds), where("status", "==", "published"));
           const videosSnap = await getDocs(q);
           const videosData = videosSnap.docs.map(d => ({ id: d.id, ...d.data() } as Video));

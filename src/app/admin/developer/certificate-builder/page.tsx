@@ -38,21 +38,28 @@ import { Slider } from "@/components/ui/slider";
 const certificateSettingsSchema = z.object({
   cert_title: z.string().min(1, "Title is required."),
   cert_title_size: z.coerce.number().min(0.1, "Size must be at least 0.1.").optional(),
+  cert_show_title: z.boolean().optional(),
   cert_subtitle: z.string().min(1, "Subtitle is required."),
   cert_subtitle_size: z.coerce.number().min(0.1, "Size must be at least 0.1.").optional(),
+  cert_show_subtitle: z.boolean().optional(),
   cert_decoration_icon: z.string().min(1, "Icon name is required."),
   cert_decoration_icon_size: z.coerce.number().min(0.1, "Size must be at least 0.1.").optional(),
+  cert_show_decoration: z.boolean().optional(),
   cert_presentedToText: z.string().min(1, "This text is required."),
   cert_presentedToText_size: z.coerce.number().min(0.1, "Size must be at least 0.1.").optional(),
+  cert_show_presentedToText: z.boolean().optional(),
   cert_completionText: z.string().min(1, "This text is required."),
   cert_completionText_size: z.coerce.number().min(0.1, "Size must be at least 0.1.").optional(),
+  cert_show_completionText: z.boolean().optional(),
   cert_userName_size: z.coerce.number().min(0.1, "Size must be at least 0.1.").optional(),
   cert_courseName_size: z.coerce.number().min(0.1, "Size must be at least 0.1.").optional(),
   cert_date_size: z.coerce.number().min(0.1, "Size must be at least 0.1.").optional(),
+  cert_show_date: z.boolean().optional(),
   cert_signatureName: z.string().min(1, "Signature name is required."),
   cert_signatureName_size: z.coerce.number().min(0.1, "Size must be at least 0.1.").optional(),
   cert_signatureTitle: z.string().min(1, "Signature title is required."),
   cert_signatureTitle_size: z.coerce.number().min(0.1, "Size must be at least 0.1.").optional(),
+  cert_show_signatures: z.boolean().optional(),
   cert_defaultLogoUrl: z.string().url("Please select a valid logo URL.").optional().or(z.literal('')),
   cert_defaultBackgroundUrl: z.string().url("Please select a valid background URL.").optional().or(z.literal('')),
   cert_showLineUnderUserName: z.boolean().default(false),
@@ -82,32 +89,39 @@ export default function CertificateBuilderPage() {
     resolver: zodResolver(certificateSettingsSchema),
     defaultValues: {
       cert_title: "Certificate",
-      cert_title_size: 5.3,
+      cert_title_size: 4,
+      cert_show_title: true,
       cert_subtitle: "of Completion",
-      cert_subtitle_size: 2,
+      cert_subtitle_size: 1.5,
+      cert_show_subtitle: true,
       cert_decoration_icon: "Award",
-      cert_decoration_icon_size: 3,
+      cert_decoration_icon_size: 2.5,
+      cert_show_decoration: true,
       cert_showLineUnderUserName: false,
       cert_presentedToText: "This certificate is proudly presented to",
-      cert_presentedToText_size: 1.125,
+      cert_presentedToText_size: 1,
+      cert_show_presentedToText: true,
       cert_completionText: "for successfully completing the course of",
-      cert_completionText_size: 1.125,
-      cert_userName_size: 5,
-      cert_courseName_size: 2,
-      cert_date_size: 1,
+      cert_completionText_size: 1,
+      cert_show_completionText: true,
+      cert_userName_size: 4.5,
+      cert_courseName_size: 1.8,
+      cert_date_size: 0.9,
+      cert_show_date: true,
       cert_signatureName: "Gregory Toussaint",
-      cert_signatureName_size: 2,
+      cert_signatureName_size: 1.8,
       cert_signatureTitle: "Senior Pastor",
-      cert_signatureTitle_size: 1,
+      cert_signatureTitle_size: 0.9,
+      cert_show_signatures: true,
       cert_defaultLogoUrl: '',
       cert_defaultBackgroundUrl: '',
-      cert_spacing_title_subtitle: 0,
-      cert_spacing_subtitle_decoration: 1,
-      cert_spacing_decoration_presentedTo: 1,
-      cert_spacing_presentedTo_userName: 0.5,
-      cert_spacing_userName_completionText: 0.5,
-      cert_spacing_completionText_courseName: 0.5,
-      cert_spacing_courseName_signatures: 1,
+      cert_spacing_title_subtitle: 0.5,
+      cert_spacing_subtitle_decoration: 2,
+      cert_spacing_decoration_presentedTo: 2,
+      cert_spacing_presentedTo_userName: 1,
+      cert_spacing_userName_completionText: 1,
+      cert_spacing_completionText_courseName: 1,
+      cert_spacing_courseName_signatures: 2,
       quiz_pass_threshold: 70,
     },
   });
@@ -246,59 +260,86 @@ export default function CertificateBuilderPage() {
               />
               
               <Separator />
-              <h4 className="font-semibold text-lg border-b pb-2">Certificate Header Section</h4>
-              <div className="grid grid-cols-3 gap-2 items-end">
-                <FormField control={form.control} name="cert_title" render={({ field }) => ( <FormItem className="col-span-2"><FormLabel>Main Title</FormLabel><FormControl><Input {...field} placeholder="e.g., Certificate"/></FormControl><FormMessage /></FormItem> )} />
-                <FormField control={form.control} name="cert_title_size" render={({ field }) => ( <FormItem><FormLabel>Size</FormLabel><FormControl><SizeStepper field={field} /></FormControl></FormItem> )}/>
+              <div className="flex justify-between items-center border-b pb-2">
+                <h4 className="font-semibold text-lg">Certificate Header Section</h4>
               </div>
-              <FormField control={form.control} name="cert_spacing_title_subtitle" render={({ field }) => ( <FormItem><FormLabel>Spacing After Title (cqw)</FormLabel><FormControl><SizeStepper field={field} min={0} /></FormControl></FormItem> )}/>
-              
-              <div className="grid grid-cols-3 gap-2 items-end">
-                <FormField control={form.control} name="cert_subtitle" render={({ field }) => ( <FormItem className="col-span-2"><FormLabel>Subtitle</FormLabel><FormControl><Input {...field} placeholder="e.g., of Completion"/></FormControl><FormMessage /></FormItem> )}/>
-                <FormField control={form.control} name="cert_subtitle_size" render={({ field }) => ( <FormItem><FormLabel>Size</FormLabel><FormControl><SizeStepper field={field} /></FormControl></FormItem> )}/>
-              </div>
-              <FormField control={form.control} name="cert_spacing_subtitle_decoration" render={({ field }) => ( <FormItem><FormLabel>Spacing After Subtitle (cqw)</FormLabel><FormControl><SizeStepper field={field} min={0} /></FormControl></FormItem> )}/>
 
-              <div className="grid grid-cols-3 gap-2 items-end">
-                <FormField control={form.control} name="cert_decoration_icon" render={({ field }) => ( <FormItem className="col-span-2"><FormLabel>Decoration Icon</FormLabel><IconSelect field={field} /><FormDescription>Any icon name from lucide-react.</FormDescription><FormMessage /></FormItem> )}/>
-                <FormField control={form.control} name="cert_decoration_icon_size" render={({ field }) => ( <FormItem><FormLabel>Icon Size</FormLabel><FormControl><SizeStepper field={field} /></FormControl></FormItem> )}/>
-              </div>
-              <FormField control={form.control} name="cert_spacing_decoration_presentedTo" render={({ field }) => ( <FormItem><FormLabel>Spacing After Decoration (cqw)</FormLabel><FormControl><SizeStepper field={field} min={0} /></FormControl></FormItem> )}/>
+              <FormField control={form.control} name="cert_show_title" render={({ field }) => ( <FormItem className="flex flex-row items-center justify-between rounded-lg border p-3 shadow-sm"><FormLabel>Main Title</FormLabel><FormControl><Switch checked={field.value} onCheckedChange={field.onChange} /></FormControl></FormItem> )}/>
+              {watchedValues.cert_show_title && <>
+                <div className="grid grid-cols-3 gap-2 items-end">
+                  <FormField control={form.control} name="cert_title" render={({ field }) => ( <FormItem className="col-span-2"><FormLabel>Text</FormLabel><FormControl><Input {...field} placeholder="e.g., Certificate"/></FormControl><FormMessage /></FormItem> )} />
+                  <FormField control={form.control} name="cert_title_size" render={({ field }) => ( <FormItem><FormLabel>Size</FormLabel><FormControl><SizeStepper field={field} /></FormControl></FormItem> )}/>
+                </div>
+                <FormField control={form.control} name="cert_spacing_title_subtitle" render={({ field }) => ( <FormItem><FormLabel>Spacing After (cqw)</FormLabel><FormControl><SizeStepper field={field} min={0} /></FormControl></FormItem> )}/>
+              </>}
+              
+              <FormField control={form.control} name="cert_show_subtitle" render={({ field }) => ( <FormItem className="flex flex-row items-center justify-between rounded-lg border p-3 shadow-sm"><FormLabel>Subtitle</FormLabel><FormControl><Switch checked={field.value} onCheckedChange={field.onChange} /></FormControl></FormItem> )}/>
+              {watchedValues.cert_show_subtitle && <>
+                <div className="grid grid-cols-3 gap-2 items-end">
+                  <FormField control={form.control} name="cert_subtitle" render={({ field }) => ( <FormItem className="col-span-2"><FormLabel>Text</FormLabel><FormControl><Input {...field} placeholder="e.g., of Completion"/></FormControl><FormMessage /></FormItem> )}/>
+                  <FormField control={form.control} name="cert_subtitle_size" render={({ field }) => ( <FormItem><FormLabel>Size</FormLabel><FormControl><SizeStepper field={field} /></FormControl></FormItem> )}/>
+                </div>
+                <FormField control={form.control} name="cert_spacing_subtitle_decoration" render={({ field }) => ( <FormItem><FormLabel>Spacing After (cqw)</FormLabel><FormControl><SizeStepper field={field} min={0} /></FormControl></FormItem> )}/>
+              </>}
+              
+              <FormField control={form.control} name="cert_show_decoration" render={({ field }) => ( <FormItem className="flex flex-row items-center justify-between rounded-lg border p-3 shadow-sm"><FormLabel>Decoration</FormLabel><FormControl><Switch checked={field.value} onCheckedChange={field.onChange} /></FormControl></FormItem> )}/>
+              {watchedValues.cert_show_decoration && <>
+                <div className="grid grid-cols-3 gap-2 items-end">
+                  <FormField control={form.control} name="cert_decoration_icon" render={({ field }) => ( <FormItem className="col-span-2"><FormLabel>Icon</FormLabel><IconSelect field={field} /><FormMessage /></FormItem> )}/>
+                  <FormField control={form.control} name="cert_decoration_icon_size" render={({ field }) => ( <FormItem><FormLabel>Size</FormLabel><FormControl><SizeStepper field={field} /></FormControl></FormItem> )}/>
+                </div>
+                <FormField control={form.control} name="cert_spacing_decoration_presentedTo" render={({ field }) => ( <FormItem><FormLabel>Spacing After (cqw)</FormLabel><FormControl><SizeStepper field={field} min={0} /></FormControl></FormItem> )}/>
+              </>}
               
               <Separator />
               <h4 className="font-semibold text-lg border-b pb-2">Certificate Body Section</h4>
-              <div className="grid grid-cols-3 gap-2 items-end">
-                  <FormField control={form.control} name="cert_presentedToText" render={({ field }) => ( <FormItem className="col-span-2"><FormLabel>Presented To Text</FormLabel><FormControl><Input {...field} /></FormControl><FormMessage /></FormItem> )}/>
-                  <FormField control={form.control} name="cert_presentedToText_size" render={({ field }) => ( <FormItem><FormLabel>Size</FormLabel><FormControl><SizeStepper field={field} /></FormControl></FormItem> )}/>
-              </div>
-              <FormField control={form.control} name="cert_spacing_presentedTo_userName" render={({ field }) => ( <FormItem><FormLabel>Spacing After "Presented To" (cqw)</FormLabel><FormControl><SizeStepper field={field} min={0} /></FormControl></FormItem> )}/>
+              <FormField control={form.control} name="cert_show_presentedToText" render={({ field }) => ( <FormItem className="flex flex-row items-center justify-between rounded-lg border p-3 shadow-sm"><FormLabel>"Presented To" Text</FormLabel><FormControl><Switch checked={field.value} onCheckedChange={field.onChange} /></FormControl></FormItem> )}/>
+              {watchedValues.cert_show_presentedToText && <>
+                <div className="grid grid-cols-3 gap-2 items-end">
+                    <FormField control={form.control} name="cert_presentedToText" render={({ field }) => ( <FormItem className="col-span-2"><FormLabel>Text</FormLabel><FormControl><Input {...field} /></FormControl><FormMessage /></FormItem> )}/>
+                    <FormField control={form.control} name="cert_presentedToText_size" render={({ field }) => ( <FormItem><FormLabel>Size</FormLabel><FormControl><SizeStepper field={field} /></FormControl></FormItem> )}/>
+                </div>
+                <FormField control={form.control} name="cert_spacing_presentedTo_userName" render={({ field }) => ( <FormItem><FormLabel>Spacing After (cqw)</FormLabel><FormControl><SizeStepper field={field} min={0} /></FormControl></FormItem> )}/>
+              </>}
 
               <FormField control={form.control} name="cert_userName_size" render={({ field }) => ( <FormItem><FormLabel>Student Name Size</FormLabel><FormControl><SizeStepper field={field} /></FormControl><FormMessage /></FormItem> )}/>
               <FormField control={form.control} name="cert_showLineUnderUserName" render={({ field }) => ( <FormItem className="flex flex-row items-center justify-between rounded-lg border p-3 shadow-sm"><div className="space-y-0.5"><FormLabel>Show Line Under Name</FormLabel></div><FormControl><Switch checked={field.value} onCheckedChange={field.onChange} /></FormControl></FormItem>)}/>
               <FormField control={form.control} name="cert_spacing_userName_completionText" render={({ field }) => ( <FormItem><FormLabel>Spacing After Name (cqw)</FormLabel><FormControl><SizeStepper field={field} min={0} /></FormControl></FormItem> )}/>
 
 
-              <div className="grid grid-cols-3 gap-2 items-end">
-                 <FormField control={form.control} name="cert_completionText" render={({ field }) => ( <FormItem className="col-span-2"><FormLabel>Completion Text</FormLabel><FormControl><Input {...field} /></FormControl><FormMessage /></FormItem> )}/>
-                 <FormField control={form.control} name="cert_completionText_size" render={({ field }) => ( <FormItem><FormLabel>Size</FormLabel><FormControl><SizeStepper field={field} /></FormControl></FormItem> )}/>
-              </div>
-               <FormField control={form.control} name="cert_spacing_completionText_courseName" render={({ field }) => ( <FormItem><FormLabel>Spacing After Completion Text (cqw)</FormLabel><FormControl><SizeStepper field={field} min={0} /></FormControl></FormItem> )}/>
+              <FormField control={form.control} name="cert_show_completionText" render={({ field }) => ( <FormItem className="flex flex-row items-center justify-between rounded-lg border p-3 shadow-sm"><FormLabel>Completion Text</FormLabel><FormControl><Switch checked={field.value} onCheckedChange={field.onChange} /></FormControl></FormItem> )}/>
+              {watchedValues.cert_show_completionText && <>
+                <div className="grid grid-cols-3 gap-2 items-end">
+                   <FormField control={form.control} name="cert_completionText" render={({ field }) => ( <FormItem className="col-span-2"><FormLabel>Text</FormLabel><FormControl><Input {...field} /></FormControl><FormMessage /></FormItem> )}/>
+                   <FormField control={form.control} name="cert_completionText_size" render={({ field }) => ( <FormItem><FormLabel>Size</FormLabel><FormControl><SizeStepper field={field} /></FormControl></FormItem> )}/>
+                </div>
+                 <FormField control={form.control} name="cert_spacing_completionText_courseName" render={({ field }) => ( <FormItem><FormLabel>Spacing After (cqw)</FormLabel><FormControl><SizeStepper field={field} min={0} /></FormControl></FormItem> )}/>
+              </>}
               
               <FormField control={form.control} name="cert_courseName_size" render={({ field }) => ( <FormItem><FormLabel>Course Name Size</FormLabel><FormControl><SizeStepper field={field} /></FormControl><FormMessage /></FormItem> )}/>
               <FormField control={form.control} name="cert_spacing_courseName_signatures" render={({ field }) => ( <FormItem><FormLabel>Spacing After Course Name (cqw)</FormLabel><FormControl><SizeStepper field={field} min={0} /></FormControl></FormItem> )}/>
 
               <Separator />
               <h4 className="font-semibold text-lg border-b pb-2">Certificate Footer Section</h4>
-              <div className="grid grid-cols-3 gap-2 items-end">
-                <FormField control={form.control} name="cert_signatureName" render={({ field }) => ( <FormItem className="col-span-2"><FormLabel>Signature Name</FormLabel><FormControl><Input {...field} /></FormControl><FormMessage /></FormItem> )}/>
-                <FormField control={form.control} name="cert_signatureName_size" render={({ field }) => ( <FormItem><FormLabel>Size</FormLabel><FormControl><SizeStepper field={field} /></FormControl></FormItem> )}/>
-              </div>
 
-              <div className="grid grid-cols-3 gap-2 items-end">
-                <FormField control={form.control} name="cert_signatureTitle" render={({ field }) => ( <FormItem className="col-span-2"><FormLabel>Signature Title</FormLabel><FormControl><Input {...field} /></FormControl><FormMessage /></FormItem> )}/>
-                <FormField control={form.control} name="cert_signatureTitle_size" render={({ field }) => ( <FormItem><FormLabel>Size</FormLabel><FormControl><SizeStepper field={field} /></FormControl></FormItem> )}/>
-              </div>
-              <FormField control={form.control} name="cert_date_size" render={({ field }) => ( <FormItem><FormLabel>Date Text Size</FormLabel><FormControl><SizeStepper field={field} /></FormControl><FormMessage /></FormItem> )}/>
+              <FormField control={form.control} name="cert_show_date" render={({ field }) => ( <FormItem className="flex flex-row items-center justify-between rounded-lg border p-3 shadow-sm"><FormLabel>Date</FormLabel><FormControl><Switch checked={field.value} onCheckedChange={field.onChange} /></FormControl></FormItem> )}/>
+              {watchedValues.cert_show_date && <>
+                <FormField control={form.control} name="cert_date_size" render={({ field }) => ( <FormItem><FormLabel>Date Text Size</FormLabel><FormControl><SizeStepper field={field} /></FormControl><FormMessage /></FormItem> )}/>
+              </>}
+
+              <FormField control={form.control} name="cert_show_signatures" render={({ field }) => ( <FormItem className="flex flex-row items-center justify-between rounded-lg border p-3 shadow-sm"><FormLabel>Signatures</FormLabel><FormControl><Switch checked={field.value} onCheckedChange={field.onChange} /></FormControl></FormItem> )}/>
+              {watchedValues.cert_show_signatures && <>
+                <div className="grid grid-cols-3 gap-2 items-end">
+                  <FormField control={form.control} name="cert_signatureName" render={({ field }) => ( <FormItem className="col-span-2"><FormLabel>Signature Name</FormLabel><FormControl><Input {...field} /></FormControl><FormMessage /></FormItem> )}/>
+                  <FormField control={form.control} name="cert_signatureName_size" render={({ field }) => ( <FormItem><FormLabel>Size</FormLabel><FormControl><SizeStepper field={field} /></FormControl></FormItem> )}/>
+                </div>
+
+                <div className="grid grid-cols-3 gap-2 items-end">
+                  <FormField control={form.control} name="cert_signatureTitle" render={({ field }) => ( <FormItem className="col-span-2"><FormLabel>Signature Title</FormLabel><FormControl><Input {...field} /></FormControl><FormMessage /></FormItem> )}/>
+                  <FormField control={form.control} name="cert_signatureTitle_size" render={({ field }) => ( <FormItem><FormLabel>Size</FormLabel><FormControl><SizeStepper field={field} /></FormControl></FormItem> )}/>
+                </div>
+              </>}
+              
 
                <Separator />
                <h4 className="font-semibold text-lg border-b pb-2">Default Assets</h4>
