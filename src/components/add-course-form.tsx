@@ -6,7 +6,7 @@ import { useForm, useFieldArray, SubmitHandler, Controller } from 'react-hook-fo
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { getFirebaseFirestore, getFirebaseStorage } from '@/lib/firebase';
-import { collection, addDoc, doc, updateDoc, serverTimestamp, writeBatch, getDoc, query, where, getDocs, deleteDoc, orderBy, documentId } from 'firebase/firestore';
+import { collection, addDoc, doc, updateDoc, serverTimestamp, writeBatch, getDoc, query, where, getDocs, deleteDoc, orderBy, documentId, increment } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL, deleteObject } from 'firebase/storage';
 import { v4 as uuidv4 } from 'uuid';
 import { useToast } from '@/hooks/use-toast';
@@ -644,10 +644,14 @@ export default function AddCourseForm({ allCourses, onCourseUpdated }: AddCourse
             if (isActuallyEditing) {
                 const courseRef = doc(db, 'courses', editCourseId!);
                 await updateDoc(courseRef, courseData);
+                 // If the course was published, we should not touch the enrollment count.
+                // If it's being published now from draft, we can consider resetting it.
+                // For simplicity, we will leave the enrollment count as is on updates.
                 toast({ title: "Course Updated!" });
                 onCourseUpdated?.();
             } else {
-                await addDoc(collection(db, 'courses'), { ...courseData, createdAt: serverTimestamp() });
+                const courseWithEnrollment = { ...courseData, createdAt: serverTimestamp(), enrollmentCount: 0 };
+                await addDoc(collection(db, 'courses'), courseWithEnrollment);
                 toast({ title: "Course Created!" });
                 onCourseUpdated ? onCourseUpdated() : reset();
             }

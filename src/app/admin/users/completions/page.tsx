@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
@@ -76,7 +77,6 @@ export default function ManageCompletionsPage() {
 
   // Filters
   const [dateFrom, setDateFrom] = useState<string>("");
-  the
   const [dateTo, setDateTo] = useState<string>("");
   const [logSearchTerm, setLogSearchTerm] = useState("");
 
@@ -406,6 +406,7 @@ export default function ManageCompletionsPage() {
         const email = r.userEmail ?? u?.email ?? "";
         const phone = r.userPhone ?? (u as any)?.phoneNumber ?? "";
         const gender = r.userGender ?? (u as any)?.gender ?? "";
+        const campus = r.userCampus || (u as any)?.campus || "N/A";
         const ladderName =
           r.userLadderName ??
           (() => {
@@ -420,7 +421,7 @@ export default function ManageCompletionsPage() {
           email,
           phone,
           gender,
-          r.userCampus || (u as any)?.campus || "N/A",
+          campus,
           ladderName,
           r.courseName || "",
           dateStr,
