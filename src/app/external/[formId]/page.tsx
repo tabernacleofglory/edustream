@@ -40,7 +40,7 @@ import {
   CardFooter,
 } from "@/components/ui/card";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { FileWarning, Lock, Loader2, PartyPopper } from "lucide-react";
+import { FileWarning, Lock, Loader2, PartyPopper, LogIn, UserPlus } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
@@ -426,12 +426,19 @@ const DynamicForm = ({ formConfig }: { formConfig: CustomForm }) => {
           <PartyPopper className="mx-auto h-12 w-12 text-green-500" />
           <CardTitle className="text-2xl">Registration Complete!</CardTitle>
           <CardDescription>
-            Welcome! You can now log in to access your dashboard.
+            You can now add another member or proceed to the login page.
           </CardDescription>
         </CardHeader>
-        <CardFooter>
-          <Button className="w-full" asChild>
-            <Link href="/login">Proceed to Login</Link>
+        <CardFooter className="flex-col gap-4">
+          <Button className="w-full" onClick={() => window.location.reload()}>
+            <UserPlus className="mr-2 h-4 w-4" />
+            Add New Member
+          </Button>
+          <Button variant="link" asChild>
+            <Link href="/login">
+              <LogIn className="mr-2 h-4 w-4" />
+              Proceed to Login
+            </Link>
           </Button>
         </CardFooter>
       </Card>
