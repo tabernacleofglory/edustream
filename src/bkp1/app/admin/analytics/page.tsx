@@ -568,30 +568,6 @@ export default function AnalyticsDashboard() {
     return groupedArray;
 }, [courseEngagementData, allCourseGroups]);
 
-  const learningPathSummary = useMemo(() => {
-      const summary = groupedCourseEngagement.map(group => {
-          const totals = group.courses.reduce((acc, course) => {
-              acc.enrollments += course.enrollments;
-              acc.completions += course.completions;
-              acc.likes += course.likes;
-              acc.comments += course.comments;
-              return acc;
-          }, { enrollments: 0, completions: 0, likes: 0, comments: 0 });
-          
-          return { title: group.title, ...totals };
-      });
-
-      const grandTotal = summary.reduce((acc, group) => {
-          acc.enrollments += group.enrollments;
-          acc.completions += group.completions;
-          acc.likes += group.likes;
-          acc.comments += group.comments;
-          return acc;
-      }, { enrollments: 0, completions: 0, likes: 0, comments: 0 });
-
-      return { summary, grandTotal };
-  }, [groupedCourseEngagement]);
-
 
   const handleSort = (key: SortKey) => {
     let direction: SortDirection = 'asc';
@@ -853,42 +829,6 @@ export default function AnalyticsDashboard() {
           </div>
         </CardHeader>
         <CardContent>
-            {learningPathSummary.summary.length > 0 && (
-                <div className="mb-6">
-                    <h3 className="font-semibold text-lg mb-2">Learning Path Summary</h3>
-                    <div className="border rounded-lg overflow-hidden">
-                        <Table>
-                            <TableHeader>
-                                <TableRow>
-                                    <TableHead>Learning Path</TableHead>
-                                    <TableHead className="text-center">Enrollments</TableHead>
-                                    <TableHead className="text-center">Completions</TableHead>
-                                    <TableHead className="text-center">Likes</TableHead>
-                                    <TableHead className="text-center">Comments</TableHead>
-                                </TableRow>
-                            </TableHeader>
-                            <TableBody>
-                                {learningPathSummary.summary.map(item => (
-                                    <TableRow key={item.title}>
-                                        <TableCell className="font-medium">{item.title}</TableCell>
-                                        <TableCell className="text-center">{item.enrollments}</TableCell>
-                                        <TableCell className="text-center">{item.completions}</TableCell>
-                                        <TableCell className="text-center">{item.likes}</TableCell>
-                                        <TableCell className="text-center">{item.comments}</TableCell>
-                                    </TableRow>
-                                ))}
-                                <TableRow className="font-bold bg-muted/50">
-                                    <TableCell>Grand Total</TableCell>
-                                    <TableCell className="text-center">{learningPathSummary.grandTotal.enrollments}</TableCell>
-                                    <TableCell className="text-center">{learningPathSummary.grandTotal.completions}</TableCell>
-                                    <TableCell className="text-center">{learningPathSummary.grandTotal.likes}</TableCell>
-                                    <TableCell className="text-center">{learningPathSummary.grandTotal.comments}</TableCell>
-                                </TableRow>
-                            </TableBody>
-                        </Table>
-                    </div>
-                </div>
-            )}
           <div className="space-y-4">
               {loading ? (
                   Array.from({ length: 2 }).map((_, i) => (
