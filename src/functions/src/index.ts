@@ -1,3 +1,4 @@
+
 import * as functions from "firebase-functions";
 import * as admin from "firebase-admin";
 import * as sgMail from "@sendgrid/mail";
@@ -6,7 +7,7 @@ import { onVideoDeleted, onVideoUpdate, transcodeVideo, updateVideoOnTranscodeCo
 admin.initializeApp();
 const db = admin.firestore();
 
-export const enrollInCourse = functions.https.onCall(async (data, context) => {
+export const enrollInCourse = functions.runWith({ memory: '512MB' }).https.onCall(async (data, context) => {
     if (!context.auth) {
         throw new functions.https.HttpsError('unauthenticated', 'You must be logged in to enroll.');
     }
@@ -261,3 +262,5 @@ export const syncVideos = functions.https.onCall(async (data, context) => {
 });
     
 export { onVideoDeleted, onVideoUpdate, transcodeVideo, updateVideoOnTranscodeComplete };
+
+    

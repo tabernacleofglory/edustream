@@ -37,7 +37,8 @@ import {
   Globe,
   Group,
   BookCheck,
-  Sparkles
+  Sparkles,
+  Users2
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
@@ -131,11 +132,11 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
           permission: 'viewUserManagement',
           subItems: [
             { href: "/admin/users", label: t('admin.nav.users.management', "User Management"), icon: Users, permission: 'manageUsers' },
+            { href: "/admin/users/completions", label: "Onsite Completions", icon: BookCheck, permission: 'manageCompletions' },
             { href: "/admin/ladders", label: t('admin.nav.users.ladders', "Ladders"), icon: Shield, permission: 'manageUsers' },
             { href: "/admin/speakers", label: t('admin.nav.users.speakers', "Speakers"), icon: UserRound, permission: 'manageContent' },
             { href: "/admin/promotions", label: t('admin.nav.users.promotions', "Promotion Requests"), icon: UserCheck, permission: 'managePromotions'},
             { href: "/admin/users/hp-requests", label: t('admin.nav.users.hp_requests', "HP Requests"), icon: UserPlus, permission: 'manageHpRequests' },
-            { href: "/admin/users/completions", label: "Completions", icon: BookCheck, permission: 'manageCompletions' },
           ],
         },
       ],
@@ -143,7 +144,15 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     {
       group: t('admin.nav.group.content', "Content"),
       items: [
-        { href: "/admin/courses", label: t('admin.nav.content.courses', "Courses"), icon: BookOpen, permission: 'viewCourseManagement' },
+        {
+          label: t('admin.nav.content.courses', "Courses"),
+          icon: BookOpen,
+          permission: 'viewCourseManagement',
+          subItems: [
+            { href: "/admin/courses", label: "Course Manager", icon: Settings },
+            { href: "/admin/courses/enrollments", label: "Enrollments", icon: Users2 },
+          ]
+        },
         { href: "/admin/content/groups", label: "Learning Paths", icon: Group, permission: 'manageContent' },
         { href: "/admin/forms", label: "Forms", icon: FileQuestion, permission: 'viewForms' },
         {
@@ -351,3 +360,5 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     </div>
   );
 }
+
+    
