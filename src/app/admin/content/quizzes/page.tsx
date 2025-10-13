@@ -14,7 +14,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { Loader2, Plus, Edit, Trash2, FileQuestion, Percent } from "lucide-react";
+import { Loader2, Plus, Edit, Trash2, FileQuestion, Percent, BarChart2 } from "lucide-react";
 import type { Quiz, QuizQuestion } from "@/lib/types";
 import { Skeleton } from "@/components/ui/skeleton";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
@@ -29,6 +29,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Slider } from "@/components/ui/slider";
 import { Switch } from "@/components/ui/switch";
 import { useDebounce } from 'use-debounce';
+import Link from 'next/link';
 
 
 const quizQuestionSchema = z.discriminatedUnion("type", [
@@ -481,9 +482,14 @@ export default function QuizzesPage() {
       <Card>
         <CardHeader className="flex flex-row items-center justify-between">
           <CardTitle>All Quizzes</CardTitle>
-          <Button onClick={() => { setEditingQuiz(null); setIsFormOpen(true); }}>
-            <Plus className="mr-2 h-4 w-4" /> Add New Quiz
-          </Button>
+          <div className="flex gap-2">
+            <Button asChild variant="outline">
+                <Link href="/admin/reports/quizzes"><BarChart2 className="mr-2 h-4 w-4" /> View Reports</Link>
+            </Button>
+            <Button onClick={() => { setEditingQuiz(null); setIsFormOpen(true); }}>
+                <Plus className="mr-2 h-4 w-4" /> Add New Quiz
+            </Button>
+          </div>
         </CardHeader>
         <CardContent>
             {loading ? (
@@ -548,4 +554,3 @@ export default function QuizzesPage() {
 
 
 
-    

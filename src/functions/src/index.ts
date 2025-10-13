@@ -6,6 +6,50 @@ import { onVideoDeleted, onVideoUpdate, transcodeVideo, updateVideoOnTranscodeCo
 admin.initializeApp();
 const db = admin.firestore();
 
+export const enrollInCourse = functions.https.onCall(async (data, context) => {
+    if (!context.auth) {
+        throw new functions.https.HttpsError('unauthenticated', 'You must be logged in to enroll.');
+    }
+
+    const userId = context.auth.uid;
+    const courseId = data.courseId;
+
+    if (!courseId) {
+        throw new functions.https.HttpsError('invalid-argument', 'Course ID is required.');
+    }
+
+    try {
+        const enrollmentRef = db.collection('enrollments').doc(`${userId}_${courseId}`);
+        const courseRef = db.collection('courses').doc(courseId);
+
+        // Use a transaction to ensure atomicity
+        await db.runTransaction(async (transaction) => {
+            const enrollmentDoc = await transaction.get(enrollmentRef);
+            if (enrollmentDoc.exists) {
+                // User is already enrolled, do nothing.
+                return;
+            }
+
+            // Create enrollment document
+            transaction.set(enrollmentRef, {
+                userId: userId,
+                courseId: courseId,
+                enrolledAt: admin.firestore.FieldValue.serverTimestamp(),
+            });
+
+            // Increment enrollment count on the course
+            transaction.update(courseRef, { enrollmentCount: admin.firestore.FieldValue.increment(1) });
+        });
+        
+        return { success: true, message: 'Successfully enrolled in the course.' };
+
+    } catch (error) {
+        console.error("Error enrolling in course:", error);
+        throw new functions.https.HttpsError('internal', 'An error occurred while enrolling in the course.');
+    }
+});
+
+
 export const sendCertificateEmail = functions.https.onCall(async (data, context) => {
     const sendgridApiKey = functions.config().sendgrid?.key;
     if (!sendgridApiKey) {

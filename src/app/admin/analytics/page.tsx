@@ -31,11 +31,11 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { Button } from "@/components/ui/button";
 import { Bar, BarChart, CartesianGrid, XAxis, YAxis, Tooltip, ResponsiveContainer } from "recharts";
 import { ChartConfig, ChartContainer, ChartTooltipContent } from "@/components/ui/chart";
-import { collection, getDocs, query, where, getCountFromServer, documentId, orderBy, writeBatch, doc } from "firebase/firestore";
+import { collection, getDocs, query, where, getCountFromServer, documentId, orderBy } from "firebase/firestore";
 import { getFirebaseFirestore } from "@/lib/firebase";
 import type { User, Course, UserProgress as UserProgressType, Video, Enrollment, Post, Quiz, UserQuizResult, QuizQuestion, CourseGroup } from "@/lib/types";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Eye, Download, ArrowUpDown, MessageSquare, ThumbsUp, Share2, ChevronLeft, ChevronRight, Repeat2, Calendar as CalendarIcon, X as XIcon, CheckCircle, XCircle, Trash2 } from "lucide-react";
+import { Eye, Download, ArrowUpDown, MessageSquare, ThumbsUp, Share2, ChevronLeft, ChevronRight, Repeat2, Calendar as CalendarIcon, X as XIcon, CheckCircle, XCircle, Trash2, BookCopy, FileQuestion } from "lucide-react";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import Papa from 'papaparse';
@@ -46,10 +46,6 @@ import { Calendar } from "@/components/ui/calendar";
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
-import { Checkbox } from "@/components/ui/checkbox";
-import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
-import { Label } from "@/components/ui/label";
-
 
 interface Campus {
   id: string;
@@ -105,23 +101,17 @@ interface CourseEngagementData {
     courseId: string;
     courseTitle: string;
     enrollments: number;
+    completions: number;
     likes: number;
     comments: number;
 }
 
-interface QuizReportData {
-    resultId: string;
-    userId: string;
-    userName: string;
-    courseId: string;
-    courseTitle: string;
+interface QuizPerformanceSummary {
     quizId: string;
     quizTitle: string;
-    score: number;
-    passed: boolean;
-    attemptedAt: Date;
-    answers: Record<string, any>;
-    quizData?: Quiz;
+    totalAttempts: number;
+    passCount: number;
+    failCount: number;
 }
 
 
@@ -154,31 +144,25 @@ export default function AnalyticsDashboard() {
   const [allCampuses, setAllCampuses] = useState<Campus[]>([]);
   const [socialData, setSocialData] = useState<SocialInteractionData[]>([]);
   const [courseEngagementData, setCourseEngagementData] = useState<CourseEngagementData[]>([]);
-  const [quizReportData, setQuizReportData] = useState<QuizReportData[]>([]);
   const [userRoleData, setUserRoleData] = useState<{ name: string; users: number }[]>([]);
   const [hpRequestData, setHpRequestData] = useState<{ day: string; requests: number }[]>([]);
+  const [quizPerformanceSummary, setQuizPerformanceSummary] = useState<QuizPerformanceSummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [isClient, setIsClient] = useState(false);
   const [selectedProgressDetail, setSelectedProgressDetail] = useState<ProgressDetail | null>(null);
-  const [viewingQuizResult, setViewingQuizResult] = useState<QuizReportData | null>(null);
   const dashboardRef = useRef<HTMLDivElement>(null);
-  const courseEngagementRef = useRef<HTMLDivElement>(null);
-  const quizReportRef = useRef<HTMLDivElement>(null);
   const [sortConfig, setSortConfig] = useState < {
     key: SortKey;
     direction: SortDirection
   } | null > (null);
   const [dateRange, setDateRange] = useState < DateRange | undefined > ();
 
-  const [courseEngagementPage, setCourseEngagementPage] = useState(1);
-  const [courseEngagementPageSize, setCourseEngagementPageSize] = useState(10);
   const [socialDataPage, setSocialDataPage] = useState(1);
   const [socialDataPageSize, setSocialDataPageSize] = useState(10);
-  const [quizReportPage, setQuizReportPage] = useState(1);
-  const [quizReportPageSize, setQuizReportPageSize] = useState(10);
   const [detailedReportPage, setDetailedReportPage] = useState(1);
   const [detailedReportPageSize, setDetailedReportPageSize] = useState(10);
-  const [selectedQuizResults, setSelectedQuizResults] = useState<string[]>([]);
+  const [quizPerformancePage, setQuizPerformancePage] = useState(1);
+  const [quizPerformancePageSize, setQuizPerformancePageSize] = useState(10);
   const { toast } = useToast();
   const db = getFirebaseFirestore();
 
@@ -194,11 +178,12 @@ export default function AnalyticsDashboard() {
       const courseGroupsCollection = collection(db, 'courseGroups');
       const videosCollection = query(collection(db, 'Contents'), where("Type", "in", ["video", "youtube", "googledrive"]));
       const quizzesCollection = collection(db, 'quizzes');
-      const quizResultsCollection = query(collection(db, 'userQuizResults'), orderBy('attemptedAt', 'desc'));
+      const quizResultsCollection = collection(db, 'userQuizResults');
       const campusesCollection = collection(db, 'Campus');
       const communityPostsCollection = collection(db, 'communityPosts');
+      const enrollmentsCollection = collection(db, 'enrollments');
 
-      const [usersSnapshot, coursesSnapshot, courseGroupsSnapshot, videosSnapshot, quizzesSnapshot, quizResultsSnapshot, campusesSnapshot, communityPostsSnapshot] = await Promise.all([
+      const [usersSnapshot, coursesSnapshot, courseGroupsSnapshot, videosSnapshot, quizzesSnapshot, quizResultsSnapshot, campusesSnapshot, communityPostsSnapshot, enrollmentsSnapshot] = await Promise.all([
         getDocs(usersCollection),
         getDocs(coursesCollection),
         getDocs(courseGroupsCollection),
@@ -207,6 +192,7 @@ export default function AnalyticsDashboard() {
         getDocs(quizResultsCollection),
         getDocs(campusesCollection),
         getDocs(communityPostsCollection),
+        getDocs(enrollmentsCollection),
       ]);
 
       const usersList = usersSnapshot.docs.map(doc => ({
@@ -229,10 +215,7 @@ export default function AnalyticsDashboard() {
         id: doc.id,
         ...doc.data()
       } as Quiz));
-      const quizResultsList = quizResultsSnapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data()
-      } as UserQuizResult));
+      const quizResultsList = quizResultsSnapshot.docs.map(doc => doc.data() as UserQuizResult);
       const campusesList = campusesSnapshot.docs.map(doc => ({
         id: doc.id,
         ...doc.data()
@@ -241,6 +224,7 @@ export default function AnalyticsDashboard() {
         id: doc.id,
         ...doc.data()
       } as Post));
+      const enrollmentsList = enrollmentsSnapshot.docs.map(doc => doc.data() as Enrollment);
 
       setAllUsers(usersList);
       setAllCourses(coursesList);
@@ -274,27 +258,6 @@ export default function AnalyticsDashboard() {
       setHpRequestData(hpChartData);
 
 
-      const quizReport = quizResultsList.map(result => {
-        const user = usersList.find(u => u.id === result.userId);
-        const course = coursesList.find(c => c.id === result.courseId);
-        const quiz = quizzesList.find(q => q.id === result.quizId);
-        return {
-          resultId: result.id,
-          userId: result.userId,
-          userName: user?.displayName || 'Unknown User',
-          courseId: result.courseId,
-          courseTitle: course?.title || 'Unknown Course',
-          quizId: result.quizId,
-          quizTitle: quiz?.title || 'Unknown Quiz',
-          score: result.score,
-          passed: result.passed,
-          attemptedAt: result.attemptedAt.toDate(),
-          answers: result.answers,
-          quizData: quiz
-        };
-      });
-      setQuizReportData(quizReport as QuizReportData[]);
-
       const socialDataPromises = postsList.map(async (post) => {
         const repliesQuery = query(collection(db, 'communityPosts', post.id, 'replies'));
         const repliesSnapshot = await getCountFromServer(repliesQuery);
@@ -310,21 +273,59 @@ export default function AnalyticsDashboard() {
       });
       const socialInteractionData = await Promise.all(socialDataPromises);
       setSocialData(socialInteractionData);
+      
+      const completionCountsByCourse = enrollmentsList.reduce((acc, enrollment) => {
+          if (enrollment.completedAt) {
+              acc[enrollment.courseId] = (acc[enrollment.courseId] || 0) + 1;
+          }
+          return acc;
+      }, {} as Record<string, number>);
 
-      const courseEngagement = coursesList.map(course => {
+      const courseEngagementPromises = coursesList.map(async (course) => {
         const videosInCourse = videosList.filter(video => course.videos?.includes(video.id));
-        const totalLikes = videosInCourse.reduce((sum, video) => sum + (video.likeCount || 0), 0);
-        const totalComments = videosInCourse.reduce((sum, video) => sum + (video.commentCount || 0), 0);
+        
+        const likeCounts = await Promise.all(videosInCourse.map(async video => {
+            const likesQuery = query(collection(db, 'Contents', video.id, 'likes'));
+            const snapshot = await getCountFromServer(likesQuery);
+            return snapshot.data().count;
+        }));
+        const commentCounts = await Promise.all(videosInCourse.map(async video => {
+            const commentsQuery = query(collection(db, 'Contents', video.id, 'comments'));
+            const snapshot = await getCountFromServer(commentsQuery);
+            return snapshot.data().count;
+        }));
+
+        const totalLikes = likeCounts.reduce((sum, count) => sum + count, 0);
+        const totalComments = commentCounts.reduce((sum, count) => sum + count, 0);
 
         return {
           courseId: course.id,
           courseTitle: course.title,
           enrollments: course.enrollmentCount || 0,
+          completions: completionCountsByCourse[course.id] || 0,
           likes: totalLikes,
           comments: totalComments,
         };
       });
-      setCourseEngagementData(courseEngagement);
+
+      const courseEngagement = await Promise.all(courseEngagementPromises);
+      setCourseEngagementData(courseEngagement.filter(c => c.enrollments > 0));
+
+      // Process Quiz Performance Summary
+      const quizPerformance = quizzesList.map(quiz => {
+        const resultsForQuiz = quizResultsList.filter(r => r.quizId === quiz.id);
+        const totalAttempts = resultsForQuiz.length;
+        const passCount = resultsForQuiz.filter(r => r.passed).length;
+        return {
+            quizId: quiz.id,
+            quizTitle: quiz.title,
+            totalAttempts: totalAttempts,
+            passCount: passCount,
+            failCount: totalAttempts - passCount,
+        };
+      });
+      setQuizPerformanceSummary(quizPerformance.filter(q => q.totalAttempts > 0));
+
 
       return {
         usersList,
@@ -521,6 +522,46 @@ export default function AnalyticsDashboard() {
   }, [allCampuses, allUsers, userProgressData]);
   
   const totalHpRequests = useMemo(() => hpRequestData.reduce((sum, item) => sum + item.requests, 0), [hpRequestData]);
+  
+  const groupedCourseEngagement = useMemo(() => {
+    const groups: { [key: string]: CourseEngagementData[] } = {};
+    const uncategorizedCourses: CourseEngagementData[] = [];
+
+    const courseToGroupMap = new Map<string, string[]>();
+    allCourseGroups.forEach(group => {
+        group.courseIds.forEach(courseId => {
+            if (!courseToGroupMap.has(courseId)) {
+                courseToGroupMap.set(courseId, []);
+            }
+            courseToGroupMap.get(courseId)!.push(group.title);
+        });
+    });
+
+    courseEngagementData.forEach(course => {
+        const groupTitles = courseToGroupMap.get(course.courseId);
+        if (groupTitles && groupTitles.length > 0) {
+            groupTitles.forEach(title => {
+                if (!groups[title]) {
+                    groups[title] = [];
+                }
+                groups[title].push(course);
+            });
+        } else {
+            uncategorizedCourses.push(course);
+        }
+    });
+    
+    const groupedArray = Object.entries(groups).map(([title, courses]) => ({
+      title,
+      courses,
+    }));
+    
+    if(uncategorizedCourses.length > 0) {
+      groupedArray.push({ title: 'Uncategorized', courses: uncategorizedCourses });
+    }
+
+    return groupedArray;
+}, [courseEngagementData, allCourseGroups]);
 
 
   const handleSort = (key: SortKey) => {
@@ -593,12 +634,20 @@ export default function AnalyticsDashboard() {
   };
 
   const handleExportCourseEngagementCSV = () => {
-    const dataToExport = courseEngagementData.map(item => ({
-      "Course": item.courseTitle,
-      "Enrollments": item.enrollments,
-      "Likes": item.likes,
-      "Comments": item.comments,
-    }));
+    const dataToExport = groupedCourseEngagement.flatMap(group => 
+        group.courses.map(item => ({
+            "Learning Path": group.title,
+            "Course": item.courseTitle,
+            "Enrollments": item.enrollments,
+            "Completions": item.completions,
+            "Likes": item.likes,
+            "Comments": item.comments,
+        }))
+    );
+    if (dataToExport.length === 0) {
+        toast({ variant: 'destructive', title: 'No engagement data to export.' });
+        return;
+    }
     const csv = Papa.unparse(dataToExport);
     const blob = new Blob([csv], {
       type: "text/csv;charset=utf-8;"
@@ -612,109 +661,22 @@ export default function AnalyticsDashboard() {
     document.body.removeChild(link);
   };
 
-  const courseEngagementTotalPages = Math.ceil(courseEngagementData.length / courseEngagementPageSize);
-  const currentCourseEngagementData = courseEngagementData.slice(
-    (courseEngagementPage - 1) * courseEngagementPageSize,
-    courseEngagementPage * courseEngagementPageSize
-  );
-
   const socialDataTotalPages = Math.ceil(socialData.length / socialDataPageSize);
   const currentSocialData = socialData.slice(
     (socialDataPage - 1) * socialDataPageSize,
     socialDataPage * socialDataPageSize
   );
 
-  const filteredQuizReportData = useMemo(() => {
-    let filtered = [...quizReportData];
-
-    if (selectedUser !== 'all') {
-      filtered = filtered.filter(r => r.userId === selectedUser);
-    }
-    
-    // Updated logic to handle course groups
-    if (selectedCourse !== 'all') {
-        if (selectedCourse.startsWith('group_')) {
-            const groupId = selectedCourse.replace('group_', '');
-            const group = allCourseGroups.find(g => g.id === groupId);
-            const courseIdsInGroup = new Set(group?.courseIds || []);
-            filtered = filtered.filter(r => courseIdsInGroup.has(r.courseId));
-        } else {
-            filtered = filtered.filter(r => r.courseId === selectedCourse);
-        }
-    }
-    
-    if (selectedCampus !== 'all') {
-      const campus = allCampuses.find(c => c.id === selectedCampus);
-      if (campus) {
-        const userIdsInCampus = new Set(allUsers.filter(u => u.campus === campus["Campus Name"]).map(u => u.id));
-        filtered = filtered.filter(r => userIdsInCampus.has(r.userId));
-      }
-    }
-    if (dateRange?.from) {
-      filtered = filtered.filter(r => r.attemptedAt >= startOfDay(dateRange.from!));
-    }
-    if (dateRange?.to) {
-      filtered = filtered.filter(r => r.attemptedAt <= endOfDay(dateRange.to!));
-    }
-
-    return filtered;
-  }, [quizReportData, selectedUser, selectedCourse, allCourseGroups, selectedCampus, dateRange, allUsers, allCampuses]);
-
-  const handleExportQuizReportCSV = () => {
-    const dataToExport = filteredQuizReportData.map(item => ({
-      "User": item.userName,
-      "Course": item.courseTitle,
-      "Quiz": item.quizTitle,
-      "Score": item.score,
-      "Status": item.passed ? "Passed" : "Failed",
-      "Date": format(item.attemptedAt, 'yyyy-MM-dd HH:mm'),
-    }));
-    const csv = Papa.unparse(dataToExport);
-    const blob = new Blob([csv], {
-      type: "text/csv;charset=utf-8;"
-    });
-    const link = document.createElement("a");
-    const url = URL.createObjectURL(blob);
-    link.setAttribute("href", url);
-    link.setAttribute("download", "quiz_performance_report.csv");
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-  };
-  
-    const handleDeleteSelectedQuizResults = async () => {
-        if (selectedQuizResults.length === 0) {
-            toast({ variant: 'destructive', title: 'No records selected' });
-            return;
-        }
-
-        const batch = writeBatch(db);
-        selectedQuizResults.forEach(resultId => {
-            const docRef = doc(db, 'userQuizResults', resultId);
-            batch.delete(docRef);
-        });
-
-        try {
-            await batch.commit();
-            toast({ title: `${selectedQuizResults.length} records deleted successfully` });
-            setQuizReportData(prev => prev.filter(r => !selectedQuizResults.includes(r.resultId)));
-            setSelectedQuizResults([]);
-        } catch (error) {
-            toast({ variant: 'destructive', title: 'Failed to delete records' });
-        }
-    };
-
-
-  const quizReportTotalPages = Math.ceil(filteredQuizReportData.length / quizReportPageSize);
-  const currentQuizReportData = filteredQuizReportData.slice(
-    (quizReportPage - 1) * quizReportPageSize,
-    quizReportPage * quizReportPageSize
-  );
-
   const detailedReportTotalPages = Math.ceil(sortedAndFilteredProgress.length / detailedReportPageSize);
   const currentDetailedReportData = sortedAndFilteredProgress.slice(
     (detailedReportPage - 1) * detailedReportPageSize,
     (detailedReportPage * detailedReportPageSize)
+  );
+
+  const quizPerformanceTotalPages = Math.ceil(quizPerformanceSummary.length / quizPerformancePageSize);
+  const currentQuizPerformanceData = quizPerformanceSummary.slice(
+      (quizPerformancePage - 1) * quizPerformancePageSize,
+      quizPerformancePage * quizPerformancePageSize
   );
 
 
@@ -729,66 +691,10 @@ export default function AnalyticsDashboard() {
       </div>
     );
   }
-  
-    const renderQuizResponses = (result: QuizReportData) => {
-        if (!result.quizData || !result.answers) return <p>No response data available.</p>;
-
-        return result.quizData.questions.map((q, index) => {
-            const userAnswer = result.answers[`question_${q.id}`];
-            let isCorrect = false;
-            if (q.type === 'multiple-choice') {
-                isCorrect = Number(userAnswer) === q.correctAnswerIndex;
-            } else if (q.type === 'multiple-select') {
-                const correct = new Set(q.correctAnswerIndexes);
-                const answered = new Set(userAnswer);
-                isCorrect = correct.size === answered.size && [...correct].every(idx => answered.has(idx));
-            } else if (q.type === 'free-text') {
-                isCorrect = true; // Manually graded
-            }
-
-            return (
-                <div key={q.id} className="mb-4 p-3 border rounded-md">
-                    <p className="font-semibold">{index + 1}. {q.questionText}</p>
-                    {q.type === 'multiple-choice' && (
-                        <RadioGroup value={String(userAnswer)} disabled className="mt-2 space-y-1">
-                            {q.options.map((opt, i) => (
-                                <div key={i} className={cn("flex items-center space-x-2 p-2 rounded-md", 
-                                    i === q.correctAnswerIndex && "bg-green-100 dark:bg-green-900",
-                                    i === Number(userAnswer) && i !== q.correctAnswerIndex && "bg-red-100 dark:bg-red-900"
-                                )}>
-                                    <RadioGroupItem value={String(i)} id={`${q.id}-${i}`} />
-                                    <Label htmlFor={`${q.id}-${i}`}>{opt}</Label>
-                                </div>
-                            ))}
-                        </RadioGroup>
-                    )}
-                     {q.type === 'multiple-select' && (
-                        <div className="mt-2 space-y-1">
-                            {q.options.map((opt, i) => (
-                                 <div key={i} className={cn("flex items-center space-x-2 p-2 rounded-md", 
-                                    q.correctAnswerIndexes?.includes(i) && "bg-green-100 dark:bg-green-900",
-                                    userAnswer?.includes(i) && !q.correctAnswerIndexes?.includes(i) && "bg-red-100 dark:bg-red-900"
-                                )}>
-                                    <Checkbox checked={userAnswer?.includes(i)} disabled />
-                                    <Label>{opt}</Label>
-                                </div>
-                            ))}
-                        </div>
-                    )}
-                    {q.type === 'free-text' && (
-                        <div className="mt-2 p-2 bg-muted rounded-md text-sm">
-                            <p className="font-semibold">User's Answer:</p>
-                            <p>{userAnswer || '(No answer provided)'}</p>
-                        </div>
-                    )}
-                </div>
-            );
-        });
-    }
 
   return (
     <div className="space-y-8" ref={dashboardRef}>
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
         <Card className="lg:col-span-1">
           <CardHeader>
             <CardTitle>Course Engagement</CardTitle>
@@ -836,7 +742,7 @@ export default function AnalyticsDashboard() {
             </div>
           </CardContent>
         </Card>
-        <Card className="lg:col-span-2">
+        <Card className="lg:col-span-1">
           <CardHeader>
             <CardTitle>Campus Progress</CardTitle>
             <CardDescription>Average course completion percentage by campus.</CardDescription>
@@ -904,11 +810,11 @@ export default function AnalyticsDashboard() {
         </Card>
       </div>
 
-      <Card ref={courseEngagementRef}>
+      <Card>
         <CardHeader className="flex-col md:flex-row md:items-center md:justify-between">
           <div>
             <CardTitle>Course Engagement Report</CardTitle>
-            <CardDescription>Enrollments, likes, and comments for each course.</CardDescription>
+            <CardDescription>Enrollments, completions, likes, and comments for each course.</CardDescription>
           </div>
           <div className="flex gap-2 mt-4 md:mt-0">
             <Button onClick={handleExportCourseEngagementCSV} variant="outline" disabled={courseEngagementData.length === 0}>
@@ -918,318 +824,151 @@ export default function AnalyticsDashboard() {
           </div>
         </CardHeader>
         <CardContent>
-          <div className="overflow-x-auto">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Course</TableHead>
-                  <TableHead className="text-center">Enrollments</TableHead>
-                  <TableHead className="text-center">Likes</TableHead>
-                  <TableHead className="text-center">Comments</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {loading ? (
-                  Array.from({ length: 3 }).map((_, i) => (
-                    <TableRow key={i}>
-                      <TableCell><Skeleton className="h-4 w-48" /></TableCell>
-                      <TableCell className="text-center"><Skeleton className="h-4 w-8 mx-auto" /></TableCell>
-                      <TableCell className="text-center"><Skeleton className="h-4 w-8 mx-auto" /></TableCell>
-                      <TableCell className="text-center"><Skeleton className="h-4 w-8 mx-auto" /></TableCell>
-                    </TableRow>
+          <div className="space-y-4">
+              {loading ? (
+                  Array.from({ length: 2 }).map((_, i) => (
+                      <div key={i}>
+                          <Skeleton className="h-6 w-1/4 mb-2" />
+                          <Skeleton className="h-24 w-full" />
+                      </div>
                   ))
-                ) : (
-                  currentCourseEngagementData.map((item) => (
-                    <TableRow key={item.courseId}>
-                      <TableCell className="font-medium">{item.courseTitle}</TableCell>
-                      <TableCell className="text-center">{item.enrollments}</TableCell>
-                      <TableCell className="text-center">{item.likes}</TableCell>
-                      <TableCell className="text-center">{item.comments}</TableCell>
-                    </TableRow>
+              ) : groupedCourseEngagement.length > 0 ? (
+                  groupedCourseEngagement.map(group => (
+                      <div key={group.title}>
+                          <h3 className="font-semibold text-lg mb-2 flex items-center gap-2"><BookCopy className="h-5 w-5"/>{group.title}</h3>
+                          <div className="border rounded-lg overflow-hidden">
+                              <Table>
+                                  <TableHeader>
+                                      <TableRow>
+                                          <TableHead>Course</TableHead>
+                                          <TableHead className="text-center">Enrollments</TableHead>
+                                          <TableHead className="text-center">Completions</TableHead>
+                                          <TableHead className="text-center">Likes</TableHead>
+                                          <TableHead className="text-center">Comments</TableHead>
+                                      </TableRow>
+                                  </TableHeader>
+                                  <TableBody>
+                                      {group.courses.map(item => (
+                                          <TableRow key={item.courseId}>
+                                              <TableCell className="font-medium">{item.courseTitle}</TableCell>
+                                              <TableCell className="text-center">{item.enrollments}</TableCell>
+                                              <TableCell className="text-center">{item.completions}</TableCell>
+                                              <TableCell className="text-center">{item.likes}</TableCell>
+                                              <TableCell className="text-center">{item.comments}</TableCell>
+                                          </TableRow>
+                                      ))}
+                                  </TableBody>
+                              </Table>
+                          </div>
+                      </div>
                   ))
-                )}
-              </TableBody>
-            </Table>
-          </div>
-          {courseEngagementData.length === 0 && !loading && (
-            <div className="text-center p-8 text-muted-foreground">
-              No course engagement data available.
-            </div>
-          )}
-        </CardContent>
-        {courseEngagementTotalPages > 1 && (
-          <CardFooter className="flex justify-end items-center gap-4">
-            <div className="flex items-center gap-2 text-sm text-muted-foreground">
-              <span>Rows per page</span>
-              <Select
-                value={`${courseEngagementPageSize}`}
-                onValueChange={(value) => {
-                  setCourseEngagementPageSize(Number(value));
-                  setCourseEngagementPage(1);
-                }}
-              >
-                <SelectTrigger className="w-[70px]">
-                  <SelectValue placeholder={`${courseEngagementPageSize}`} />
-                </SelectTrigger>
-                <SelectContent>
-                  {[10, 25, 50, 100].map(size => (
-                    <SelectItem key={size} value={`${size}`}>{size}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <span className="text-sm text-muted-foreground">
-              Page {courseEngagementPage} of {courseEngagementTotalPages}
-            </span>
-            <div className="flex items-center gap-2">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setCourseEngagementPage(prev => Math.max(prev - 1, 1))}
-                disabled={courseEngagementPage === 1}
-              >
-                <ChevronLeft className="h-4 w-4" />
-                Previous
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setCourseEngagementPage(prev => Math.min(prev + 1, courseEngagementTotalPages))}
-                disabled={courseEngagementPage === courseEngagementTotalPages}
-              >
-                Next
-                <ChevronRight className="h-4 w-4" />
-              </Button>
-            </div>
-          </CardFooter>
-        )}
-      </Card>
-
-      <Card ref={quizReportRef}>
-        <CardHeader>
-          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-            <div>
-              <CardTitle>Quiz Performance Report</CardTitle>
-              <CardDescription>User scores and pass / fail status for all quiz attempts.</CardDescription>
-            </div>
-            <div className="flex flex-wrap gap-2">
-               {selectedQuizResults.length > 0 && (
-                <Button variant="destructive" onClick={handleDeleteSelectedQuizResults}>
-                    <Trash2 className="mr-2 h-4 w-4" />
-                    Delete Selected ({selectedQuizResults.length})
-                </Button>
+              ) : (
+                  <div className="text-center p-8 text-muted-foreground">
+                      No course engagement data available.
+                  </div>
               )}
-              <Button onClick={handleExportQuizReportCSV} variant="outline" disabled={filteredQuizReportData.length === 0}>
-                <Download className="mr-2 h-4 w-4" />
-                Export CSV
-              </Button>
-            </div>
           </div>
-          <div className="flex flex-col sm:flex-row items-center gap-4 mt-4 flex-wrap">
-            <Select value={selectedUser} onValueChange={setSelectedUser}>
-              <SelectTrigger className="w-full sm:w-auto flex-grow">
-                <SelectValue placeholder="Select User" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Users</SelectItem>
-                {allUsers.map((user) => (
-                  <SelectItem key={user.id} value={user.id}>{user.displayName}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <Select value={selectedCourse} onValueChange={setSelectedCourse}>
-              <SelectTrigger className="w-full sm:w-auto flex-grow">
-                <SelectValue placeholder="Select Course or Learning Path" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Courses &amp; Paths</SelectItem>
-                <SelectGroup>
-                  <SelectLabel>Learning Paths</SelectLabel>
-                  {allCourseGroups.map((group) => (
-                    <SelectItem key={group.id} value={`group_${group.id}`}>{group.title}</SelectItem>
-                  ))}
-                </SelectGroup>
-                <SelectGroup>
-                  <SelectLabel>Courses</SelectLabel>
-                  {allCourses.map((course) => (
-                    <SelectItem key={course.id} value={course.id}>{course.title}</SelectItem>
-                  ))}
-                </SelectGroup>
-              </SelectContent>
-            </Select>
-            <Select value={selectedCampus} onValueChange={setSelectedCampus}>
-              <SelectTrigger className="w-full sm:w-auto flex-grow">
-                <SelectValue placeholder="Select Campus" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Campuses</SelectItem>
-                {campusesWithProgress.map((campus) => (
-                  <SelectItem key={campus.id} value={campus.id}>{campus["Campus Name"]}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <Popover>
-              <PopoverTrigger asChild>
-                <Button id="date-quiz" variant={"outline"} className={cn("w-full sm:w-auto justify-start text-left font-normal", !dateRange && "text-muted-foreground")}>
-                  <CalendarIcon className="mr-2 h-4 w-4" />
-                  {dateRange?.from ? (
-                    dateRange.to ? (
-                      <>
-                        {format(dateRange.from, "LLL dd, y")} -{" "}
-                        {format(dateRange.to, "LLL dd, y")}
-                      </>
-                    ) : (
-                      format(dateRange.from, "LLL dd, y")
-                    )
-                  ) : (
-                    <span>Pick a date range</span>
-                  )}
-                </Button>
-              </PopoverTrigger>
-              <PopoverContent className="w-auto p-0" align="start">
-                <Calendar initialFocus mode="range" defaultMonth={dateRange?.from} selected={dateRange} onSelect={setDateRange} numberOfMonths={2} />
-              </PopoverContent>
-            </Popover>
-            {dateRange && <Button variant="ghost" size="icon" onClick={() => setDateRange(undefined)}><XIcon className="h-4 w-4" /></Button>}
-          </div>
-        </CardHeader>
-        <CardContent>
-          <div className="overflow-x-auto">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                   <TableHead className="w-[50px]">
-                    <Checkbox
-                        checked={selectedQuizResults.length > 0 && selectedQuizResults.length === currentQuizReportData.length}
-                        onCheckedChange={(checked) => {
-                            if (checked) {
-                                setSelectedQuizResults(currentQuizReportData.map(r => r.resultId));
-                            } else {
-                                setSelectedQuizResults([]);
-                            }
-                        }}
-                    />
-                  </TableHead>
-                  <TableHead>User</TableHead>
-                  <TableHead>Course</TableHead>
-                  <TableHead>Quiz</TableHead>
-                  <TableHead className="text-center">Score</TableHead>
-                  <TableHead className="text-center">Status</TableHead>
-                  <TableHead>Date</TableHead>
-                  <TableHead className="text-right">Details</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {loading ? (
-                  Array.from({ length: 3 }).map((_, i) => (
-                    <TableRow key={i}>
-                        <TableCell><Skeleton className="h-4 w-4" /></TableCell>
-                      <TableCell><Skeleton className="h-4 w-24" /></TableCell>
-                      <TableCell><Skeleton className="h-4 w-32" /></TableCell>
-                      <TableCell><Skeleton className="h-4 w-24" /></TableCell>
-                      <TableCell className="text-center"><Skeleton className="h-4 w-12 mx-auto" /></TableCell>
-                      <TableCell className="text-center"><Skeleton className="h-6 w-20 mx-auto" /></TableCell>
-                      <TableCell><Skeleton className="h-4 w-20" /></TableCell>
-                       <TableCell className="text-right"><Skeleton className="h-8 w-8 rounded-md" /></TableCell>
-                    </TableRow>
-                  ))
-                ) : (
-                  currentQuizReportData.map((item) => (
-                    <TableRow key={item.resultId} data-state={selectedQuizResults.includes(item.resultId) && "selected"}>
-                      <TableCell>
-                        <Checkbox
-                            checked={selectedQuizResults.includes(item.resultId)}
-                            onCheckedChange={(checked) => {
-                                if (checked) {
-                                    setSelectedQuizResults([...selectedQuizResults, item.resultId]);
-                                } else {
-                                    setSelectedQuizResults(selectedQuizResults.filter(id => id !== item.resultId));
-                                }
-                            }}
-                        />
-                      </TableCell>
-                      <TableCell className="font-medium">{item.userName}</TableCell>
-                      <TableCell>{item.courseTitle}</TableCell>
-                      <TableCell>{item.quizTitle}</TableCell>
-                      <TableCell className="text-center font-semibold">{item.score.toFixed(0)}%</TableCell>
-                      <TableCell className="text-center">
-                        <Badge variant={item.passed ? "default" : "destructive"} className="gap-1">
-                          {item.passed ? <CheckCircle className="h-3 w-3" /> : <XCircle className="h-3 w-3" />}
-                          {item.passed ? 'Passed' : 'Failed'}
-                        </Badge>
-                      </TableCell>
-                      <TableCell>{format(item.attemptedAt, 'MMM d, yyyy')}</TableCell>
-                      <TableCell className="text-right">
-                        <Button variant="ghost" size="icon" onClick={() => setViewingQuizResult(item)}>
-                            <Eye className="h-4 w-4" />
-                        </Button>
-                      </TableCell>
-                    </TableRow>
-                  ))
-                )}
-              </TableBody>
-            </Table>
-          </div>
-          {quizReportData.length === 0 && !loading && (
-            <div className="text-center p-8 text-muted-foreground">
-              No quiz attempts have been recorded yet.
-            </div>
-          )}
         </CardContent>
-        {quizReportTotalPages > 1 && (
-          <CardFooter className="flex justify-end items-center gap-4">
-            <div className="flex items-center gap-2 text-sm text-muted-foreground">
-              <span>Rows per page</span>
-              <Select
-                value={`${quizReportPageSize}`}
-                onValueChange={(value) => {
-                  setQuizReportPageSize(Number(value));
-                  setQuizReportPage(1);
-                }}
-              >
-                <SelectTrigger className="w-[70px]">
-                  <SelectValue placeholder={`${quizReportPageSize}`} />
-                </SelectTrigger>
-                <SelectContent>
-                  {[10, 25, 50, 100].map(size => (
-                    <SelectItem key={size} value={`${size}`}>{size}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <span className="text-sm text-muted-foreground">
-              Page {quizReportPage} of {quizReportTotalPages}
-            </span>
-            <div className="flex items-center gap-2">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setQuizReportPage(prev => Math.max(prev - 1, 1))}
-                disabled={quizReportPage === 1}
-              >
-                <ChevronLeft className="h-4 w-4" /> Previous
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setQuizReportPage(prev => Math.min(prev + 1, quizReportTotalPages))}
-                disabled={quizReportPage === quizReportTotalPages}
-              >
-                Next <ChevronRight className="h-4 w-4" />
-              </Button>
-            </div>
-          </CardFooter>
-        )}
       </Card>
       
       <Card>
         <CardHeader>
-            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-                <div>
-                    <CardTitle>Social Engagement Report</CardTitle>
-                    <CardDescription>Likes, shares, and comments for each community post.</CardDescription>
-                </div>
+          <CardTitle>Quiz Performance Summary</CardTitle>
+          <CardDescription>A summary of attempts and pass/fail rates for each quiz.</CardDescription>
+        </CardHeader>
+        <CardContent>
+            <div className="border rounded-lg overflow-hidden">
+                <Table>
+                    <TableHeader>
+                        <TableRow>
+                            <TableHead>Quiz Title</TableHead>
+                            <TableHead className="text-center">Total Attempts</TableHead>
+                            <TableHead className="text-center">Passes</TableHead>
+                            <TableHead className="text-center">Fails</TableHead>
+                        </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                        {loading ? (
+                            Array.from({ length: 3 }).map((_, i) => (
+                                <TableRow key={i}>
+                                    <TableCell><Skeleton className="h-5 w-48" /></TableCell>
+                                    <TableCell className="text-center"><Skeleton className="h-5 w-12 mx-auto" /></TableCell>
+                                    <TableCell className="text-center"><Skeleton className="h-5 w-12 mx-auto" /></TableCell>
+                                    <TableCell className="text-center"><Skeleton className="h-5 w-12 mx-auto" /></TableCell>
+                                </TableRow>
+                            ))
+                        ) : currentQuizPerformanceData.length > 0 ? (
+                            currentQuizPerformanceData.map(item => (
+                                <TableRow key={item.quizId}>
+                                    <TableCell className="font-medium">{item.quizTitle}</TableCell>
+                                    <TableCell className="text-center">{item.totalAttempts}</TableCell>
+                                    <TableCell className="text-center text-green-600">{item.passCount}</TableCell>
+                                    <TableCell className="text-center text-red-600">{item.failCount}</TableCell>
+                                </TableRow>
+                            ))
+                        ) : (
+                            <TableRow>
+                                <TableCell colSpan={4} className="text-center text-muted-foreground p-8">
+                                    No quiz attempts recorded yet.
+                                </TableCell>
+                            </TableRow>
+                        )}
+                    </TableBody>
+                </Table>
             </div>
+        </CardContent>
+        {quizPerformanceTotalPages > 1 && (
+            <CardFooter className="flex justify-end items-center gap-4">
+                <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                    <span>Rows per page</span>
+                    <Select
+                        value={`${quizPerformancePageSize}`}
+                        onValueChange={(value) => {
+                            setQuizPerformancePageSize(Number(value));
+                            setQuizPerformancePage(1);
+                        }}
+                    >
+                        <SelectTrigger className="w-[70px]">
+                            <SelectValue placeholder={`${quizPerformancePageSize}`} />
+                        </SelectTrigger>
+                        <SelectContent>
+                            {[10, 25, 50].map(size => (
+                                <SelectItem key={size} value={`${size}`}>{size}</SelectItem>
+                            ))}
+                        </SelectContent>
+                    </Select>
+                </div>
+                <span className="text-sm text-muted-foreground">
+                    Page {quizPerformancePage} of {quizPerformanceTotalPages}
+                </span>
+                <div className="flex items-center gap-2">
+                    <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setQuizPerformancePage(prev => Math.max(prev - 1, 1))}
+                        disabled={quizPerformancePage === 1}
+                    >
+                        <ChevronLeft className="h-4 w-4" />
+                        Previous
+                    </Button>
+                    <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setQuizPerformancePage(prev => Math.min(prev + 1, quizPerformanceTotalPages))}
+                        disabled={quizPerformancePage === quizPerformanceTotalPages}
+                    >
+                        Next
+                        <ChevronRight className="h-4 w-4" />
+                    </Button>
+                </div>
+            </CardFooter>
+        )}
+      </Card>
+
+      <Card>
+        <CardHeader>
+            <CardTitle>Social Engagement Report</CardTitle>
+            <CardDescription>Likes, shares, and comments for each community post.</CardDescription>
         </CardHeader>
         <CardContent>
           <div className="overflow-x-auto">
@@ -1541,22 +1280,6 @@ export default function AnalyticsDashboard() {
           </CardFooter>
         )}
       </Card>
-      
-      <Dialog open={!!viewingQuizResult} onOpenChange={() => setViewingQuizResult(null)}>
-        <DialogContent className="max-w-2xl">
-          <DialogHeader>
-            <DialogTitle>Quiz Attempt Details</DialogTitle>
-             <DialogDescription>
-              Viewing answers for {viewingQuizResult?.userName} in quiz "{viewingQuizResult?.quizTitle}".
-            </DialogDescription>
-          </DialogHeader>
-          {viewingQuizResult && (
-            <div className="max-h-[60vh] overflow-y-auto p-1 pr-4">
-                {renderQuizResponses(viewingQuizResult)}
-            </div>
-          )}
-        </DialogContent>
-      </Dialog>
 
       <Dialog open={!!selectedProgressDetail} onOpenChange={() => setSelectedProgressDetail(null)}>
         <DialogContent className="max-w-2xl">
@@ -1600,5 +1323,3 @@ export default function AnalyticsDashboard() {
     </div>
   );
 }
-
-    

@@ -1,4 +1,3 @@
-
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
@@ -40,7 +39,6 @@ import { cn } from "@/lib/utils";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import Papa from "papaparse";
 
-
 const PAGE_SIZE_DEFAULT = 25;
 
 const getInitials = (name?: string | null) =>
@@ -51,7 +49,7 @@ const chunk = <T,>(arr: T[], size: number) =>
 
 export default function ManageCompletionsPage() {
   const db = getFirebaseFirestore(getFirebaseApp());
-  const { user: adminUser, hasPermission, isCurrentUserAdmin } = useAuth();
+  const { user: adminUser, hasPermission } = useAuth();
   const { toast } = useToast();
   const isModerator = adminUser?.role === 'moderator';
 
@@ -234,11 +232,35 @@ export default function ManageCompletionsPage() {
         return;
       }
 
+      // ***** Campus logic — OVERRIDE for moderators *****
+      // If actor is a moderator and has a campus, ALWAYS write that campus on the log.
+      // This guarantees the Firestore rule (request.resource.data.userCampus == actorCampus()) passes.
+      const actorCampus = isModerator ? (adminUser?.campus ?? null) : null;
       const userCampus =
-        (selectedUser as any).campus ||
-        (selectedUser as any).userCampus ||
-        selectedUser.locationPreference ||
-        "N/A";
+        actorCampus // moderator override
+        ?? (selectedUser as any).campus
+        ?? (selectedUser as any).userCampus
+        ?? null;
+
+      if (isModerator && !actorCampus) {
+        toast({
+          variant: "destructive",
+          title: "Your account has no campus",
+          description: "Ask an admin to set your campus on your profile."
+        });
+        setIsSaving(false);
+        return;
+      }
+      if (!userCampus) {
+        toast({
+          variant: "destructive",
+          title: "Missing campus",
+          description: "No campus to record for this log. Add a campus to your account or the user."
+        });
+        setIsSaving(false);
+        return;
+      }
+      // ***** End Campus fix *****
 
       const ladderId = (selectedUser as any).classLadderId || null;
       const ladderObj = ladderId ? ladderById.get(ladderId) : undefined;
@@ -254,7 +276,7 @@ export default function ManageCompletionsPage() {
             // required / old
             userId: selectedUser.uid,
             userName: selectedUser.displayName || selectedUser.email || "Unknown User",
-            userCampus,
+            userCampus, // forced to moderator campus when applicable
             courseId,
             courseName: titleById.get(courseId) || "Untitled Course",
             completedAt: serverTimestamp(),
@@ -264,7 +286,7 @@ export default function ManageCompletionsPage() {
                 : adminUser?.email || "Admin",
             markedById: adminUser?.uid || null,
 
-            // NEW: enrich for future reads
+            // richer fields
             userEmail: selectedUser.email || null,
             userPhone: (selectedUser as any).phoneNumber || null,
             userGender: (selectedUser as any).gender || null,
@@ -412,7 +434,7 @@ export default function ManageCompletionsPage() {
     }
   };
 
-  // CSV of current page with richer fields
+  // CSV of current page
   const handleDownloadCSV = () => {
     if (logRows.length === 0) {
       toast({ variant: "destructive", title: "No rows to download." });
@@ -423,7 +445,6 @@ export default function ManageCompletionsPage() {
       header.join(","),
       ...logRows.map((r: any) => {
         const dateStr = r.completedAt ? format(new Date((r.completedAt as Timestamp).seconds * 1000), "yyyy-MM-dd HH:mm:ss") : "";
-        // fallbacks to users/ladders if missing on the row
         const u = users.find(u => u.uid === r.userId);
         const email = r.userEmail ?? u?.email ?? "—";
         const phone = r.userPhone ?? (u as any)?.phoneNumber ?? "—";
@@ -463,7 +484,6 @@ export default function ManageCompletionsPage() {
     URL.revokeObjectURL(url);
   };
 
-  // Client-side quick filter over displayed page
   const visibleLogRows = useMemo(() => {
     if (!logSearchTerm) return logRows;
     const q = logSearchTerm.toLowerCase();
@@ -489,8 +509,8 @@ export default function ManageCompletionsPage() {
   return (
     <div className="flex flex-col gap-8">
       <div>
-        <h1 className="font-headline text-3xl font-bold md:text-4xl">Manage Course Completions</h1>
-        <p className="text-muted-foreground">Select a user, select one or more courses, then save. Each log row stores user email, phone, gender, and ladder at the time of logging.</p>
+        <h1 className="font-headline text-3xl font-bold md:text-4xl">Manage On-Site Completions</h1>
+        <p className="text-muted-foreground">Select a user, select one or more courses, then save. Each log row stores user details at the time of logging.</p>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
@@ -593,7 +613,7 @@ export default function ManageCompletionsPage() {
       <Card>
         <CardHeader className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
             <div>
-              <CardTitle>Onsite Completion Log</CardTitle>
+              <CardTitle>On-Site Completion Log</CardTitle>
               <CardDescription>
                 {selectedUser ? `Viewing logs for ${selectedUser.displayName || selectedUser.email}` : isModerator ? `Viewing logs for ${adminUser?.campus} campus` : "Viewing all logs"}
               </CardDescription>
@@ -657,7 +677,6 @@ export default function ManageCompletionsPage() {
                     const checked = selectedLogIds.has(id);
                     const dateStr = oc.completedAt ? format(new Date((oc.completedAt as Timestamp).seconds * 1000), "PPP") : "N/A";
 
-                    // fallbacks (old rows)
                     const u = users.find(u => u.uid === oc.userId);
                     const email = oc.userEmail ?? u?.email ?? "—";
                     const phone = oc.userPhone ?? (u as any)?.phoneNumber ?? "—";
@@ -712,5 +731,3 @@ export default function ManageCompletionsPage() {
     </div>
   );
 }
-
-    

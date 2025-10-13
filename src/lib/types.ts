@@ -279,6 +279,24 @@ export interface PromotionRequest {
     resolverId?: string;
 }
 
+export interface CustomForm {
+    id: string;
+    title: string;
+    type: 'userProfile' | 'blank';
+    public?: boolean;
+    fields: FormFieldConfig[];
+    submissionCount: number;
+    createdAt: any;
+    createdBy: string;
+}
+
+export interface FormFieldConfig {
+    fieldId: keyof User; // e.g., 'firstName', 'hpNumber'
+    label: string;
+    visible: boolean;
+    required: boolean;
+}
+
 export interface SiteSettings {
     websiteName: string;
     metaDescription: string;

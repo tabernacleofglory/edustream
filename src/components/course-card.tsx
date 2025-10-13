@@ -12,8 +12,9 @@ import { useAuth } from "@/hooks/use-auth";
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useToast } from "@/hooks/use-toast";
-import { getFirebaseFirestore } from "@/lib/firebase";
+import { getFirebaseFirestore, getFirebaseFunctions } from "@/lib/firebase";
 import { doc, setDoc, updateDoc, getDoc, deleteDoc, serverTimestamp, collection, query, where, getDocs, increment } from "firebase/firestore";
+import { httpsCallable } from "firebase/functions";
 import {
   Dialog,
   DialogContent,
@@ -75,6 +76,7 @@ export function CourseCard({
   const [firstPublishedVideoId, setFirstPublishedVideoId] = useState<string | null>(null);
   const [publishedVideoCount, setPublishedVideoCount] = useState<number>(0);
   const db = getFirebaseFirestore();
+  const functions = getFirebaseFunctions();
 
   const isEnrolled = !!course.isEnrolled;
   const isCompleted = !!course.isCompleted;
@@ -151,19 +153,8 @@ export function CourseCard({
 
     setIsEnrolling(true);
     try {
-      const enrollmentId = `${user.uid}_${course.id}`;
-      const enrollmentRef = doc(db, "enrollments", enrollmentId);
-      const courseRef = doc(db, "courses", course.id);
-
-      await setDoc(enrollmentRef, {
-        userId: user.uid,
-        courseId: course.id,
-        enrolledAt: serverTimestamp(),
-      });
-      
-      await updateDoc(courseRef, {
-        enrollmentCount: increment(1)
-      });
+      const enrollInCourse = httpsCallable(functions, 'enrollInCourse');
+      await enrollInCourse({ courseId: course.id });
 
       toast({ title: "Enrolled", description: `You can now start ${course.title}.` });
       
@@ -174,11 +165,11 @@ export function CourseCard({
 
       onChange?.();
       refreshUser();
-    } catch (error) {
+    } catch (error: any) {
       toast({
         variant: "destructive",
         title: "Enrollment Failed",
-        description: "Could not enroll in the course. Please try again.",
+        description: error.message || "Could not enroll in the course. Please try again.",
       });
     } finally {
       setIsEnrolling(false);

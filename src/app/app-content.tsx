@@ -215,19 +215,19 @@ function AppContentInternal({ children }: { children: React.ReactNode }) {
 
   const isAuthPage = pathname.startsWith('/login') || pathname.startsWith('/signup');
   const isLandingPage = pathname === '/';
+  const isExternalPage = pathname.startsWith('/external');
   
-  const showAppLayout = !isAuthPage && !isLandingPage;
+  const showAppLayout = !isAuthPage && !isLandingPage && !isExternalPage;
 
   const isVideoPage = pathname.includes('/courses/') && pathname.includes('/video/');
 
-  // Derived state to check if user can see the full menu
   const canSeeFullMenu = isProfileComplete && user?.isInHpGroup;
 
    useEffect(() => {
     if (isMobile === undefined) return;
     if (isVideoPage) {
         setIsSidebarOpen(false);
-    } else if (showAppLayout && !isMobile) { // Only set to true if it's an app page and not mobile
+    } else if (showAppLayout && !isMobile) { 
         setIsSidebarOpen(true);
     } else if (isMobile) {
         setIsSidebarOpen(false);
@@ -240,7 +240,7 @@ function AppContentInternal({ children }: { children: React.ReactNode }) {
     }
   }, [user, loading, router, showAppLayout]);
   
-  if (isAuthPage || isLandingPage) {
+  if (isAuthPage || isLandingPage || isExternalPage) {
     return <>{children}</>;
   }
 
@@ -249,7 +249,7 @@ function AppContentInternal({ children }: { children: React.ReactNode }) {
       return <>{children}</>;
   }
 
-  if (loading || !user) {
+  if (loading || (!user && showAppLayout)) {
     return (
         <div className="flex min-h-screen">
              <div className="hidden md:flex flex-col gap-4 border-r bg-background p-2 w-64">
@@ -268,6 +268,8 @@ function AppContentInternal({ children }: { children: React.ReactNode }) {
         </div>
     )
   }
+  
+  if (!user) return null;
 
   return (
         <SidebarProvider open={isSidebarOpen} onOpenChange={setIsSidebarOpen}>
@@ -322,7 +324,6 @@ function AppContentInternal({ children }: { children: React.ReactNode }) {
                     </SidebarMenu>
                 </SidebarContent>
                     <SidebarFooter className="sticky bottom-0 bg-background border-t border-border">
-                    {/* User profile and theme toggle moved to header */}
                     </SidebarFooter>
                 </Sidebar>
                 <div className={cn("absolute inset-0 bg-black/50 z-40 md:hidden", isSidebarOpen ? 'block' : 'hidden')} onClick={() => setIsSidebarOpen(false)} />

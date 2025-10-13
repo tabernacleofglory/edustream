@@ -1,5 +1,4 @@
 
-
 "use client";
 
 import { ReactNode, useState, useEffect, useCallback } from "react";
@@ -146,6 +145,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
       items: [
         { href: "/admin/courses", label: t('admin.nav.content.courses', "Courses"), icon: BookOpen, permission: 'viewCourseManagement' },
         { href: "/admin/content/groups", label: "Learning Paths", icon: Group, permission: 'manageContent' },
+        { href: "/admin/forms", label: "Forms", icon: FileQuestion, permission: 'viewForms' },
         {
           label: t('admin.nav.content.libraries', "Libraries"),
           icon: Folder,
@@ -164,6 +164,12 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
             { href: "/admin/content/ministries", label: t('admin.nav.content.ministries', "Ministries"), icon: Church },
           ],
         },
+      ],
+    },
+    {
+      group: "Reports",
+      items: [
+        { href: "/admin/reports/quizzes", label: "Quiz Reports", icon: BarChart2, permission: 'viewAnalytics' },
       ],
     },
     {
