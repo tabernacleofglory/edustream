@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
@@ -43,6 +44,12 @@ export default function VideoPage() {
         }
 
         const courseData = { id: courseSnap.id, ...courseSnap.data() } as Course;
+        
+        // Fetch real-time enrollment count
+        const enrollmentsQuery = query(collection(db, 'enrollments'), where('courseId', '==', courseId));
+        const enrollmentsSnapshot = await getDocs(enrollmentsQuery);
+        courseData.enrollmentCount = enrollmentsSnapshot.size;
+
         setCourse(courseData);
 
         if (courseData.speakerId) {

@@ -274,6 +274,11 @@ export default function AnalyticsDashboard() {
       const socialInteractionData = await Promise.all(socialDataPromises);
       setSocialData(socialInteractionData);
       
+      const enrollmentsByCourse = enrollmentsList.reduce((acc, enrollment) => {
+        acc[enrollment.courseId] = (acc[enrollment.courseId] || 0) + 1;
+        return acc;
+      }, {} as Record<string, number>);
+
       const completionCountsByCourse = enrollmentsList.reduce((acc, enrollment) => {
           if (enrollment.completedAt) {
               acc[enrollment.courseId] = (acc[enrollment.courseId] || 0) + 1;
@@ -301,7 +306,7 @@ export default function AnalyticsDashboard() {
         return {
           courseId: course.id,
           courseTitle: course.title,
-          enrollments: course.enrollmentCount || 0,
+          enrollments: enrollmentsByCourse[course.id] || 0,
           completions: completionCountsByCourse[course.id] || 0,
           likes: totalLikes,
           comments: totalComments,

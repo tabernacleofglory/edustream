@@ -6,7 +6,7 @@ import Image from "next/image";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import type { Course, Speaker } from "@/lib/types";
-import { Clock, Loader2, CheckCircle, Edit, Eye, Trash2, UserMinus, PlayCircle, Lock, Copy, Hash } from "lucide-react";
+import { Clock, Loader2, CheckCircle, Edit, Eye, Trash2, UserMinus, PlayCircle, Lock, Copy, Hash, Users } from "lucide-react";
 import { Button } from "./ui/button";
 import { useAuth } from "@/hooks/use-auth";
 import { useState, useEffect } from "react";
@@ -75,6 +75,7 @@ export function CourseCard({
   const [speaker, setSpeaker] = useState<Speaker | null>(null);
   const [firstPublishedVideoId, setFirstPublishedVideoId] = useState<string | null>(null);
   const [publishedVideoCount, setPublishedVideoCount] = useState<number>(0);
+  const [enrollmentCount, setEnrollmentCount] = useState(course.enrollmentCount || 0);
   const db = getFirebaseFirestore();
   const functions = getFirebaseFunctions();
 
@@ -121,9 +122,16 @@ export function CourseCard({
       setFirstPublishedVideoId(first);
     };
 
+    const fetchEnrollmentCount = async () => {
+      const enrollmentsQuery = query(collection(db, 'enrollments'), where('courseId', '==', course.id));
+      const snapshot = await getDocs(enrollmentsQuery);
+      setEnrollmentCount(snapshot.size);
+    }
+
     fetchSpeaker();
     findFirstPublishedVideo();
-  }, [course.speakerId, course.videos, db]);
+    fetchEnrollmentCount();
+  }, [course.speakerId, course.videos, db, course.id]);
 
   const handleEnroll = async (e?: React.MouseEvent<HTMLElement>) => {
     e?.preventDefault();
@@ -312,26 +320,30 @@ export function CourseCard({
                 <CardDescription className="line-clamp-2">{course.description}</CardDescription>
               </CardContent>
               <CardFooter className="p-4 pt-0 flex flex-col items-start gap-4">
-                <div className="flex items-center text-sm text-muted-foreground gap-4">
-                  <div className="flex items-center gap-1.5">
-                    <Clock className="w-4 h-4" />
-                    <span>{publishedVideoCount} lessons</span>
-                  </div>
-                  {course.order !== undefined && (
+                <div className="flex flex-wrap items-center text-sm text-muted-foreground gap-x-4 gap-y-1">
                     <div className="flex items-center gap-1.5">
-                      <Hash className="w-4 h-4" />
-                      <span>Order: {course.order}</span>
+                        <Clock className="w-4 h-4" />
+                        <span>{publishedVideoCount} lessons</span>
                     </div>
-                  )}
-                  {speaker && (
                     <div className="flex items-center gap-1.5">
-                      <Avatar className="h-5 w-5">
-                        <AvatarImage src={speaker.photoURL || ""} alt={speaker.name || ""} />
-                        <AvatarFallback>{getInitials(speaker.name)}</AvatarFallback>
-                      </Avatar>
-                      <span>{speaker.name}</span>
+                        <Users className="w-4 h-4" />
+                        <span>{enrollmentCount} enrolled</span>
                     </div>
-                  )}
+                    {isAdminView && course.order !== undefined && (
+                        <div className="flex items-center gap-1.5">
+                            <Hash className="w-4 h-4" />
+                            <span>Order: {course.order}</span>
+                        </div>
+                    )}
+                    {speaker && (
+                        <div className="flex items-center gap-1.5">
+                            <Avatar className="h-5 w-5">
+                                <AvatarImage src={speaker.photoURL || ""} alt={speaker.name || ""} />
+                                <AvatarFallback>{getInitials(speaker.name)}</AvatarFallback>
+                            </Avatar>
+                            <span>{speaker.name}</span>
+                        </div>
+                    )}
                 </div>
 
                 {isAdminView && onEdit && onDelete && (
