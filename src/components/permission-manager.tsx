@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useState, useEffect } from 'react';
@@ -44,6 +45,7 @@ const ALL_PERMISSIONS: Permission[] = [
   { id: 'manageContent', name: 'Manage Content', description: 'Can upload and manage all content (videos, images, etc.).' },
   { id: 'manageLinks', name: 'Manage Nav Links', description: 'Can add/remove header navigation links.' },
   { id: 'managePermissions', name: 'Manage Permissions', description: 'Can edit role permissions on this page.' },
+  { id: 'manageLocalization', name: 'Manage Localization', description: 'Can add, edit, or delete translations for different languages.' },
   { id: 'manageCampus', name: 'Manage Campus', description: 'Can add, edit, and delete campus locations.'},
   { id: 'manageLive', name: 'Manage Live Events', description: 'Can create, schedule, and start live events.' },
   { id: 'participateInLiveEvents', name: 'Participate In Live Events', description: 'Allows user to be a speaker/participant in a live event.' },
@@ -54,6 +56,7 @@ const ALL_PERMISSIONS: Permission[] = [
   { id: 'manageForms', name: 'Manage Forms', description: 'Can create, edit, and delete forms.' },
   { id: 'downloadFormSubmissions', name: 'Download Form Submissions', description: 'Can download form responses as CSV/PDF.' },
   { id: 'useVideoTranscoder', name: 'Use Video Transcoder', description: 'Can enable adaptive streaming transcoding during video upload.' },
+  { id: 'useAITools', name: 'Use AI Tools', description: 'Can access and use the AI-powered tools like the assistant and tagger.' },
   { id: 'allowRightClick', name: 'Allow Right-Click', description: 'Allows right-clicking anywhere in the app to prevent simple content saving.' },
   { id: 'downloadContent', name: 'Download Content', description: 'Allows downloading videos and other course materials.' },
   { id: 'developer', name: 'Developer Access', description: 'Full access to all platform features. (Grant with caution)' },

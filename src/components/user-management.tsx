@@ -1,12 +1,12 @@
 
-
 "use client";
 
 import { useState, useEffect, useCallback, useMemo } from "react";
 import Link from "next/link";
-import { getFirebaseFirestore, getFirebaseApp } from "@/lib/firebase";
+import { getFirebaseFirestore, getFirebaseApp, getFirebaseFunctions } from "@/lib/firebase";
 import { collection, getDocs, doc, updateDoc, query, orderBy, deleteDoc, setDoc, addDoc, serverTimestamp, where, documentId } from "firebase/firestore";
-import { getAuth, deleteUser } from "firebase/auth";
+import { getAuth, deleteUser as deleteFirebaseAuthUser } from "firebase/auth";
+import { httpsCallable } from 'firebase/functions';
 import type { User, Course, Enrollment, UserProgress as UserProgressType, Ladder, UserLadderProgress } from "@/lib/types";
 import {
   Card,
@@ -193,6 +193,7 @@ export default function UserManagement() {
   const [isProgressLoading, setIsProgressLoading] = useState(false);
   const { toast } = useToast();
   const db = getFirebaseFirestore();
+  const functions = getFirebaseFunctions();
 
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCampus, setSelectedCampus] = useState('all');
@@ -258,11 +259,11 @@ export default function UserManagement() {
   const paginatedUsers = filteredUsers.slice((currentPage - 1) * usersPerPage, currentPage * usersPerPage);
 
   const fetchUserProgressAndCompletions = useCallback(async (user: User) => {
-    if (!user?.uid || courses.length === 0) return;
+    if (!user?.id || courses.length === 0) return;
     setIsProgressLoading(true);
     try {
-        const enrollmentsQuery = query(collection(db, 'enrollments'), where('userId', '==', user.uid));
-        const onsiteQuery = query(collection(db, 'onsiteCompletions'), where('userId', '==', user.uid));
+        const enrollmentsQuery = query(collection(db, 'enrollments'), where('userId', '==', user.id));
+        const onsiteQuery = query(collection(db, 'onsiteCompletions'), where('userId', '==', user.id));
 
         const [enrollmentsSnapshot, onsiteSnapshot] = await Promise.all([
           getDocs(enrollmentsQuery),
@@ -288,7 +289,7 @@ export default function UserManagement() {
         const coursesSnapshot = await getDocs(coursesQuery);
         const enrolledCourses = coursesSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Course));
 
-        const progressQuery = query(collection(db, 'userVideoProgress'), where('userId', '==', user.uid));
+        const progressQuery = query(collection(db, 'userVideoProgress'), where('userId', '==', user.id));
         const progressSnapshot = await getDocs(progressQuery);
         const progressDocs = progressSnapshot.docs.map(doc => doc.data() as UserProgressType);
         
@@ -393,18 +394,19 @@ export default function UserManagement() {
   
   const handleDeleteUser = async (userId: string, userName: string) => {
     try {
-        const userDocRef = doc(db, "users", userId);
-        await deleteDoc(userDocRef);
+        const deleteUserAccount = httpsCallable(functions, 'deleteUserAccount');
+        await deleteUserAccount({ uid: userId });
+
         setUsers(prevUsers => prevUsers.filter(u => u.id !== userId));
         toast({
-            title: "User Data Removed",
-            description: `User ${userName}'s data has been removed from the database.`
+            title: "User Deleted",
+            description: `User ${userName} has been removed from the database and authentication.`
         });
     } catch (error: any) {
         toast({
             variant: "destructive",
             title: "Deletion Failed",
-            description: "Could not delete user data from the database. " + error.message
+            description: "Could not delete user account. " + error.message
         });
     }
   }
@@ -473,7 +475,7 @@ export default function UserManagement() {
 
               await setDoc(doc(db, "users", user.uid), newUserForDb);
               
-              if (secondaryAuth.currentUser?.uid === user.uid) {
+              if (secondaryAuth.currentUser?.id === user.uid) {
                   await signOut(secondaryAuth);
               }
               
@@ -534,7 +536,7 @@ export default function UserManagement() {
         }
 
         const dataToExport = users.map(user => ({
-            "User ID": user.uid,
+            "User ID": user.id,
             "Full Name": user.fullName,
             "Email": user.email,
             "Role": user.role,
@@ -779,7 +781,7 @@ export default function UserManagement() {
                                     </AlertDialogHeader>
                                     <AlertDialogFooter>
                                         <AlertDialogCancel>Cancel</AlertDialogCancel>
-                                        <AlertDialogAction onClick={() => handleDeleteUser(user.uid, user.displayName || 'user')}>
+                                        <AlertDialogAction onClick={() => handleDeleteUser(user.id, user.displayName || 'user')}>
                                             Delete
                                         </AlertDialogAction>
                                     </AlertDialogFooter>
@@ -886,7 +888,7 @@ export default function UserManagement() {
                       </div>
                       <div className="col-span-2">
                           <p className="font-semibold">User ID</p>
-                          <p className="text-xs text-muted-foreground break-all">{viewingUser.uid}</p>
+                          <p className="text-xs text-muted-foreground break-all">{viewingUser.id}</p>
                       </div>
                   </div>
                     <div>
@@ -931,7 +933,7 @@ export default function UserManagement() {
                                                 <span className="text-xs text-muted-foreground">{p.totalProgress}%</span>
                                             </div>
                                         </div>
-                                        <Button size="sm" variant="outline" onClick={() => handleUnenroll(viewingUser.uid, p.courseId)}>
+                                        <Button size="sm" variant="outline" onClick={() => handleUnenroll(viewingUser.id, p.courseId)}>
                                             <UserMinus className="mr-2 h-4 w-4" />
                                             Un-enroll
                                         </Button>

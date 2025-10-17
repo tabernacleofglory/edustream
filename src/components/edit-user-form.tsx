@@ -1,30 +1,21 @@
 
-
 "use client";
 
-import { useAuth } from "@/hooks/use-auth";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Button } from "@/components/ui/button";
-import { useForm, SubmitHandler, Controller } from "react-hook-form";
+import { useState, useEffect, useRef, useCallback } from "react";
+import { useForm, Controller } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { updateProfile } from "firebase/auth";
-import { getFirebaseAuth, getFirebaseStorage, getFirebaseFirestore } from "@/lib/firebase";
-import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
-import { doc, setDoc, collection, getDocs, addDoc, serverTimestamp, deleteDoc, query, orderBy, updateDoc } from 'firebase/firestore';
+import { Button } from "./ui/button";
+import { Input } from "./ui/input";
+import { Label } from "./ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./ui/select";
 import { useToast } from "@/hooks/use-toast";
-import { Loader2, Trash, Edit } from "lucide-react";
-import { useState, useRef, useEffect, useCallback } from "react";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import {
-    Select,
-    SelectContent,
-    SelectItem,
-    SelectTrigger,
-    SelectValue,
-} from "@/components/ui/select";
+import { Loader2, Plus, Trash } from "lucide-react";
+import { getApps, initializeApp, getApp } from "firebase/app";
+import { getAuth, updateProfile } from "firebase/auth";
+import { doc, updateDoc, collection, addDoc, serverTimestamp, deleteDoc, getDocs, query, orderBy, getDoc } from "firebase/firestore";
+import { getFirebaseFirestore, getFirebaseStorage } from "@/lib/firebase";
+import type { User, Ladder } from "@/lib/types";
 import {
   Dialog,
   DialogContent,
@@ -34,7 +25,10 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog"
-import type { User as AppUser, Ladder } from "@/lib/types";
+import { useAuth } from "@/hooks/use-auth";
+import { Avatar, AvatarFallback, AvatarImage } from "./ui/avatar";
+import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
+import { Textarea } from "./ui/textarea";
 
 const profileSchema = z.object({
   displayName: z.string().min(1, "Full name is required"),
@@ -49,6 +43,9 @@ const profileSchema = z.object({
   charge: z.string().optional(),
   gender: z.string().optional(),
   ageRange: z.string().optional(),
+  maritalStatus: z.string().optional(),
+  ministry: z.string().optional(),
+  bio: z.string().optional(),
 });
 
 type ProfileFormValues = z.infer<typeof profileSchema>;
@@ -64,20 +61,14 @@ interface Campus {
 }
 
 interface EditUserFormProps {
-    userToEdit: AppUser;
+    userToEdit: User;
     onUserUpdated: () => void;
 }
-
-const ALL_ROLES: StoredItem[] = [
-    { id: 'admin', name: 'Admin' },
-    { id: 'moderator', name: 'Moderator' },
-    { id: 'user', name: 'User' },
-];
 
 export default function EditUserForm({ userToEdit, onUserUpdated }: EditUserFormProps) {
   const { user: currentUser, refreshUser, isCurrentUserAdmin } = useAuth();
   const { toast } = useToast();
-  const auth = getFirebaseAuth();
+  const auth = getAuth();
   const storage = getFirebaseStorage();
   const db = getFirebaseFirestore();
 
@@ -86,19 +77,16 @@ export default function EditUserForm({ userToEdit, onUserUpdated }: EditUserForm
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [campuses, setCampuses] = useState<Campus[]>([]);
+  const [ladders, setLadders] = useState<Ladder[]>([]);
+  const [roles, setRoles] = useState<StoredItem[]>([]);
+  const [statuses, setStatuses] = useState<StoredItem[]>([]);
+  const [charges, setCharges] = useState<StoredItem[]>([]);
+  const [ministries, setMinistries] = useState<StoredItem[]>([]);
+  
   const [isCampusDialogOpen, setIsCampusDialogOpen] = useState(false);
   const [newCampusName, setNewCampusName] = useState("");
-  
-  const [ladders, setLadders] = useState<Ladder[]>([]);
-
-  const [roles, setRoles] = useState<StoredItem[]>(ALL_ROLES);
-  
-  const [statuses, setStatuses] = useState<StoredItem[]>([]);
-  
-  const [charges, setCharges] = useState<StoredItem[]>([]);
   const [isChargeDialogOpen, setIsChargeDialogOpen] = useState(false);
   const [newChargeName, setNewChargeName] = useState("");
-
 
   const {
     register,
@@ -123,9 +111,12 @@ export default function EditUserForm({ userToEdit, onUserUpdated }: EditUserForm
         charge: userToEdit.charge || "",
         gender: userToEdit.gender || "",
         ageRange: userToEdit.ageRange || "",
+        maritalStatus: userToEdit.maritalStatus || "",
+        ministry: userToEdit.ministry || "",
+        bio: userToEdit.bio || "",
     }
   });
-  
+
   const fetchItems = useCallback(async (collectionName: string, setter: React.Dispatch<React.SetStateAction<any[]>>, orderByField = "name") => {
     try {
         const q = query(collection(db, collectionName), orderBy(orderByField));
@@ -136,50 +127,6 @@ export default function EditUserForm({ userToEdit, onUserUpdated }: EditUserForm
         toast({ variant: 'destructive', title: `Failed to fetch ${collectionName}` });
     }
   }, [toast, db]);
-  
-  const handleAddItem = async (
-    collectionName: string, 
-    itemName: string, 
-    setter: React.Dispatch<React.SetStateAction<StoredItem[]>>,
-    formField: keyof ProfileFormValues,
-    setNewItemName: React.Dispatch<React.SetStateAction<string>>
-  ) => {
-      if (!itemName.trim()) return;
-      try {
-          const docRef = await addDoc(collection(db, collectionName), { name: itemName.trim() });
-          const newItem = { id: docRef.id, name: itemName.trim() };
-          const sortedItems = [...(await getDocs(query(collection(db, collectionName), orderBy("name")))).docs.map(doc => ({ id: doc.id, name: doc.data().name }))];
-          setter(sortedItems);
-          setValue(formField, newItem.name as any, { shouldValidate: true, shouldDirty: true });
-          setNewItemName("");
-          toast({ title: `${String(formField)} Added` });
-      } catch (error) {
-           toast({ variant: "destructive", title: `Error adding ${String(formField)}` });
-      }
-  }
-
-  const handleRemoveItem = async (
-    collectionName: string,
-    itemId: string,
-    setter: React.Dispatch<React.SetStateAction<StoredItem[]>>,
-    currentValue: string | undefined,
-    formField: keyof ProfileFormValues
-  ) => {
-      try {
-          const itemDoc = await getDoc(doc(db, collectionName, itemId));
-          const itemName = itemDoc.data()?.name;
-          await deleteDoc(doc(db, collectionName, itemId));
-          const updatedItems = (await getDocs(query(collection(db, collectionName), orderBy("name")))).docs.map(doc => ({ id: doc.id, name: doc.data().name }));
-          setter(updatedItems);
-          if (currentValue === itemName) {
-               setValue(formField, (updatedItems.length > 0 ? updatedItems[0].name : "") as any, { shouldDirty: true });
-          }
-          toast({ title: `${String(formField)} Removed` });
-      } catch (error) {
-          toast({ variant: "destructive", title: `Error removing ${String(formField)}` });
-      }
-  }
-
 
   const fetchCampuses = useCallback(async () => {
     try {
@@ -190,10 +137,7 @@ export default function EditUserForm({ userToEdit, onUserUpdated }: EditUserForm
         })) as Campus[];
         setCampuses(campusesList);
     } catch (error) {
-        toast({
-            variant: "destructive",
-            title: "Error fetching campuses",
-        });
+        toast({ variant: "destructive", title: "Error fetching campuses" });
     }
   }, [toast, db]);
   
@@ -202,63 +146,14 @@ export default function EditUserForm({ userToEdit, onUserUpdated }: EditUserForm
     fetchItems('courseLevels', setLadders, 'order');
     fetchItems('membershipStatuses', setStatuses);
     fetchItems('charges', setCharges);
+    fetchItems('ministries', setMinistries);
+    setRoles([
+        { id: 'admin', name: 'Admin' },
+        { id: 'moderator', name: 'Moderator' },
+        { id: 'developer', name: 'Developer' },
+        { id: 'user', name: 'User' },
+    ]);
   }, [fetchCampuses, fetchItems]);
-
-  useEffect(() => {
-    if (userToEdit) {
-      reset({
-        displayName: userToEdit.displayName || "",
-        email: userToEdit.email || "",
-        phoneNumber: userToEdit.phoneNumber || "",
-        hpNumber: userToEdit.hpNumber || "",
-        facilitatorName: userToEdit.facilitatorName || "",
-        campus: userToEdit.campus || "",
-        classLadderId: userToEdit.classLadderId || "",
-        role: userToEdit.role || "user",
-        membershipStatus: userToEdit.membershipStatus || "free",
-        charge: userToEdit.charge || "",
-        gender: userToEdit.gender || "",
-        ageRange: userToEdit.ageRange || "",
-      });
-    }
-  }, [userToEdit, reset]);
-
-   const handleAddCampus = async () => {
-        if (!newCampusName.trim()) return;
-        try {
-            const docRef = await addDoc(collection(db, "Campus"), {
-                "Campus Name": newCampusName.trim(),
-                createdAt: serverTimestamp(),
-            });
-            const newCampus = { id: docRef.id, "Campus Name": newCampusName.trim() };
-            setCampuses([...campuses, newCampus]);
-            setValue('campus', newCampus["Campus Name"], { shouldValidate: true, shouldDirty: true });
-            setNewCampusName("");
-            toast({ title: "Campus Added" });
-        } catch (error) {
-            toast({ variant: "destructive", title: "Error adding campus" });
-        }
-    };
-
-    const handleRemoveCampus = async (campusId: string) => {
-        try {
-            const campusDoc = await getDoc(doc(db, 'Campus', campusId));
-            const campusName = campusDoc.data()?.['Campus Name'];
-            await deleteDoc(doc(db, "Campus", campusId));
-            const updatedCampuses = campuses.filter(c => c.id !== campusId);
-            setCampuses(updatedCampuses);
-            if (watch('campus') === campusName) {
-                 setValue('campus', updatedCampuses.length > 0 ? updatedCampuses[0]["Campus Name"] : "", { shouldDirty: true });
-            }
-            toast({ title: "Campus Removed" });
-        } catch (error) {
-            toast({ variant: "destructive", title: "Error removing campus" });
-        }
-    };
-
-    const handleAddCharge = () => handleAddItem('charges', newChargeName, setCharges, 'charge', setNewChargeName);
-    const handleRemoveCharge = (id: string) => handleRemoveItem('charges', id, setCharges, watch('charge'), 'charge');
-
 
   const onSubmit: SubmitHandler<ProfileFormValues> = async (data) => {
     setIsSubmitting(true);
@@ -267,7 +162,7 @@ export default function EditUserForm({ userToEdit, onUserUpdated }: EditUserForm
       const userDocRef = doc(db, "users", userToEdit.uid);
       const selectedLadder = ladders.find(l => l.id === data.classLadderId);
       
-      const firestoreData: Partial<AppUser> = {
+      const firestoreData: Partial<User> = {
         displayName: data.displayName,
         fullName: data.displayName,
         email: data.email,
@@ -277,11 +172,14 @@ export default function EditUserForm({ userToEdit, onUserUpdated }: EditUserForm
         campus: data.campus,
         classLadder: selectedLadder ? selectedLadder.name : '',
         classLadderId: data.classLadderId,
-        role: data.role?.toLowerCase() as AppUser['role'],
+        role: data.role?.toLowerCase() as User['role'],
         membershipStatus: data.membershipStatus,
         charge: data.charge,
         gender: data.gender,
         ageRange: data.ageRange,
+        maritalStatus: data.maritalStatus,
+        ministry: data.ministry,
+        bio: data.bio,
       };
 
       await updateDoc(userDocRef, firestoreData);
@@ -322,7 +220,7 @@ export default function EditUserForm({ userToEdit, onUserUpdated }: EditUserForm
       const photoURL = await getDownloadURL(storageRef);
       
       const userDocRef = doc(db, "users", userToEdit.uid);
-      await setDoc(userDocRef, { photoURL }, { merge: true });
+      await updateDoc(userDocRef, { photoURL });
 
       if (userToEdit.uid === currentUser?.uid && auth.currentUser) {
         await updateProfile(auth.currentUser, { photoURL });
@@ -333,7 +231,7 @@ export default function EditUserForm({ userToEdit, onUserUpdated }: EditUserForm
         title: "Avatar Updated",
         description: "Your avatar has been successfully updated.",
       });
-      onUserUpdated(); // Refresh the list to show new avatar
+      onUserUpdated();
     } catch (error: any) {
       toast({
         variant: "destructive",
@@ -352,76 +250,6 @@ export default function EditUserForm({ userToEdit, onUserUpdated }: EditUserForm
     return initials.toUpperCase();
   }
 
-  const renderField = (fieldName: keyof ProfileFormValues, label: string, items: {id: string; name: string}[], onAdd: () => void, onRemove: (id: string) => void, newItemName: string, setNewItemName: (name: string) => void, isManageDialogOpen: boolean, setIsManageDialogOpen: (isOpen: boolean) => void) => {
-    
-    const availableItems = (fieldName === 'role' && currentUser?.role !== 'developer')
-      ? items.filter(item => item.name.toLowerCase() !== 'developer')
-      : items;
-
-    return (
-        <div className="space-y-2">
-            <Label htmlFor={fieldName}>{label}</Label>
-            <div className="flex gap-2">
-                <Controller
-                    control={control}
-                    name={fieldName}
-                    render={({ field }) => (
-                        <Select
-                            onValueChange={(value) => field.onChange(value as any)}
-                            value={field.value}
-                            disabled={isSubmitting || ((fieldName === 'role' || fieldName === 'membershipStatus') && !isCurrentUserAdmin)}
-                        >
-                            <SelectTrigger className="w-full">
-                                <SelectValue placeholder={`Select a ${label.toLowerCase()}`} />
-                            </SelectTrigger>
-                            <SelectContent>
-                                {availableItems.map((item) => (
-                                    <SelectItem key={item.id} value={item.name} translate="no">{item.name}</SelectItem>
-                                ))}
-                            </SelectContent>
-                        </Select>
-                    )}
-                />
-                {isCurrentUserAdmin && (
-                    <Dialog open={isManageDialogOpen} onOpenChange={setIsManageDialogOpen}>
-                        <DialogTrigger asChild>
-                            <Button type="button" variant="outline">Manage</Button>
-                        </DialogTrigger>
-                        <DialogContent className="sm:max-w-[425px]">
-                            <DialogHeader>
-                                <DialogTitle>Manage {label}s</DialogTitle>
-                            </DialogHeader>
-                            <div className="space-y-4 py-4">
-                                <div className="space-y-2">
-                                    <Label>Existing {label}s</Label>
-                                    <div className="space-y-2 rounded-md border p-2 max-h-48 overflow-y-auto">
-                                        {items.map(item => (
-                                            <div key={item.id} className="flex items-center justify-between">
-                                                <span translate="no">{item.name}</span>
-                                                <Button type="button" variant="ghost" size="icon" onClick={() => onRemove(item.id)}><Trash className="h-4 w-4" /></Button>
-                                            </div>
-                                        ))}
-                                    </div>
-                                </div>
-                                <div className="grid grid-cols-4 items-center gap-4">
-                                    <Label htmlFor={`new-${fieldName}`} className="text-right">New</Label>
-                                    <Input id={`new-${fieldName}`} value={newItemName} onChange={(e) => setNewItemName(e.target.value)} className="col-span-3" />
-                                </div>
-                            </div>
-                            <DialogFooter>
-                                <Button type="button" variant="secondary" onClick={() => setIsManageDialogOpen(false)}>Close</Button>
-                                <Button type="button" onClick={onAdd}>Save New {label}</Button>
-                            </DialogFooter>
-                        </DialogContent>
-                    </Dialog>
-                )}
-            </div>
-            {errors[fieldName] && <p className="text-sm text-destructive">{errors[fieldName]?.message}</p>}
-        </div>
-    );
-};
-
-
   return (
     <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
         <div className="flex items-center space-x-4">
@@ -436,119 +264,69 @@ export default function EditUserForm({ userToEdit, onUserUpdated }: EditUserForm
             </Button>
         </div>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        <div className="space-y-2">
-            <Label htmlFor="displayName">Full Name</Label>
-            <Input
-            id="displayName"
-            {...register("displayName")}
-            />
-            {errors.displayName && (
-            <p className="text-sm text-destructive">
-                {errors.displayName.message}
-            </p>
-            )}
-        </div>
-        <div className="space-y-2">
-            <Label htmlFor="email">Email</Label>
-            <Input
-            id="email"
-            type="email"
-            {...register("email")}
-            disabled={true}
-            />
-            {errors.email && (
-            <p className="text-sm text-destructive">
-                {errors.email.message}
-            </p>
-            )}
-        </div>
-         <div className="space-y-2">
-            <Label>Gender</Label>
+            <div className="space-y-2">
+                <Label htmlFor="displayName">Full Name</Label>
+                <Input id="displayName" {...register("displayName")} />
+                {errors.displayName && <p className="text-sm text-destructive">{errors.displayName.message}</p>}
+            </div>
+            <div className="space-y-2">
+                <Label htmlFor="email">Email</Label>
+                <Input id="email" type="email" {...register("email")} disabled={true} />
+                {errors.email && <p className="text-sm text-destructive">{errors.email.message}</p>}
+            </div>
+            <div className="space-y-2">
+                <Label>Gender</Label>
                 <Controller
-                name="gender"
-                control={control}
-                render={({ field }) => (
-                    <Select onValueChange={field.onChange} value={field.value} disabled={isSubmitting}>
-                        <SelectTrigger><SelectValue placeholder="Select gender" /></SelectTrigger>
-                        <SelectContent>
-                            <SelectItem value="male" translate="no">Male</SelectItem>
-                            <SelectItem value="female" translate="no">Female</SelectItem>
-                            <SelectItem value="other" translate="no">Other</SelectItem>
-                            <SelectItem value="prefer-not-to-say" translate="no">Prefer not to say</SelectItem>
-                        </SelectContent>
-                    </Select>
-                )}
-            />
-             {errors.gender && <p className="text-sm text-destructive">{errors.gender.message}</p>}
-        </div>
-        <div className="space-y-2">
-            <Label>Age Range</Label>
-            <Controller
-                name="ageRange"
-                control={control}
-                render={({ field }) => (
-                    <Select onValueChange={field.onChange} value={field.value} disabled={isSubmitting}>
-                        <SelectTrigger><SelectValue placeholder="Select age range" /></SelectTrigger>
-                        <SelectContent>
-                            <SelectItem value="18-24" translate="no">18-24</SelectItem>
-                            <SelectItem value="25-34" translate="no">25-34</SelectItem>
-                            <SelectItem value="35-44" translate="no">35-44</SelectItem>
-                            <SelectItem value="45-54" translate="no">45-54</SelectItem>
-                            <SelectItem value="55-64" translate="no">55-64</SelectItem>
-                            <SelectItem value="65+" translate="no">65+</SelectItem>
-                            <SelectItem value="prefer-not-to-say" translate="no">Prefer not to say</SelectItem>
-                        </SelectContent>
-                    </Select>
-                )}
-            />
-            {errors.ageRange && <p className="text-sm text-destructive">{errors.ageRange.message}</p>}
-        </div>
-        <div className="space-y-2">
-            <Label htmlFor="phoneNumber">Phone Number</Label>
-            <Input
-            id="phoneNumber"
-            type="tel"
-            {...register("phoneNumber")}
-                placeholder="e.g., +1 234 567 890"
-            />
-            {errors.phoneNumber && (
-            <p className="text-sm text-destructive">
-                {errors.phoneNumber.message}
-            </p>
-            )}
-        </div>
-        <div className="space-y-2">
-            <Label htmlFor="hpNumber">HP Number</Label>
-            <Input
-            id="hpNumber"
-            {...register("hpNumber")}
-            placeholder="Your HP Number"
-            />
-            {errors.hpNumber && (
-            <p className="text-sm text-destructive">
-                {errors.hpNumber.message}
-            </p>
-            )}
-        </div>
-        <div className="space-y-2">
-            <Label htmlFor="facilitatorName">Facilitator's Full Name</Label>
-            <Input
-            id="facilitatorName"
-            {...register("facilitatorName")}
-            placeholder="Facilitator's Name"
-            />
-            {errors.facilitatorName && (
-            <p className="text-sm text-destructive">
-                {errors.facilitatorName.message}
-            </p>
-            )}
-        </div>
-         <div className="space-y-2">
-            <Label htmlFor="campus">Campus</Label>
-            <div className="flex gap-2">
-                <Controller
+                    name="gender"
                     control={control}
+                    render={({ field }) => (
+                        <Select onValueChange={field.onChange} value={field.value} disabled={isSubmitting}>
+                            <SelectTrigger><SelectValue placeholder="Select gender" /></SelectTrigger>
+                            <SelectContent>
+                                <SelectItem value="Male">Male</SelectItem>
+                                <SelectItem value="Female">Female</SelectItem>
+                            </SelectContent>
+                        </Select>
+                    )}
+                />
+            </div>
+            <div className="space-y-2">
+                <Label>Age Range</Label>
+                <Controller
+                    name="ageRange"
+                    control={control}
+                    render={({ field }) => (
+                        <Select onValueChange={field.onChange} value={field.value} disabled={isSubmitting}>
+                            <SelectTrigger><SelectValue placeholder="Select age range" /></SelectTrigger>
+                            <SelectContent>
+                                <SelectItem value="18-24">18-24</SelectItem>
+                                <SelectItem value="25-34">25-34</SelectItem>
+                                <SelectItem value="35-44">35-44</SelectItem>
+                                <SelectItem value="45-54">45-54</SelectItem>
+                                <SelectItem value="55-64">55-64</SelectItem>
+                                <SelectItem value="65+">65+</SelectItem>
+                            </SelectContent>
+                        </Select>
+                    )}
+                />
+            </div>
+            <div className="space-y-2">
+                <Label htmlFor="phoneNumber">Phone Number</Label>
+                <Input id="phoneNumber" type="tel" {...register("phoneNumber")} />
+            </div>
+            <div className="space-y-2">
+                <Label htmlFor="hpNumber">HP Number</Label>
+                <Input id="hpNumber" {...register("hpNumber")} />
+            </div>
+            <div className="space-y-2">
+                <Label htmlFor="facilitatorName">Facilitator's Full Name</Label>
+                <Input id="facilitatorName" {...register("facilitatorName")} />
+            </div>
+            <div className="space-y-2">
+                <Label>Campus</Label>
+                <Controller
                     name="campus"
+                    control={control}
                     render={({ field }) => (
                          <Select onValueChange={field.onChange} value={field.value}>
                             <SelectTrigger>
@@ -563,29 +341,119 @@ export default function EditUserForm({ userToEdit, onUserUpdated }: EditUserForm
                     )}
                 />
             </div>
-        </div>
+             <div className="space-y-2">
+                <Label>Marital Status</Label>
+                <Controller
+                    name="maritalStatus"
+                    control={control}
+                    render={({ field }) => (
+                         <Select onValueChange={field.onChange} value={field.value}>
+                            <SelectTrigger><SelectValue placeholder="Select marital status" /></SelectTrigger>
+                            <SelectContent>
+                                <SelectItem value="Single">Single</SelectItem>
+                                <SelectItem value="Married">Married</SelectItem>
+                                <SelectItem value="Divorced">Divorced</SelectItem>
+                                <SelectItem value="Widowed">Widowed</SelectItem>
+                            </SelectContent>
+                        </Select>
+                    )}
+                />
+            </div>
             <div className="space-y-2">
-            <Label>Class Ladder</Label>
-            <Controller
-                control={control}
-                name="classLadderId"
-                render={({ field }) => (
-                    <Select onValueChange={field.onChange} value={field.value}>
-                        <SelectTrigger><SelectValue placeholder="Select a ladder..." /></SelectTrigger>
-                        <SelectContent>
-                            {ladders.map((ladder) => (
-                                <SelectItem key={ladder.id} value={ladder.id}>{ladder.name} {ladder.side !== 'none' && `(${ladder.side})`}</SelectItem>
-                            ))}
-                        </SelectContent>
-                    </Select>
-                )}
-            />
-        </div>
-
-        {renderField('charge', 'Charge', charges, handleAddCharge, handleRemoveCharge, newChargeName, setNewChargeName, isChargeDialogOpen, setIsChargeDialogOpen)}
-        
-        {isCurrentUserAdmin && renderField('role', 'Role', roles, () => {}, () => {}, '', () => {}, isChargeDialogOpen, setIsChargeDialogOpen)}
-        {isCurrentUserAdmin && renderField('membershipStatus', 'Membership Status', statuses, () => {}, () => {}, '', () => {}, isChargeDialogOpen, setIsChargeDialogOpen)}
+                <Label>Ministry</Label>
+                <Controller
+                    name="ministry"
+                    control={control}
+                    render={({ field }) => (
+                         <Select onValueChange={field.onChange} value={field.value}>
+                            <SelectTrigger><SelectValue placeholder="Select ministry" /></SelectTrigger>
+                            <SelectContent>
+                                {ministries.map((m) => (
+                                    <SelectItem key={m.id} value={m.name}>{m.name}</SelectItem>
+                                ))}
+                            </SelectContent>
+                        </Select>
+                    )}
+                />
+            </div>
+            <div className="space-y-2">
+                <Label>Class Ladder</Label>
+                <Controller
+                    control={control}
+                    name="classLadderId"
+                    render={({ field }) => (
+                        <Select onValueChange={field.onChange} value={field.value}>
+                            <SelectTrigger><SelectValue placeholder="Select a ladder..." /></SelectTrigger>
+                            <SelectContent>
+                                {ladders.map((ladder) => (
+                                    <SelectItem key={ladder.id} value={ladder.id}>{ladder.name} {ladder.side !== 'none' && `(${ladder.side})`}</SelectItem>
+                                ))}
+                            </SelectContent>
+                        </Select>
+                    )}
+                />
+            </div>
+             <div className="space-y-2">
+                <Label>Charge</Label>
+                <Controller
+                    name="charge"
+                    control={control}
+                    render={({ field }) => (
+                        <Select onValueChange={field.onChange} value={field.value} disabled={isSubmitting}>
+                            <SelectTrigger>
+                                <SelectValue placeholder="Select a charge" />
+                            </SelectTrigger>
+                            <SelectContent>
+                                {charges.map((c) => (
+                                    <SelectItem key={c.id} value={c.name}>{c.name}</SelectItem>
+                                ))}
+                            </SelectContent>
+                        </Select>
+                    )}
+                />
+            </div>
+            {isCurrentUserAdmin && (
+                <>
+                    <div className="space-y-2">
+                        <Label>Role</Label>
+                        <Controller
+                            control={control}
+                            name="role"
+                            render={({ field }) => (
+                                <Select onValueChange={field.onChange} value={field.value}>
+                                    <SelectTrigger><SelectValue /></SelectTrigger>
+                                    <SelectContent>
+                                        {roles.map((role) => (
+                                            <SelectItem key={role.id} value={role.id} disabled={role.id === 'developer' && currentUser?.role !== 'developer'}>{role.name}</SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                </Select>
+                            )}
+                        />
+                    </div>
+                     <div className="space-y-2">
+                        <Label>Membership Status</Label>
+                        <Controller
+                            control={control}
+                            name="membershipStatus"
+                            render={({ field }) => (
+                                <Select onValueChange={field.onChange} value={field.value}>
+                                    <SelectTrigger><SelectValue /></SelectTrigger>
+                                    <SelectContent>
+                                        {statuses.map((status) => (
+                                            <SelectItem key={status.id} value={status.name}>{status.name}</SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                </Select>
+                            )}
+                        />
+                    </div>
+                </>
+            )}
+             <div className="space-y-2 md:col-span-2">
+                <Label htmlFor="bio">Bio</Label>
+                <Textarea id="bio" {...register("bio")} placeholder="A brief user bio..." />
+            </div>
         </div>
         
         <div className="flex justify-end gap-2">
@@ -598,5 +466,3 @@ export default function EditUserForm({ userToEdit, onUserUpdated }: EditUserForm
     </form>
   );
 }
-
-    

@@ -1,4 +1,5 @@
 
+
 import { initializeApp, getApps, getApp, FirebaseApp } from "firebase/app";
 import { getAuth, Auth } from "firebase/auth";
 import { getStorage, FirebaseStorage } from "firebase/storage";
@@ -22,7 +23,7 @@ const app: FirebaseApp = !getApps().length ? initializeApp(firebaseConfig) : get
 const auth: Auth = getAuth(app);
 const storage: FirebaseStorage = getStorage(app);
 const db: Firestore = getFirestore(app);
-const functions: Functions = getFunctions(app);
+const functions: Functions = getFunctions(app, 'us-central1');
 
 // --- Exports
 export { app, auth, storage, db, functions };

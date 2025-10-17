@@ -1,4 +1,5 @@
 
+
 import * as functions from "firebase-functions";
 import * as admin from "firebase-admin";
 import * as sgMail from "@sendgrid/mail";
@@ -6,6 +7,31 @@ import { onVideoDeleted, onVideoUpdate, transcodeVideo, updateVideoOnTranscodeCo
 
 admin.initializeApp();
 const db = admin.firestore();
+
+export const deleteUserAccount = functions.https.onCall(async (data, context) => {
+    if (!context.auth || !['admin', 'developer'].includes(context.auth.token.role || '')) {
+        throw new functions.https.HttpsError('permission-denied', 'You must be an admin to perform this action.');
+    }
+
+    const uid = data.uid;
+    if (!uid) {
+        throw new functions.https.HttpsError('invalid-argument', 'The function must be called with a "uid" argument.');
+    }
+
+    try {
+        // Delete user from Authentication
+        await admin.auth().deleteUser(uid);
+        
+        // Delete user document from Firestore
+        await db.collection('users').doc(uid).delete();
+        
+        return { success: true, message: `Successfully deleted user ${uid}` };
+    } catch (error) {
+        console.error('Error deleting user:', error);
+        throw new functions.https.HttpsError('internal', 'An error occurred while deleting the user.');
+    }
+});
+
 
 export const enrollInCourse = functions.runWith({ memory: '512MB' }).https.onCall(async (data, context) => {
     if (!context.auth) {
@@ -263,4 +289,3 @@ export const syncVideos = functions.https.onCall(async (data, context) => {
     
 export { onVideoDeleted, onVideoUpdate, transcodeVideo, updateVideoOnTranscodeComplete };
 
-    

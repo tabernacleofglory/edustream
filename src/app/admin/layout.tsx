@@ -38,7 +38,8 @@ import {
   Group,
   BookCheck,
   Sparkles,
-  Users2
+  Users2,
+  AlertTriangle,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
@@ -150,7 +151,8 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
           permission: 'viewCourseManagement',
           subItems: [
             { href: "/admin/courses", label: "Course Manager", icon: Settings },
-            { href: "/admin/courses/enrollments", label: "Enrollments", icon: Users2 },
+            { href: "/admin/courses/enrollments", label: "Enrollment Activity", icon: Users2 },
+            { href: "/admin/courses/enrollment-issues", label: "Enrollment Issues", icon: AlertTriangle },
           ]
         },
         { href: "/admin/content/groups", label: "Learning Paths", icon: Group, permission: 'manageContent' },
@@ -360,5 +362,3 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     </div>
   );
 }
-
-    

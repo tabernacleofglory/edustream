@@ -1,5 +1,4 @@
 
-
 "use client";
 
 import { useState, useEffect } from "react";
@@ -59,14 +58,17 @@ interface AddUserFormProps {
     ladders: Ladder[];
 }
 
-// A secondary Firebase app instance to avoid conflicts with the main app's auth state
-const secondaryAppName = "secondary";
-let secondaryApp = getApps().find(app => app.name === secondaryAppName);
-if (!secondaryApp) {
+const getSecondaryAuth = () => {
+    const secondaryAppName = "secondary";
+    const existingApp = getApps().find(app => app.name === secondaryAppName);
+    if (existingApp) {
+        return getAuth(existingApp);
+    }
     const mainAppConfig = getApp().options;
-    secondaryApp = initializeApp(mainAppConfig, secondaryAppName);
-}
-const secondaryAuth = getAuth(secondaryApp);
+    const secondaryApp = initializeApp(mainAppConfig, secondaryAppName);
+    return getAuth(secondaryApp);
+};
+
 
 export default function AddUserForm({ onUserAdded, ladders }: AddUserFormProps) {
   const { toast } = useToast();
@@ -216,6 +218,7 @@ export default function AddUserForm({ onUserAdded, ladders }: AddUserFormProps) 
   const onSubmit = async (data: AddUserFormValues) => {
     setIsSubmitting(true);
     try {
+      const secondaryAuth = getSecondaryAuth();
       // Use the secondary auth instance to create the user
       const userCredential = await createUserWithEmailAndPassword(secondaryAuth, data.email, data.password);
       const user = userCredential.user;
@@ -248,7 +251,9 @@ export default function AddUserForm({ onUserAdded, ladders }: AddUserFormProps) 
       await setDoc(doc(db, "users", user.uid), newUser);
 
       // Important: Sign out the newly created user from the secondary auth instance
-      await signOut(secondaryAuth);
+      if (secondaryAuth.currentUser?.uid === user.uid) {
+        await signOut(secondaryAuth);
+      }
       
       toast({
         title: "User Created",

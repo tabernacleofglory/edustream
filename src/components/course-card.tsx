@@ -9,12 +9,24 @@ import type { Course, Speaker } from "@/lib/types";
 import { Clock, Loader2, CheckCircle, Edit, Eye, Trash2, UserMinus, PlayCircle, Lock, Copy, Hash, Users } from "lucide-react";
 import { Button } from "./ui/button";
 import { useAuth } from "@/hooks/use-auth";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { useToast } from "@/hooks/use-toast";
-import { getFirebaseFirestore, getFirebaseFunctions } from "@/lib/firebase";
-import { doc, setDoc, updateDoc, getDoc, deleteDoc, serverTimestamp, collection, query, where, getDocs, increment } from "firebase/firestore";
-import { httpsCallable } from "firebase/functions";
+import { getFirebaseFirestore } from "@/lib/firebase";
+import {
+  doc,
+  setDoc,
+  updateDoc,
+  getDoc,
+  deleteDoc,
+  serverTimestamp,
+  collection,
+  query,
+  where,
+  getDocs,
+  increment,
+  runTransaction,
+} from "firebase/firestore";
 import {
   Dialog,
   DialogContent,
@@ -48,6 +60,7 @@ interface CourseCardProps {
     lastWatchedVideoId?: string;
     isLocked?: boolean;
     prerequisiteCourse?: { id: string; title: string };
+    allCoursesInGroupCompleted?: boolean;
   };
   onEdit?: () => void;
   onDelete?: () => void;
@@ -75,9 +88,8 @@ export function CourseCard({
   const [speaker, setSpeaker] = useState<Speaker | null>(null);
   const [firstPublishedVideoId, setFirstPublishedVideoId] = useState<string | null>(null);
   const [publishedVideoCount, setPublishedVideoCount] = useState<number>(0);
-  const [enrollmentCount, setEnrollmentCount] = useState(course.enrollmentCount || 0);
+  const [enrollmentCount, setEnrollmentCount] = useState<number>(course.enrollmentCount || 0);
   const db = getFirebaseFirestore();
-  const functions = getFirebaseFunctions();
 
   const isEnrolled = !!course.isEnrolled;
   const isCompleted = !!course.isCompleted;
@@ -110,7 +122,11 @@ export function CourseCard({
 
       for (let i = 0; i < ids.length; i += chunkSize) {
         const slice = ids.slice(i, i + chunkSize);
-        const q = query(collection(db, "Contents"), where("__name__", "in", slice), where("status", "==", "published"));
+        const q = query(
+          collection(db, "Contents"),
+          where("__name__", "in", slice),
+          where("status", "==", "published")
+        );
         const snap = await getDocs(q);
         snap.docs.forEach((d) => publishedIds.add(d.id));
       }
@@ -122,11 +138,17 @@ export function CourseCard({
       setFirstPublishedVideoId(first);
     };
 
+    // LEGAL enrollment count read: read from the course doc, not from enrollments query
     const fetchEnrollmentCount = async () => {
-      const enrollmentsQuery = query(collection(db, 'enrollments'), where('courseId', '==', course.id));
-      const snapshot = await getDocs(enrollmentsQuery);
-      setEnrollmentCount(snapshot.size);
-    }
+      const courseRef = doc(db, "courses", course.id);
+      const snap = await getDoc(courseRef);
+      if (snap.exists()) {
+        const data = snap.data() as any;
+        setEnrollmentCount(data?.enrollmentCount || 0);
+      } else {
+        setEnrollmentCount(0);
+      }
+    };
 
     fetchSpeaker();
     findFirstPublishedVideo();
@@ -153,31 +175,56 @@ export function CourseCard({
       });
       return;
     }
-    
+
     if (publishedVideoCount === 0) {
-        router.push(`/courses`);
-        return;
+      router.push(`/courses`);
+      return;
     }
 
     setIsEnrolling(true);
     try {
-      const enrollInCourse = httpsCallable(functions, 'enrollInCourse');
-      await enrollInCourse({ courseId: course.id });
+      const uid = user.uid;
+      const enrollmentId = `${uid}_${course.id}`;
+      const enrollmentRef = doc(db, "enrollments", enrollmentId);
+      const courseRef = doc(db, "courses", course.id);
+
+      // Client-side transaction that matches Firestore Rules (+1 only, single-field update)
+      await runTransaction(db, async (tx) => {
+        const existing = await tx.get(enrollmentRef);
+        if (existing.exists()) {
+          // already enrolled -> idempotent
+          return;
+        }
+
+        // Create enrollment doc (ID must match payload per rules)
+        tx.set(enrollmentRef, {
+          userId: uid,
+          courseId: course.id,
+          enrolledAt: serverTimestamp(),
+        });
+
+        // Increment the course's enrollmentCount by +1 (only field changed)
+        tx.update(courseRef, { enrollmentCount: increment(1) });
+      });
+
+      // Update local UI count optimistically
+      setEnrollmentCount((n) => n + 1);
 
       toast({ title: "Enrolled", description: `You can now start ${course.title}.` });
-      
+
       const videoIdToRedirect = course.lastWatchedVideoId || firstPublishedVideoId;
-      if(videoIdToRedirect) {
-          router.push(`/courses/${course.id}/video/${videoIdToRedirect}`);
+      if (videoIdToRedirect) {
+        router.push(`/courses/${course.id}/video/${videoIdToRedirect}`);
       }
 
       onChange?.();
       refreshUser();
     } catch (error: any) {
+      console.error("enroll failed", error);
       toast({
         variant: "destructive",
         title: "Enrollment Failed",
-        description: error.message || "Could not enroll in the course. Please try again.",
+        description: error?.message || "Could not enroll in the course. Please try again.",
       });
     } finally {
       setIsEnrolling(false);
@@ -193,6 +240,8 @@ export function CourseCard({
     const result = await unenrollUserFromCourse(user.uid, course.id);
     if (result.success) {
       toast({ title: "Successfully unenrolled" });
+      // reflect count locally; rules allow -1 too
+      setEnrollmentCount((n) => Math.max(0, n - 1));
       onChange?.();
     } else {
       toast({ variant: "destructive", title: "Unenrollment failed", description: result.message });
@@ -249,7 +298,6 @@ export function CourseCard({
   const resumeTargetId = course.lastWatchedVideoId || firstPublishedVideoId || "";
   const canResume = !!resumeTargetId;
   const resumeLink = canResume ? `/courses/${course.id}/video/${resumeTargetId}` : `/courses`;
-
 
   return (
     <>
@@ -321,29 +369,29 @@ export function CourseCard({
               </CardContent>
               <CardFooter className="p-4 pt-0 flex flex-col items-start gap-4">
                 <div className="flex flex-wrap items-center text-sm text-muted-foreground gap-x-4 gap-y-1">
+                  <div className="flex items-center gap-1.5">
+                    <Clock className="w-4 h-4" />
+                    <span>{publishedVideoCount} lessons</span>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <Users className="w-4 h-4" />
+                    <span>{enrollmentCount} enrolled</span>
+                  </div>
+                  {isAdminView && course.order !== undefined && (
                     <div className="flex items-center gap-1.5">
-                        <Clock className="w-4 h-4" />
-                        <span>{publishedVideoCount} lessons</span>
+                      <Hash className="w-4 h-4" />
+                      <span>Order: {course.order}</span>
                     </div>
+                  )}
+                  {speaker && (
                     <div className="flex items-center gap-1.5">
-                        <Users className="w-4 h-4" />
-                        <span>{enrollmentCount} enrolled</span>
+                      <Avatar className="h-5 w-5">
+                        <AvatarImage src={speaker.photoURL || ""} alt={speaker.name || ""} />
+                        <AvatarFallback>{getInitials(speaker.name)}</AvatarFallback>
+                      </Avatar>
+                      <span>{speaker.name}</span>
                     </div>
-                    {isAdminView && course.order !== undefined && (
-                        <div className="flex items-center gap-1.5">
-                            <Hash className="w-4 h-4" />
-                            <span>Order: {course.order}</span>
-                        </div>
-                    )}
-                    {speaker && (
-                        <div className="flex items-center gap-1.5">
-                            <Avatar className="h-5 w-5">
-                                <AvatarImage src={speaker.photoURL || ""} alt={speaker.name || ""} />
-                                <AvatarFallback>{getInitials(speaker.name)}</AvatarFallback>
-                            </Avatar>
-                            <span>{speaker.name}</span>
-                        </div>
-                    )}
+                  )}
                 </div>
 
                 {isAdminView && onEdit && onDelete && (
@@ -390,11 +438,16 @@ export function CourseCard({
                     <EnrollButton />
                   </div>
                 ) : isCompleted ? (
-                  <Button asChild className="w-full" variant="outline">
-                    <Link href="/my-certificates">
-                        View Certificate
-                    </Link>
-                  </Button>
+                   course.allCoursesInGroupCompleted ? (
+                      <Button asChild className="w-full" variant="outline">
+                        <Link href="/my-certificates">View Certificate</Link>
+                      </Button>
+                    ) : (
+                      <Button disabled className="w-full">
+                        <CheckCircle className="mr-2 h-4 w-4" />
+                        Complete
+                      </Button>
+                    )
                 ) : isInProgress ? (
                   <div className="w-full">
                     <div className="flex justify-between items-center mb-2">

@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useState, useEffect } from "react";
@@ -183,30 +184,32 @@ export default function CoursePreview({
                 </div>
               ) : videos.length > 0 ? (
                 <div className="space-y-2">
-                  {videos.map((video, index) => (
-                    <Link
-                      key={video.id}
-                      href={
-                        isEnrolled && video.id
-                          ? `/courses/${course.id}/video/${video.id}`
-                          : "#"
-                      }
-                      className={`flex items-center gap-4 p-3 rounded-lg transition-colors ${
-                        isEnrolled ? "hover:bg-muted cursor-pointer" : "cursor-default"
-                      }`}
-                    >
-                      <span className="text-lg font-bold text-muted-foreground">
-                        {index + 1}
-                      </span>
-                      <div className="flex-1">
-                        <p className="font-semibold">{video.title}</p>
-                        <p className="text-sm text-muted-foreground">
-                          {Math.round(((video as any).duration ?? 0) / 60)} min
-                        </p>
-                      </div>
-                      {!isEnrolled && <Lock className="h-5 w-5 text-muted-foreground" />}
-                    </Link>
-                  ))}
+                  {videos.map((video, index) => {
+                    const videoIsLocked = !isEnrolled;
+                    return (
+                        <Link
+                          key={video.id}
+                          href={!videoIsLocked ? `/courses/${course.id}/video/${video.id}` : "#"}
+                          className={`flex items-center gap-4 p-3 rounded-lg transition-colors ${
+                            !videoIsLocked ? "hover:bg-muted cursor-pointer" : "cursor-default"
+                          }`}
+                          onClick={(e) => {
+                            if (videoIsLocked) e.preventDefault();
+                          }}
+                        >
+                            {videoIsLocked ? (
+                                <Lock className="h-5 w-5 text-muted-foreground" />
+                            ) : (
+                                <span className="text-lg font-bold text-muted-foreground">
+                                    {index + 1}
+                                </span>
+                            )}
+                            <div className="flex-1">
+                                <p className="font-semibold">{video.title}</p>
+                            </div>
+                        </Link>
+                    )
+                  })}
                 </div>
               ) : (
                 <p className="text-muted-foreground text-sm">No lessons available yet.</p>

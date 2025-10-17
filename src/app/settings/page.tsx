@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useAuth } from "@/hooks/use-auth";
@@ -10,7 +11,7 @@ import { useForm, SubmitHandler, Controller } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { getFirebaseFirestore, getFirebaseStorage } from "@/lib/firebase";
-import { collection, doc, getDocs, query, updateDoc, orderBy, where } from "firebase/firestore";
+import { collection, doc, getDocs, query, updateDoc, orderBy, where, onSnapshot } from "firebase/firestore";
 import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
 import { useToast } from "@/hooks/use-toast";
 import { useState, useEffect, useCallback } from "react";
@@ -511,6 +512,25 @@ export default function SettingsPage() {
                                     {errors.campus && <p className="text-sm text-destructive">{errors.campus.message}</p>}
                             </div>
                             <div className="space-y-2">
+                                <Label>I'm attending <span className="text-destructive">*</span></Label>
+                                <Controller
+                                    control={control}
+                                    name="locationPreference"
+                                    render={({ field }) => (
+                                        <Select onValueChange={field.onChange} value={field.value}>
+                                            <SelectTrigger>
+                                                <SelectValue placeholder="Select your preference" />
+                                            </SelectTrigger>
+                                            <SelectContent>
+                                                <SelectItem value="Onsite">Onsite</SelectItem>
+                                                <SelectItem value="Online">Online</SelectItem>
+                                            </SelectContent>
+                                        </Select>
+                                    )}
+                                />
+                                {errors.locationPreference && <p className="text-sm text-destructive">{errors.locationPreference.message}</p>}
+                            </div>
+                            <div className="space-y-2">
                                 <Label>Language <span className="text-destructive">*</span></Label>
                                 <Controller
                                     control={control}
@@ -529,26 +549,6 @@ export default function SettingsPage() {
                                     )}
                                 />
                                 {errors.language && <p className="text-sm text-destructive">{errors.language.message}</p>}
-                            </div>
-
-                            <div className="space-y-2">
-                                <Label>Campus Preference <span className="text-destructive">*</span></Label>
-                                <Controller
-                                    control={control}
-                                    name="locationPreference"
-                                    render={({ field }) => (
-                                        <Select onValueChange={field.onChange} value={field.value}>
-                                            <SelectTrigger>
-                                                <SelectValue placeholder="Select your preference" />
-                                            </SelectTrigger>
-                                            <SelectContent>
-                                                <SelectItem value="Onsite">Onsite</SelectItem>
-                                                <SelectItem value="Online">Online</SelectItem>
-                                            </SelectContent>
-                                        </Select>
-                                    )}
-                                />
-                                {errors.locationPreference && <p className="text-sm text-destructive">{errors.locationPreference.message}</p>}
                             </div>
                             
                             {isInHpGroup ? (

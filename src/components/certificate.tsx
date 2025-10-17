@@ -6,6 +6,7 @@ import { cn } from "@/lib/utils";
 import { SiteSettings, getSiteSettings } from "@/lib/data";
 import { useEffect, useState } from "react";
 import { Skeleton } from "./ui/skeleton";
+import Image from "next/image";
 
 // ======= TWEAK THESE 4 PERCENTAGES IF YOU NEED MICRO-ADJUSTMENTS =======
 const NAME_TOP = 47;   // % from top where the NAME baseline should sit
@@ -17,7 +18,7 @@ const DATE_LEFT = 74;  // % from left for the DATE line (right side area)
 interface CertificateProps {
   userName: string;
   courseName?: string;       // optional; not shown on this layout
-  completionDate?: string;   // ISO string (fallbacks to today)
+  completionDate?: string | Date;   // ISO string or Date object (fallbacks to today)
   templateUrl?: string;      // background image (2000x1545)
   settingsOverride?: Partial<SiteSettings>;
 }
@@ -80,7 +81,7 @@ export default function Certificate({
         style={{
           top: `${NAME_TOP}%`,
           left: `${NAME_LEFT}%`,
-          transform: "translate(calc(-50% + 20%), 50%)",
+          transform: "translate(-50%, -50%)",
           fontSize: "clamp(1.5rem, 6cqi, 5rem)",
           lineHeight: 1,
           fontFamily: "var(--font-dancing-script, 'Dancing Script', cursive)",
@@ -99,7 +100,7 @@ export default function Certificate({
         style={{
           top: `${DATE_TOP}%`,
           left: `${DATE_LEFT}%`,
-          transform: "translate(calc(-50% - 20%), -100%)",
+          transform: "translate(-50%, -50%)",
           fontSize: "clamp(0.55rem, 2.2cqi, 1.15rem)",
           lineHeight: 1.1,
           textAlign: "center",

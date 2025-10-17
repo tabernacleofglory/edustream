@@ -21,7 +21,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from "@/components/ui/select";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Form, FormLabel } from "@/components/ui/form";
+import { Form } from "@/components/ui/form";
 
 const quizQuestionSchema = z.discriminatedUnion("type", [
   z.object({
@@ -167,7 +167,7 @@ const QuizForm = ({ quiz, onSuccess, closeDialog }: { quiz?: Quiz | null; onSucc
                             <Textarea id={`questions.${index}.questionText`} {...form.register(`questions.${index}.questionText`)} />
                             {form.formState.errors.questions?.[index]?.questionText && <p className="text-sm text-destructive">{form.formState.errors.questions?.[index]?.questionText?.message}</p>}
 
-                            {field.type !== 'free-text' && <FormLabel>Options & Correct Answer(s)</FormLabel>}
+                            {field.type !== 'free-text' && <Label>Options & Correct Answer(s)</Label>}
 
                             {field.type === 'multiple-choice' && (
                                 <Controller

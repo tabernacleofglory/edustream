@@ -121,9 +121,8 @@ export async function requestPromotion(
 
 /**
  * UNENROLL USER FROM COURSE
- * - Deletes enrollment doc
- * - Deletes progress doc
- * - Decrements courses/{courseId}.enrollmentCount by exactly 1
+ * - Updates enrollment doc to remove completedAt timestamp
+ * - This effectively marks the course as "in-progress" again.
  */
 export async function unenrollUserFromCourse(
   userId: string,
@@ -132,23 +131,17 @@ export async function unenrollUserFromCourse(
   try {
     const enrollmentId = `${userId}_${courseId}`;
     const enrollmentRef = db.doc(`enrollments/${enrollmentId}`);
-    const progressRef   = db.doc(`userVideoProgress/${enrollmentId}`);
-    const courseRef     = db.doc(`courses/${courseId}`);
 
     const enrollmentDoc = await enrollmentRef.get();
     if (!enrollmentDoc.exists) {
-      return { success: false, message: 'Enrollment not found.' };
+        return { success: false, message: "User is not enrolled in this course." };
     }
 
-    // Atomically update all documents.
-    const batch = db.batch();
+    // Set completedAt to null to mark as incomplete.
+    await enrollmentRef.update({
+        completedAt: null,
+    });
     
-    batch.delete(enrollmentRef);
-    batch.delete(progressRef);
-    batch.update(courseRef, { enrollmentCount: FieldValue.increment(-1) });
-    
-    await batch.commit();
-
     return { success: true, message: 'Successfully unenrolled from the course.' };
   } catch (error: any) {
     console.error('Error unenrolling user:', error);

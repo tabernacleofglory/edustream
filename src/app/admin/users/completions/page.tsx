@@ -1,3 +1,5 @@
+
+
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
@@ -33,11 +35,13 @@ import {
   Table, TableHeader, TableRow, TableHead, TableBody, TableCell,
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { Loader2, Search, CheckCircle2, Trash2, Download, Lock } from "lucide-react";
+import { Loader2, Search, CheckCircle2, Trash2, Download, Lock, ChevronRight, ChevronLeft } from "lucide-react";
 import { format } from "date-fns";
 import { cn } from "@/lib/utils";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import Papa from "papaparse";
+import { Skeleton } from "../ui/skeleton";
+import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from "@/components/ui/select";
 
 const PAGE_SIZE_DEFAULT = 25;
 
@@ -174,8 +178,12 @@ export default function ManageCompletionsPage() {
 
   const filteredCourses = useMemo(() => {
     const q = courseSearchTerm.toLowerCase();
-    return courses.filter(c => (c.title || "").toLowerCase().includes(q));
-  }, [courses, courseSearchTerm]);
+    let userCourses = courses;
+    if (selectedUser && selectedUser.language) {
+      userCourses = courses.filter(c => c.language === selectedUser.language);
+    }
+    return userCourses.filter(c => (c.title || "").toLowerCase().includes(q));
+  }, [courses, courseSearchTerm, selectedUser]);
 
   // --- Toggle course multi-select ---
   const toggleCourse = (courseId: string, isLogged: boolean) => {
@@ -718,14 +726,31 @@ export default function ManageCompletionsPage() {
             </ScrollArea>
           )}
         </CardContent>
-        <CardFooter className="flex items-center justify-between">
-          <div className="text-sm text-muted-foreground">
-            Page {page}{hasNextPage ? "" : " (last)"} • {visibleLogRows.length} row(s)
-          </div>
-          <div className="flex gap-2">
-            <Button variant="outline" onClick={goPrev} disabled={page <= 1}>Previous</Button>
-            <Button variant="outline" onClick={goNext} disabled={!hasNextPage}>Next</Button>
-          </div>
+        <CardFooter className="flex justify-end items-center gap-4">
+            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                <span>Rows per page</span>
+                <Select value={`${pageSize}`} onValueChange={value => setPageSize(Number(value))}>
+                    <SelectTrigger className="w-[70px]">
+                        <SelectValue placeholder={`${pageSize}`} />
+                    </SelectTrigger>
+                    <SelectContent>
+                        {[10, 25, 50, 100].map(size => (
+                            <SelectItem key={size} value={`${size}`}>{size}</SelectItem>
+                        ))}
+                    </SelectContent>
+                </Select>
+            </div>
+            <span className="text-sm text-muted-foreground">Page {page} of ?</span>
+            <div className="flex items-center gap-2">
+                <Button variant="outline" size="sm" onClick={goPrev} disabled={page <= 1}>
+                    <ChevronLeft className="h-4 w-4" />
+                    Previous
+                </Button>
+                <Button variant="outline" size="sm" onClick={goNext} disabled={!hasNextPage}>
+                    Next
+                    <ChevronRight className="h-4 w-4" />
+                </Button>
+            </div>
         </CardFooter>
       </Card>
     </div>

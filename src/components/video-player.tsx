@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useState, useEffect, useRef, useMemo, useCallback } from "react";
@@ -62,13 +63,14 @@ import {
   AccordionItem,
   AccordionTrigger,
 } from "@/components/ui/accordion";
-import { CourseCard } from "./course-card";
+import { CourseCard } from "@/components/course-card";
 import { useToast } from "@/hooks/use-toast";
 import { useIsMobile } from "@/hooks/use-is-mobile";
-import CommentSection, { CommentForm } from "./video/comment-section";
+import CommentSection, { CommentForm } from "@/components/video/comment-section";
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
 import { useProcessedCourses } from "@/hooks/useProcessedCourses";
 import { Progress } from "./ui/progress";
+import Image from "next/image";
 
 
 interface PlaylistAndResourcesProps {
@@ -269,7 +271,7 @@ export default function VideoPlayerClient({
   videoIndex,
   speaker,
 }: VideoPlayerClientProps) {
-  const { user, refreshUser, hasPermission } = useAuth();
+  const { user, refreshUser, hasPermission, isCurrentUserAdmin } = useAuth();
   const router = useRouter();
   const { toast } = useToast();
   const playerRef = useRef<HTMLVideoElement | null>(null);
@@ -306,16 +308,16 @@ export default function VideoPlayerClient({
   const [showControls, setShowControls] = useState(true);
   const [showGradientOverlay, setShowGradientOverlay] = useState(true);
   const [isLiked, setIsLiked] = useState(false);
-  const [likeCount, setLikeCount] = useState(currentVideo.likeCount || 0);
-  const [shareCount, setShareCount] = useState(currentVideo.shareCount || 0);
+  const [likeCount, setLikeCount] = useState(currentVideo?.likeCount || 0);
+  const [shareCount, setShareCount] = useState(currentVideo?.shareCount || 0);
   const [quizzes, setQuizzes] = useState<Quiz[]>([]);
   const [quizResults, setQuizResults] = useState<UserQuizResult[]>([]);
   const [isStillWatchingPromptVisible, setIsStillWatchingPromptVisible] = useState(false);
   const promptCheckpointsRef = useRef(new Set<number>());
   const [showEndOverlay, setShowEndOverlay] = useState(false);
 
-  const isYouTube = currentVideo.type === 'youtube' || (currentVideo.url && (currentVideo.url.includes('youtube.com') || currentVideo.url.includes('youtu.be')));
-  const isGoogleDrive = currentVideo.type === 'googledrive';
+  const isYouTube = currentVideo?.type === 'youtube' || (currentVideo?.url && (currentVideo.url.includes('youtube.com') || currentVideo.url.includes('youtu.be')));
+  const isGoogleDrive = currentVideo?.type === 'googledrive';
 
   const canDownload = hasPermission("downloadContent") && !isYouTube && !isGoogleDrive;
   const canRightClick = hasPermission("allowRightClick");
@@ -324,20 +326,21 @@ export default function VideoPlayerClient({
     useProcessedCourses(true);
 
   const relatedCourses = useMemo(() => {
-    if (!processedCourses?.length || !course.ladderIds?.length) return [];
+    if (!processedCourses?.length || !course?.ladderIds?.length) return [];
     return processedCourses.filter(
       (c) =>
         c.id !== course.id &&
         Array.isArray(c.ladderIds) &&
         c.ladderIds.some((id) => course.ladderIds!.includes(id))
     );
-  }, [processedCourses, course.id, course.ladderIds]);
+  }, [processedCourses, course, course.id, course.ladderIds]);
 
   const togglePlayPause = useCallback(() => {
     setIsPlaying(prev => !prev);
   }, []);
 
     useEffect(() => {
+        if (!course?.quizIds) return;
         const fetchQuizzesAndResults = async () => {
             if (!course.quizIds || course.quizIds.length === 0) {
                 setQuizzes([]);
@@ -361,7 +364,7 @@ export default function VideoPlayerClient({
             }
         }
         fetchQuizzesAndResults();
-    }, [course.quizIds, course.id, user, db]);
+    }, [course?.quizIds, course.id, user, db]);
 
 
   useEffect(() => {
@@ -375,16 +378,14 @@ export default function VideoPlayerClient({
   }, [isMobile]);
 
   useEffect(() => {
-    if (!user) {
-      setIsLiked(false);
-      return;
-    }
+    if (!user || !currentVideo?.id) return;
     const likeRef = doc(db, "Contents", currentVideo.id, "likes", user.uid);
     const unsub = onSnapshot(likeRef, (d) => setIsLiked(d.exists()));
     return () => unsub();
-  }, [user, currentVideo.id, db]);
+  }, [user, currentVideo?.id, db]);
 
   useEffect(() => {
+    if (!currentVideo?.id) return;
     const likesCol = collection(db, "Contents", currentVideo.id, "likes");
     const sharesCol = collection(db, "Contents", currentVideo.id, "shares");
 
@@ -395,7 +396,7 @@ export default function VideoPlayerClient({
       unsubLikes();
       unsubShares();
     };
-  }, [currentVideo.id, db]);
+  }, [currentVideo?.id, db]);
 
   useEffect(() => {
     if (!user) {
@@ -457,7 +458,6 @@ export default function VideoPlayerClient({
               }
           }
       }
-      setIsPlaying(true);
   }, [user, isEnrolled, db, course.id, currentVideo.id, isYouTube, isGoogleDrive]);
 
 
@@ -467,7 +467,7 @@ export default function VideoPlayerClient({
     if (isYouTube || isGoogleDrive || !videoElement) return;
 
     const resumeNativeVideo = async () => {
-        if (!user || !isEnrolled || !videoElement) return;
+        if (!user || !isEnrolled || !videoElement || !isReady) return;
         const progressRef = doc(db, "userVideoProgress", `${user.uid}_${course.id}`);
         const snap = await getDoc(progressRef);
         if (snap.exists()) {
@@ -495,10 +495,10 @@ export default function VideoPlayerClient({
         hls = new Hls();
         hls.loadSource(videoUrl);
         hls.attachMedia(videoElement);
-        hls.on(Hls.Events.MANIFEST_PARSED, () => { if(isReady) resumeNativeVideo(); });
+        hls.on(Hls.Events.MANIFEST_PARSED, () => { resumeNativeVideo(); });
       } else {
         videoElement.src = videoUrl;
-        videoElement.addEventListener('canplay', () => { if(isReady) resumeNativeVideo() }, { once: true });
+        videoElement.addEventListener('canplay', () => { resumeNativeVideo() }, { once: true });
       }
     }
 
@@ -833,8 +833,8 @@ export default function VideoPlayerClient({
               isFullScreen ? "rounded-none" : "lg:rounded-lg"
             )}
           >
-            {isYouTube || isGoogleDrive ? (
-                currentVideo.url && (
+            {(isYouTube || isGoogleDrive) ? (
+                currentVideo?.url && (
                 <div className="relative w-full h-full">
                     <ReactPlayer
                         ref={reactPlayerRef}
@@ -1018,7 +1018,9 @@ export default function VideoPlayerClient({
                   <Button onClick={handleLike} variant="outline" size="sm" disabled={!user}>
                     <Heart className={cn("mr-2 h-4 w-4", isLiked && "fill-destructive text-destructive")}/>{likeCount}
                   </Button>
-                  <Button onClick={handleShare} variant="outline" size="sm"><Share2 className="mr-2 h-4 w-4" />{shareCount}</Button>
+                  {isCurrentUserAdmin &&
+                    <Button onClick={handleShare} variant="outline" size="sm"><Share2 className="mr-2 h-4 w-4" />{shareCount}</Button>
+                  }
                   {canDownload && (<a href={currentVideo.url} download target="_blank" rel="noopener noreferrer"><Button variant="outline" size="sm"><Download className="mr-2 h-4 w-4" />Download</Button></a>)}
                 </div>
               </div>
@@ -1047,3 +1049,5 @@ export default function VideoPlayerClient({
     </div>
   );
 }
+
+    
