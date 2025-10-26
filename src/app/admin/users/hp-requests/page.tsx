@@ -35,7 +35,7 @@ export default function HPRequestsPage() {
     const [loading, setLoading] = useState(true);
     const [isProcessingEmail, setIsProcessingEmail] = useState<string | null>(null);
     const [dateRange, setDateRange] = useState<DateRange | undefined>();
-    const { user, hasPermission, loading: authLoading, isCurrentUserAdmin } = useAuth();
+    const { user: currentUser, hasPermission, loading: authLoading, canViewAllCampuses } = useAuth();
     const { toast } = useToast();
     const functions = getFunctions();
     const tableRef = useRef(null);
@@ -46,7 +46,6 @@ export default function HPRequestsPage() {
     const [searchTerm, setSearchTerm] = useState('');
 
     const canManage = hasPermission('manageHpRequests');
-    const isModerator = user?.role === 'moderator';
 
     const fetchRequests = useCallback(async () => {
         setLoading(true);
@@ -83,13 +82,6 @@ export default function HPRequestsPage() {
         }
     }, [canManage, authLoading, fetchRequests]);
 
-    // If moderator, automatically set their campus and disable the filter
-    useEffect(() => {
-        if (isModerator && user?.campus) {
-            setSelectedCampus(user.campus);
-        }
-    }, [isModerator, user]);
-    
     const allCampuses = useMemo(() => {
         const campusSet = new Set(requests.map(u => u.campus).filter(Boolean));
         return Array.from(campusSet).sort();
@@ -101,8 +93,12 @@ export default function HPRequestsPage() {
                 (!dateRange?.from || (request.createdAt && new Date(request.createdAt.seconds * 1000) >= startOfDay(dateRange.from))) &&
                 (!dateRange?.to || (request.createdAt && new Date(request.createdAt.seconds * 1000) <= endOfDay(dateRange.to)));
             
-            const matchesCampus = selectedCampus === 'all' || 
-                (request.campus && request.campus === selectedCampus);
+            let matchesCampus = true;
+            if (!canViewAllCampuses) {
+                matchesCampus = request.campus === currentUser?.campus;
+            } else if (selectedCampus !== 'all') {
+                matchesCampus = request.campus === selectedCampus;
+            }
             
             const lowercasedSearch = searchTerm.toLowerCase();
             const matchesSearch = searchTerm === '' ||
@@ -112,7 +108,7 @@ export default function HPRequestsPage() {
 
             return matchesDate && matchesCampus && matchesSearch;
         });
-    }, [dateRange, requests, selectedCampus, searchTerm]);
+    }, [dateRange, requests, selectedCampus, searchTerm, canViewAllCampuses, currentUser]);
 
     const totalPages = Math.ceil(filteredRequests.length / usersPerPage);
     const paginatedRequests = filteredRequests.slice((currentPage - 1) * usersPerPage, currentPage * usersPerPage);
@@ -227,7 +223,7 @@ export default function HPRequestsPage() {
                                     onChange={(e) => setSearchTerm(e.target.value)}
                                 />
                             </div>
-                             <Select value={selectedCampus} onValueChange={setSelectedCampus} disabled={isModerator}>
+                             <Select value={selectedCampus} onValueChange={setSelectedCampus} disabled={!canViewAllCampuses}>
                                 <SelectTrigger className="w-full sm:w-[200px]">
                                     <SelectValue placeholder="Filter by campus" />
                                 </SelectTrigger>
@@ -353,3 +349,5 @@ export default function HPRequestsPage() {
         </div>
     );
 }
+
+    

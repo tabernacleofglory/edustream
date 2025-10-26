@@ -1,7 +1,7 @@
 
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, FormEvent, useCallback } from "react";
 import { useForm, Controller } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -13,7 +13,7 @@ import { useToast } from "@/hooks/use-toast";
 import { Loader2, Plus, Trash } from "lucide-react";
 import { getApps, initializeApp, getApp } from "firebase/app";
 import { getAuth, createUserWithEmailAndPassword, updateProfile, signOut } from "firebase/auth";
-import { doc, setDoc, collection, addDoc, serverTimestamp, deleteDoc, getDocs, query, orderBy } from "firebase/firestore";
+import { doc, setDoc, collection, addDoc, serverTimestamp, deleteDoc, getDocs, query, orderBy, where } from "firebase/firestore";
 import { getFirebaseFirestore } from "@/lib/firebase";
 import type { User, Ladder } from "@/lib/types";
 import {
@@ -26,26 +26,43 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog"
 import { useAuth } from "@/hooks/use-auth";
+import PhoneInput from 'react-phone-number-input';
+import 'react-phone-number-input/style.css';
+
 
 const addUserSchema = z.object({
-  fullName: z.string().min(1, "Full name is required"),
-  email: z.string().email("Invalid email address"),
+  firstName: z.string().min(1, "First name is required"),
+  lastName: z.string().min(1, "Last name is required"),
+  email: z.string().email("Invalid email address").optional().or(z.literal('')),
   password: z.string().min(6, "Password must be at least 6 characters"),
-  classLadderId: z.string().min(1, "Membership ladder is required"),
+  phoneNumber: z.string().min(1, "Phone number is required"),
+  gender: z.string().min(1, "Please select a gender"),
+  ageRange: z.string().min(1, "Please select an age range"),
   campus: z.string().min(1, "Campus is required"),
-  phoneNumber: z.string().optional(),
+  language: z.string().min(1, "Preferred language is required"),
+  locationPreference: z.string().min(1, "Location preference is required"),
+  isInHpGroup: z.enum(['true', 'false'], { required_error: "This field is required." }),
   hpNumber: z.string().optional(),
   facilitatorName: z.string().optional(),
   charge: z.string().optional(),
-  gender: z.string().optional(),
-  ageRange: z.string().optional(),
+  classLadderId: z.string().min(1, "Membership ladder is required"),
+}).refine(data => {
+    if (data.isInHpGroup === 'true') {
+        return !!data.hpNumber && !!data.facilitatorName;
+    }
+    return true;
+}, {
+    message: "HP Number and Facilitator Name are required if in a prayer group.",
+    path: ['hpNumber'] // Or facilitatorName
 });
+
 
 type AddUserFormValues = z.infer<typeof addUserSchema>;
 
 interface StoredItem {
     id: string;
     name: string;
+    status?: string;
 }
 
 interface Campus {
@@ -72,10 +89,11 @@ const getSecondaryAuth = () => {
 
 export default function AddUserForm({ onUserAdded, ladders }: AddUserFormProps) {
   const { toast } = useToast();
-  const { user: currentUser } = useAuth();
+  const { user: currentUser, isCurrentUserAdmin } = useAuth();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [defaultLadderId, setDefaultLadderId] = useState("");
   const [campuses, setCampuses] = useState<Campus[]>([]);
+  const [availableLanguages, setAvailableLanguages] = useState<StoredItem[]>([]);
   const [isCampusDialogOpen, setIsCampusDialogOpen] = useState(false);
   const [newCampusName, setNewCampusName] = useState("");
   const [charges, setCharges] = useState<StoredItem[]>([]);
@@ -92,34 +110,28 @@ export default function AddUserForm({ onUserAdded, ladders }: AddUserFormProps) 
     }
   }, [ladders]);
 
-  useEffect(() => {
-    const fetchCampuses = async () => {
-        try {
-            const querySnapshot = await getDocs(collection(db, "Campus"));
-            const campusesList = querySnapshot.docs.map(doc => ({
-                id: doc.id,
-                ...doc.data(),
-            } as Campus));
-            setCampuses(campusesList);
-        } catch (error) {
-            toast({
-                variant: "destructive",
-                title: "Error fetching campuses",
-            });
-        }
-    };
-    const fetchCharges = async () => {
-        try {
-            const querySnapshot = await getDocs(query(collection(db, "charges"), orderBy("name")));
-            const chargesList = querySnapshot.docs.map(doc => ({ id: doc.id, name: doc.data().name } as StoredItem));
-            setCharges(chargesList);
-        } catch (error) {
-            toast({ variant: "destructive", title: "Error fetching charges" });
-        }
-    };
-    fetchCampuses();
-    fetchCharges();
-  }, [toast, db]);
+  const fetchDropdownData = useCallback(async () => {
+    try {
+        const campusSnapshot = await getDocs(collection(db, "Campus"));
+        setCampuses(campusSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Campus)));
+
+        const langSnapshot = await getDocs(query(collection(db, 'languages'), orderBy('name')));
+        const publishedLanguages = langSnapshot.docs
+            .map(doc => ({ id: doc.id, ...doc.data() } as StoredItem))
+            .filter(lang => lang.status === 'published');
+        setAvailableLanguages(publishedLanguages);
+
+        const chargesSnapshot = await getDocs(query(collection(db, "charges"), orderBy("name")));
+        setCharges(chargesSnapshot.docs.map(doc => ({ id: doc.id, name: doc.data().name } as StoredItem)));
+    } catch (error) {
+        toast({ variant: "destructive", title: "Error fetching form data" });
+    }
+}, [db, toast]);
+
+useEffect(() => {
+    fetchDropdownData();
+}, [fetchDropdownData]);
+
 
   const {
     register,
@@ -132,17 +144,21 @@ export default function AddUserForm({ onUserAdded, ladders }: AddUserFormProps) 
   } = useForm<AddUserFormValues>({
     resolver: zodResolver(addUserSchema),
     defaultValues: {
-        fullName: "",
+        firstName: "",
+        lastName: "",
         email: "",
         password: "",
-        classLadderId: defaultLadderId || "",
+        phoneNumber: undefined,
+        gender: "",
+        ageRange: "",
         campus: "",
-        phoneNumber: "",
+        language: "",
+        locationPreference: "",
+        isInHpGroup: undefined,
         hpNumber: "",
         facilitatorName: "",
         charge: "",
-        gender: "",
-        ageRange: "",
+        classLadderId: defaultLadderId || "",
     }
   });
 
@@ -173,7 +189,11 @@ export default function AddUserForm({ onUserAdded, ladders }: AddUserFormProps) 
         }
     };
 
-    const handleRemoveCampus = async (campusId: string) => {
+    const handleRemoveCampus = async (campusId: string, campusName: string) => {
+        if (campusName === 'All Campuses') {
+             toast({ variant: 'destructive', title: 'Action Not Allowed', description: '"All Campuses" cannot be deleted.' });
+            return;
+        }
         try {
             await deleteDoc(doc(db, "Campus", campusId));
             const updatedCampuses = campuses.filter(c => c.id !== campusId);
@@ -215,25 +235,29 @@ export default function AddUserForm({ onUserAdded, ladders }: AddUserFormProps) 
         }
     };
 
+    const isInHpGroupValue = watch('isInHpGroup');
+
   const onSubmit = async (data: AddUserFormValues) => {
     setIsSubmitting(true);
     try {
       const secondaryAuth = getSecondaryAuth();
-      // Use the secondary auth instance to create the user
-      const userCredential = await createUserWithEmailAndPassword(secondaryAuth, data.email, data.password);
+      const userCredential = await createUserWithEmailAndPassword(secondaryAuth, data.email || `${Date.now()}@example.com`, data.password);
       const user = userCredential.user;
 
+      const fullName = `${data.firstName} ${data.lastName}`.trim();
       await updateProfile(user, {
-        displayName: data.fullName
+        displayName: fullName
       });
       
       const selectedLadder = ladders.find(l => l.id === data.classLadderId);
 
-      const newUser: User = {
+      const newUser: Partial<User> = {
         id: user.uid,
         uid: user.uid,
-        displayName: data.fullName,
-        fullName: data.fullName,
+        displayName: fullName,
+        fullName: fullName,
+        firstName: data.firstName,
+        lastName: data.lastName,
         email: data.email,
         role: 'user',
         membershipStatus: 'Active',
@@ -241,26 +265,28 @@ export default function AddUserForm({ onUserAdded, ladders }: AddUserFormProps) 
         classLadderId: data.classLadderId,
         campus: data.campus,
         phoneNumber: data.phoneNumber,
+        gender: data.gender,
+        ageRange: data.ageRange,
+        language: data.language,
+        locationPreference: data.locationPreference as 'Onsite' | 'Online',
+        isInHpGroup: data.isInHpGroup === 'true',
         hpNumber: data.hpNumber,
         facilitatorName: data.facilitatorName,
         charge: data.charge,
-        gender: data.gender,
-        ageRange: data.ageRange,
       };
 
       await setDoc(doc(db, "users", user.uid), newUser);
 
-      // Important: Sign out the newly created user from the secondary auth instance
       if (secondaryAuth.currentUser?.uid === user.uid) {
         await signOut(secondaryAuth);
       }
       
       toast({
         title: "User Created",
-        description: `${data.fullName} has been added successfully.`
+        description: `${fullName} has been added successfully.`
       });
       
-      onUserAdded(newUser);
+      onUserAdded(newUser as User);
       reset();
 
     } catch (error: any) {
@@ -279,9 +305,15 @@ export default function AddUserForm({ onUserAdded, ladders }: AddUserFormProps) 
   return (
     <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
       <div className="space-y-2">
-        <Label htmlFor="fullName">Full Name</Label>
-        <Input id="fullName" {...register("fullName")} disabled={isSubmitting} />
-        {errors.fullName && <p className="text-sm text-destructive">{errors.fullName.message}</p>}
+        <Label htmlFor="firstName">First Name</Label>
+        <Input id="firstName" {...register("firstName")} disabled={isSubmitting} />
+        {errors.firstName && <p className="text-sm text-destructive">{errors.firstName.message}</p>}
+      </div>
+
+      <div className="space-y-2">
+        <Label htmlFor="lastName">Last Name</Label>
+        <Input id="lastName" {...register("lastName")} disabled={isSubmitting} />
+        {errors.lastName && <p className="text-sm text-destructive">{errors.lastName.message}</p>}
       </div>
 
       <div className="space-y-2">
@@ -295,7 +327,27 @@ export default function AddUserForm({ onUserAdded, ladders }: AddUserFormProps) 
         <Input id="password" type="password" {...register("password")} disabled={isSubmitting} />
         {errors.password && <p className="text-sm text-destructive">{errors.password.message}</p>}
       </div>
-
+      
+       <div className="space-y-2">
+            <Label htmlFor="phoneNumber">Phone Number</Label>
+            <Controller
+                name="phoneNumber"
+                control={control}
+                render={({ field }) => (
+                    <PhoneInput
+                        id="phoneNumber"
+                        international
+                        defaultCountry="US"
+                        {...field}
+                        value={field.value || undefined}
+                        disabled={isSubmitting}
+                        className="PhoneInputInput"
+                    />
+                )}
+            />
+            {errors.phoneNumber && <p className="text-sm text-destructive">{errors.phoneNumber.message}</p>}
+        </div>
+      
        <div className="space-y-2">
             <Label>Gender</Label>
                 <Controller
@@ -305,14 +357,13 @@ export default function AddUserForm({ onUserAdded, ladders }: AddUserFormProps) 
                     <Select onValueChange={field.onChange} value={field.value} disabled={isSubmitting}>
                         <SelectTrigger><SelectValue placeholder="Select gender" /></SelectTrigger>
                         <SelectContent>
-                            <SelectItem value="male" translate="no">Male</SelectItem>
-                            <SelectItem value="female" translate="no">Female</SelectItem>
-                            <SelectItem value="other" translate="no">Other</SelectItem>
-                            <SelectItem value="prefer-not-to-say" translate="no">Prefer not to say</SelectItem>
+                            <SelectItem value="Male">Male</SelectItem>
+                            <SelectItem value="Female">Female</SelectItem>
                         </SelectContent>
                     </Select>
                 )}
             />
+             {errors.gender && <p className="text-sm text-destructive">{errors.gender.message}</p>}
         </div>
 
         <div className="space-y-2">
@@ -324,35 +375,22 @@ export default function AddUserForm({ onUserAdded, ladders }: AddUserFormProps) 
                     <Select onValueChange={field.onChange} value={field.value} disabled={isSubmitting}>
                         <SelectTrigger><SelectValue placeholder="Select age range" /></SelectTrigger>
                         <SelectContent>
-                            <SelectItem value="18-24" translate="no">18-24</SelectItem>
-                            <SelectItem value="25-34" translate="no">25-34</SelectItem>
-                            <SelectItem value="35-44" translate="no">35-44</SelectItem>
-                            <SelectItem value="45-54" translate="no">45-54</SelectItem>
-                            <SelectItem value="55-64" translate="no">55-64</SelectItem>
-                            <SelectItem value="65+" translate="no">65+</SelectItem>
-                            <SelectItem value="prefer-not-to-say" translate="no">Prefer not to say</SelectItem>
+                            <SelectItem value="Less than 13">Less than 13</SelectItem>
+                            <SelectItem value="13-17">13-17</SelectItem>
+                            <SelectItem value="18-24">18-24</SelectItem>
+                            <SelectItem value="25-34">25-34</SelectItem>
+                            <SelectItem value="35-44">35-44</SelectItem>
+                            <SelectItem value="45-54">45-54</SelectItem>
+                            <SelectItem value="55-64">55-64</SelectItem>
+                            <SelectItem value="65+">65+</SelectItem>
                         </SelectContent>
                     </Select>
                 )}
             />
+            {errors.ageRange && <p className="text-sm text-destructive">{errors.ageRange.message}</p>}
         </div>
 
       <div className="space-y-2">
-        <Label htmlFor="phoneNumber">Phone Number</Label>
-        <Input id="phoneNumber" type="tel" placeholder="e.g., +1 234 567 890" {...register("phoneNumber")} disabled={isSubmitting} />
-      </div>
-
-      <div className="space-y-2">
-        <Label htmlFor="hpNumber">HP Number</Label>
-        <Input id="hpNumber" placeholder="Your HP Number" {...register("hpNumber")} disabled={isSubmitting} />
-      </div>
-
-      <div className="space-y-2">
-        <Label htmlFor="facilitatorName">Facilitator's Full Name</Label>
-        <Input id="facilitatorName" placeholder="Facilitator's Name" {...register("facilitatorName")} disabled={isSubmitting} />
-      </div>
-
-       <div className="space-y-2">
         <Label htmlFor="campus">Campus</Label>
         <div className="flex gap-2">
             <Controller
@@ -364,6 +402,7 @@ export default function AddUserForm({ onUserAdded, ladders }: AddUserFormProps) 
                             <SelectValue placeholder="Select a campus" />
                         </SelectTrigger>
                         <SelectContent>
+                             {isCurrentUserAdmin && <SelectItem value="All Campuses">All Campuses</SelectItem>}
                             {campuses.map((c) => (
                                 <SelectItem key={c.id} value={c["Campus Name"]}>{c["Campus Name"]}</SelectItem>
                             ))}
@@ -378,9 +417,7 @@ export default function AddUserForm({ onUserAdded, ladders }: AddUserFormProps) 
                 <DialogContent className="sm:max-w-[425px]">
                     <DialogHeader>
                         <DialogTitle>Manage Campuses</DialogTitle>
-                        <DialogDescription>
-                            Add or remove campuses.
-                        </DialogDescription>
+                        <DialogDescription>Add or remove campuses.</DialogDescription>
                     </DialogHeader>
                     <div className="space-y-4 py-4">
                         <div className="space-y-2">
@@ -389,7 +426,7 @@ export default function AddUserForm({ onUserAdded, ladders }: AddUserFormProps) 
                                 {campuses.map(c => (
                                     <div key={c.id} className="flex items-center justify-between">
                                         <span>{c["Campus Name"]}</span>
-                                        <Button type="button" variant="ghost" size="icon" onClick={() => handleRemoveCampus(c.id)}>
+                                        <Button type="button" variant="ghost" size="icon" onClick={() => handleRemoveCampus(c.id, c["Campus Name"])} disabled={c["Campus Name"] === 'All Campuses'}>
                                             <Trash className="h-4 w-4" />
                                         </Button>
                                     </div>
@@ -410,7 +447,79 @@ export default function AddUserForm({ onUserAdded, ladders }: AddUserFormProps) 
         </div>
         {errors.campus && <p className="text-sm text-destructive">{errors.campus.message}</p>}
       </div>
-      
+
+       <div className="space-y-2">
+        <Label>Preferred Language</Label>
+        <Controller
+          name="language"
+          control={control}
+          render={({ field }) => (
+            <Select onValueChange={field.onChange} value={field.value} disabled={isSubmitting}>
+              <SelectTrigger><SelectValue placeholder="Select language" /></SelectTrigger>
+              <SelectContent>
+                {availableLanguages.map((lang) => (
+                    <SelectItem key={lang.id} value={lang.name}>
+                        {lang.name}
+                    </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
+        />
+        {errors.language && <p className="text-sm text-destructive">{errors.language.message}</p>}
+      </div>
+
+      <div className="space-y-2">
+        <Label>Location Preference</Label>
+        <Controller
+          name="locationPreference"
+          control={control}
+          render={({ field }) => (
+            <Select onValueChange={field.onChange} value={field.value} disabled={isSubmitting}>
+              <SelectTrigger><SelectValue placeholder="Select location preference" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="Onsite">Onsite</SelectItem>
+                <SelectItem value="Online">Online</SelectItem>
+              </SelectContent>
+            </Select>
+          )}
+        />
+        {errors.locationPreference && <p className="text-sm text-destructive">{errors.locationPreference.message}</p>}
+      </div>
+
+        <div className="space-y-2">
+          <Label>Are you in a Prayer Group (HP)?</Label>
+          <Controller
+            name="isInHpGroup"
+            control={control}
+            render={({ field }) => (
+              <Select onValueChange={field.onChange} value={field.value} disabled={isSubmitting}>
+                <SelectTrigger><SelectValue placeholder="Select an option" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="true">Yes</SelectItem>
+                  <SelectItem value="false">No</SelectItem>
+                </SelectContent>
+              </Select>
+            )}
+          />
+          {errors.isInHpGroup && <p className="text-sm text-destructive">{errors.isInHpGroup.message}</p>}
+        </div>
+
+        {isInHpGroupValue === 'true' && (
+            <>
+                <div className="space-y-2">
+                    <Label htmlFor="hpNumber">HP Number</Label>
+                    <Input id="hpNumber" placeholder="Your HP Number" {...register("hpNumber")} disabled={isSubmitting} />
+                    {errors.hpNumber && <p className="text-sm text-destructive">{errors.hpNumber.message}</p>}
+                </div>
+                <div className="space-y-2">
+                    <Label htmlFor="facilitatorName">Facilitator's Full Name</Label>
+                    <Input id="facilitatorName" placeholder="Facilitator's Name" {...register("facilitatorName")} disabled={isSubmitting} />
+                     {errors.facilitatorName && <p className="text-sm text-destructive">{errors.facilitatorName.message}</p>}
+                </div>
+            </>
+        )}
+
       <div className="space-y-2">
         <Label htmlFor="membershipLadder">Membership Ladder</Label>
         <div className="flex gap-2">
@@ -460,9 +569,7 @@ export default function AddUserForm({ onUserAdded, ladders }: AddUserFormProps) 
                 <DialogContent className="sm:max-w-[425px]">
                     <DialogHeader>
                         <DialogTitle>Manage Charges</DialogTitle>
-                        <DialogDescription>
-                            Add or remove charges.
-                        </DialogDescription>
+                        <DialogDescription>Add or remove charges.</DialogDescription>
                     </DialogHeader>
                     <div className="space-y-4 py-4">
                         <div className="space-y-2">
@@ -503,5 +610,3 @@ export default function AddUserForm({ onUserAdded, ladders }: AddUserFormProps) 
     </form>
   );
 }
-
-    

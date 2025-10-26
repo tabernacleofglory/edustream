@@ -17,32 +17,33 @@ import { Alert, AlertDescription, AlertTitle } from './ui/alert';
 import { Lock } from 'lucide-react';
 
 const ALL_PERMISSIONS: Permission[] = [
-  // Student-facing pages
+  // --- Student-Facing Page Access ---
   { id: 'viewDashboard', name: 'View Dashboard', description: 'Can view their own student dashboard.' },
   { id: 'viewCoursesPage', name: 'View All Courses Page', description: 'Can view the main /courses page.' },
   { id: 'viewLivePage', name: 'View Live Events Page', description: 'Can view the page listing live events.' },
   { id: 'viewMusicPage', name: 'View Music Player Page', description: 'Can access the music library page.' },
   { id: 'viewCommunityPage', name: 'View Community Page', description: 'Can view the community feed.' },
   { id: 'viewDocumentationPage', name: 'View Documentation Page', description: 'Can view the public documentation.' },
+  { id: 'viewTeachingPage', name: 'View Teaching Page', description: 'Can view the unrestricted "Teaching" course catalog.' },
 
-  // Admin Panel Access
+  // --- Admin Panel Access ---
   { id: 'viewAdminDashboard', name: 'View Admin Panel', description: 'Gives access to the /admin section.' },
   { id: 'viewAnalytics', name: 'View Analytics', description: 'Can view the analytics dashboard.' },
-  { id: 'viewUserManagement', name: 'View User Management', description: 'Can view the user list, ladders, speakers, and promotion requests.' },
-  { id: 'viewCourseManagement', name: 'View Course Management', description: 'Can view the main course management page.' },
+  { id: 'viewUserManagement', name: 'View User Management Section', description: 'Can view all pages under the "Users" section in the admin panel.' },
+  { id: 'viewCourseManagement', name: 'View Course Management Section', description: 'Can view all pages under the "Courses" section in the admin panel.' },
   { id: 'viewContentLibraries', name: 'View Content Libraries', description: 'Can view all content library pages (videos, images, etc.).' },
   { id: 'viewCampusManagement', name: 'View Campus Management', description: 'Can view the campus management page.'},
   { id: 'viewLiveManagement', name: 'View Live Management', description: 'Can view the live event scheduling page.' },
-  { id: 'viewDeveloperTools', name: 'View Developer Tools', description: 'Gives access to the developer tools section.' },
-  { id: 'viewPermissionsPage', name: 'View Permissions Page', description: 'Can view this permissions page.' },
-  { id: 'viewForms', name: 'View Forms', description: 'Can view the form management page and submitted responses.' },
-
-  // Action-based permissions
-  { id: 'addCourses', name: 'Add Courses', description: 'Can access the form to add new courses.' },
-  { id: 'manageCourses', name: 'Manage Courses', description: 'Can create, edit, and delete courses.' },
+  { id: 'viewReports', name: 'View Reports Section', description: 'Can access all pages within the Reports section.' },
+  { id: 'viewForms', name: 'View Forms Section', description: 'Can view the form management page and submitted responses.' },
+  { id: 'viewDeveloperTools', name: 'View Developer Tools Section', description: 'Gives access to all pages under the "Developer" section.' },
+  
+  // --- Action-Based Permissions ---
+  { id: 'addCourses', name: 'Add/Edit Courses', description: 'Can access the form to add or edit courses.' },
   { id: 'manageQuizzes', name: 'Manage Quizzes', description: 'Can create, edit, and delete quizzes.' },
-  { id: 'manageUsers', name: 'Manage Users', description: 'Can add, edit, and delete users.' },
-  { id: 'manageContent', name: 'Manage Content', description: 'Can upload and manage all content (videos, images, etc.).' },
+  { id: 'manageUsers', name: 'Manage Users', description: 'Can add, edit, and manage user roles, ladders, and details.' },
+  { id: 'deleteUsersClientSide', name: 'Delete Users (Client-Side)', description: 'Can delete user documents from Firestore directly from the client. Does NOT delete the auth account.' },
+  { id: 'manageContent', name: 'Manage Content Libraries', description: 'Can upload and manage all content (videos, images, certificates, etc.).' },
   { id: 'manageLinks', name: 'Manage Nav Links', description: 'Can add/remove header navigation links.' },
   { id: 'managePermissions', name: 'Manage Permissions', description: 'Can edit role permissions on this page.' },
   { id: 'manageLocalization', name: 'Manage Localization', description: 'Can add, edit, or delete translations for different languages.' },
@@ -51,18 +52,17 @@ const ALL_PERMISSIONS: Permission[] = [
   { id: 'participateInLiveEvents', name: 'Participate In Live Events', description: 'Allows user to be a speaker/participant in a live event.' },
   { id: 'managePromotions', name: 'Manage Promotions', description: 'Can approve or reject user promotion requests.' },
   { id: 'manageHpRequests', name: 'Manage HP Requests', description: 'Can view and manage HP placement requests.' },
-  { id: 'manageCompletions', name: 'Manage Onsite Completions', description: 'Can manually log course completions for users.' },
+  { id: 'manageCompletions', name: 'Manage On-site Completions', description: 'Can manually log course completions for users.' },
   { id: 'manageCommunity', name: 'Manage Community', description: 'Can pin or delete any post in the community feed.' },
   { id: 'manageForms', name: 'Manage Forms', description: 'Can create, edit, and delete forms.' },
   { id: 'downloadFormSubmissions', name: 'Download Form Submissions', description: 'Can download form responses as CSV/PDF.' },
-  { id: 'useVideoTranscoder', name: 'Use Video Transcoder', description: 'Can enable adaptive streaming transcoding during video upload.' },
   { id: 'useAITools', name: 'Use AI Tools', description: 'Can access and use the AI-powered tools like the assistant and tagger.' },
   { id: 'allowRightClick', name: 'Allow Right-Click', description: 'Allows right-clicking anywhere in the app to prevent simple content saving.' },
   { id: 'downloadContent', name: 'Download Content', description: 'Allows downloading videos and other course materials.' },
   { id: 'developer', name: 'Developer Access', description: 'Full access to all platform features. (Grant with caution)' },
 ];
 
-// ↓ Added "team" role here
+
 const ALL_ROLES = ['admin', 'moderator', 'team', 'user'];
 
 export default function PermissionManager() {

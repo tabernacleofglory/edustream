@@ -201,41 +201,43 @@ const PlaylistAndResources = ({
         </AccordionItem>
       )}
 
-      <AccordionItem value="resources">
-        <AccordionTrigger className="px-4 font-semibold">
-          Resources
-        </AccordionTrigger>
-        <AccordionContent className="px-4 space-y-2">
-          {course["Resource Doc"]?.map((url, index) => {
-            const fileName =
-              url.split("/").pop()?.split("?")[0].split("%2F").pop() || "Resource";
-            return (
-              <a
+      { (course["Resource Doc"]?.length > 0 || course.attendanceLinks?.length > 0) && (
+        <AccordionItem value="resources">
+            <AccordionTrigger className="px-4 font-semibold">
+            Resources
+            </AccordionTrigger>
+            <AccordionContent className="px-4 space-y-2">
+            {course["Resource Doc"]?.map((url, index) => {
+                const fileName =
+                url.split("/").pop()?.split("?")[0].split("%2F").pop() || "Resource";
+                return (
+                <a
+                    key={index}
+                    href={url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-center gap-2 p-2 rounded-md hover:bg-muted"
+                >
+                    <FileText className="h-5 w-5" />
+                    <span>{decodeURIComponent(fileName)}</span>
+                </a>
+                );
+            })}
+            {course.attendanceLinks?.map((link, index) => (
+                <a
                 key={index}
-                href={url}
+                href={link.url}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="flex items-center gap-2 p-2 rounded-md hover:bg-muted"
-              >
-                <FileText className="h-5 w-5" />
-                <span>{decodeURIComponent(fileName)}</span>
-              </a>
-            );
-          })}
-          {course.attendanceLinks?.map((link, index) => (
-            <a
-              key={index}
-              href={link.url}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="flex items-center gap-2 p-2 rounded-md hover:bg-muted"
-            >
-              <LinkIcon className="h-5 w-5" />
-              <span>{link.title}</span>
-            </a>
-          ))}
-        </AccordionContent>
-      </AccordionItem>
+                >
+                <LinkIcon className="h-5 w-5" />
+                <span>{link.title}</span>
+                </a>
+            ))}
+            </AccordionContent>
+        </AccordionItem>
+      )}
 
       {relatedCourses.length > 0 && (
         <AccordionItem value="related">
@@ -776,12 +778,7 @@ export default function VideoPlayerClient({
     return () => { if (gradientFadeTimeoutRef.current) clearTimeout(gradientFadeTimeoutRef.current); };
   }, [isPlaying]);
 
-  const getInitials = (name?: string | null) => {
-    if (!name) return "U";
-    return name.trim().split(/\s+/).map((n) => n[0]).join("").toUpperCase();
-  };
-  
-   const handlePlayerProgress = (state: { played: number, playedSeconds: number }) => {
+  const handlePlayerProgress = (state: { played: number, playedSeconds: number }) => {
     if(!isReady) return;
     const t = state.playedSeconds;
     const d = reactPlayerRef.current?.getDuration() ?? 0;
@@ -1049,5 +1046,3 @@ export default function VideoPlayerClient({
     </div>
   );
 }
-
-    

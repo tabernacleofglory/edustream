@@ -1,8 +1,7 @@
 
-
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, useCallback } from "react";
 import {
   addDoc,
   collection,
@@ -18,6 +17,7 @@ import {
   writeBatch,
   startAfter,
   DocumentSnapshot,
+  getCountFromServer,
 } from "firebase/firestore";
 import { getFirebaseApp, getFirebaseFirestore } from "@/lib/firebase";
 import { useAuth } from "@/hooks/use-auth";
@@ -35,13 +35,17 @@ import {
   Table, TableHeader, TableRow, TableHead, TableBody, TableCell,
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { Loader2, Search, CheckCircle2, Trash2, Download, Lock, ChevronRight, ChevronLeft } from "lucide-react";
-import { format } from "date-fns";
+import { Loader2, Search, CheckCircle2, Trash2, Download, Lock, ChevronRight, ChevronLeft, Calendar as CalendarIcon, X as XIcon } from "lucide-react";
+import { format, startOfDay, endOfDay } from "date-fns";
 import { cn } from "@/lib/utils";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import Papa from "papaparse";
-import { Skeleton } from "../ui/skeleton";
+import { Skeleton } from "@/components/ui/skeleton";
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from "@/components/ui/select";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Calendar } from "@/components/ui/calendar";
+import { DateRange } from "react-day-picker";
+import { Checkbox } from "@/components/ui/checkbox";
 
 const PAGE_SIZE_DEFAULT = 25;
 
@@ -51,16 +55,21 @@ const getInitials = (name?: string | null) =>
 const chunk = <T,>(arr: T[], size: number) =>
   Array.from({ length: Math.ceil(arr.length / size) }, (_, i) => arr.slice(i * size, i * size + size));
 
+interface Campus {
+  id: string;
+  "Campus Name": string;
+}
+
 export default function ManageCompletionsPage() {
   const db = getFirebaseFirestore(getFirebaseApp());
-  const { user: adminUser, hasPermission } = useAuth();
+  const { user: adminUser, hasPermission, canViewAllCampuses } = useAuth();
   const { toast } = useToast();
-  const isModerator = adminUser?.role === 'moderator';
 
   // Lists
   const [users, setUsers] = useState<User[]>([]);
   const [courses, setCourses] = useState<Course[]>([]);
   const [ladders, setLadders] = useState<Ladder[]>([]);
+  const [allCampuses, setAllCampuses] = useState<Campus[]>([]);
   const [isLoadingLists, setIsLoadingLists] = useState(true);
 
   // Selections
@@ -78,21 +87,24 @@ export default function ManageCompletionsPage() {
   const [isLoadingLog, setIsLoadingLog] = useState(false);
   const [pageSize, setPageSize] = useState(PAGE_SIZE_DEFAULT);
   const [page, setPage] = useState(1);
-  const [cursors, setCursors] = useState<DocumentSnapshot[]>([]);
+  const [cursors, setCursors] = useState<(DocumentSnapshot | undefined)[]>([]);
   const [hasNextPage, setHasNextPage] = useState(false);
 
   // Filters
-  const [dateFrom, setDateFrom] = useState<string>("");
-  const [dateTo, setDateTo] = useState<string>("");
+  const [dateRange, setDateRange] = useState<DateRange | undefined>();
   const [logSearchTerm, setLogSearchTerm] = useState("");
+  const [selectedLogCampus, setSelectedLogCampus] = useState('all');
+  const [selectedLogCourse, setSelectedLogCourse] = useState('all');
 
   // Selection (log rows)
   const [selectedLogIds, setSelectedLogIds] = useState<Set<string>>(new Set());
   const [selectAllOnPage, setSelectAllOnPage] = useState(false);
 
   const canManage = hasPermission('manageCompletions');
+  
+  const [totalLogCount, setTotalLogCount] = useState(0);
 
-  // --- Load users, courses, ladders ---
+  // --- Load users, courses, ladders, campuses ---
   useEffect(() => {
     (async () => {
       if (!canManage) {
@@ -102,33 +114,112 @@ export default function ManageCompletionsPage() {
       setIsLoadingLists(true);
       try {
         let usersQuery = query(collection(db, "users"), orderBy("displayName"));
-        if (isModerator && adminUser?.campus) {
+        // Filter users by campus for non-global admins
+        if (!canViewAllCampuses && adminUser?.campus) {
             usersQuery = query(usersQuery, where("campus", "==", adminUser.campus));
         }
 
-        const usersSnap = await getDocs(usersQuery);
-        const coursesSnap = await getDocs(
-          query(collection(db, "courses"), where("status", "==", "published"), orderBy("title"))
-        );
-        const laddersSnap = await getDocs(query(collection(db, "courseLevels"), orderBy("order")));
+        const [usersSnap, coursesSnap, laddersSnap, campusesSnap] = await Promise.all([
+          getDocs(usersQuery),
+          getDocs(query(collection(db, "courses"), where("status", "==", "published"), orderBy("title"))),
+          getDocs(query(collection(db, "courseLevels"), orderBy("order"))),
+          getDocs(query(collection(db, "Campus"), orderBy("Campus Name"))),
+        ]);
 
         setUsers(usersSnap.docs.map(d => ({ id: d.id, ...d.data() } as User)));
         setCourses(coursesSnap.docs.map(d => ({ id: d.id, ...d.data() } as Course)));
         setLadders(laddersSnap.docs.map(d => ({ id: d.id, ...d.data() } as Ladder)));
+        setAllCampuses(campusesSnap.docs.map(d => ({id: d.id, ...d.data()} as Campus)));
       } catch (e) {
         console.error(e);
-        toast({ variant: "destructive", title: "Failed to load users/courses/ladders." });
+        toast({ variant: "destructive", title: "Failed to load page data." });
       } finally {
         setIsLoadingLists(false);
       }
     })();
-  }, [db, toast, canManage, isModerator, adminUser?.campus]);
+  }, [db, toast, canManage, adminUser?.campus, canViewAllCampuses]);
 
   const ladderById = useMemo(() => {
     const map = new Map<string, Ladder>();
     ladders.forEach(l => map.set(l.id, l));
     return map;
   }, [ladders]);
+
+  // --- Fetch paginated log ---
+  const loadLogPage = useCallback(
+    async (
+        targetPage: number,
+        cursorStack: (DocumentSnapshot | undefined)[],
+        user: User | null,
+        dateRangeFilter?: DateRange,
+        campusFilter?: string,
+        courseFilter?: string,
+        size?: number
+    ) => {
+        setIsLoadingLog(true);
+        setSelectedLogIds(new Set());
+        setSelectAllOnPage(false);
+
+        try {
+            const col = collection(db, "onsiteCompletions");
+            const baseClauses: any[] = [];
+            
+            if (user) {
+                baseClauses.push(where("userId", "==", user.uid));
+            } else if (!canViewAllCampuses && adminUser?.campus) {
+                baseClauses.push(where("userCampus", "==", adminUser.campus));
+            } else if (campusFilter && campusFilter !== 'all') {
+                const campus = allCampuses.find(c => c.id === campusFilter);
+                if (campus) baseClauses.push(where("userCampus", "==", campus["Campus Name"]));
+            }
+
+            if (courseFilter && courseFilter !== 'all') {
+                baseClauses.push(where("courseId", "==", courseFilter));
+            }
+
+            if (dateRangeFilter?.from) {
+                baseClauses.push(where("completedAt", ">=", startOfDay(dateRangeFilter.from)));
+            }
+            if (dateRangeFilter?.to) {
+                baseClauses.push(where("completedAt", "<=", endOfDay(dateRangeFilter.to)));
+            }
+            
+            // Query for total count
+            const countQuery = query(col, ...baseClauses);
+            const countSnapshot = await getCountFromServer(countQuery);
+            setTotalLogCount(countSnapshot.data().count);
+
+
+            let qRef = query(col, ...baseClauses, orderBy("completedAt", "desc"), limit((size || PAGE_SIZE_DEFAULT) + 1));
+
+            if (targetPage > 1 && cursorStack[targetPage - 2]) {
+                qRef = query(col, ...baseClauses, orderBy("completedAt", "desc"), startAfter(cursorStack[targetPage - 2]), limit((size || PAGE_SIZE_DEFAULT) + 1));
+            }
+
+            const snap = await getDocs(qRef);
+            const docs = snap.docs.map(d => ({ id: d.id, ...d.data() } as any));
+            const pageHasNext = docs.length > (size || PAGE_SIZE_DEFAULT);
+            const pageDocs = pageHasNext ? docs.slice(0, size || PAGE_SIZE_DEFAULT) : docs;
+
+            setLogRows(pageDocs);
+
+            const newStack = [...cursorStack];
+            if (pageDocs.length > 0) {
+                newStack[targetPage - 1] = snap.docs[Math.min((size || PAGE_SIZE_DEFAULT) - 1, snap.docs.length - 1)];
+            }
+            setCursors(newStack);
+            setPage(targetPage);
+            setHasNextPage(pageHasNext);
+        } catch (e) {
+            console.error(e);
+            toast({ variant: "destructive", title: "Failed to load log." });
+            setLogRows([]);
+            setHasNextPage(false);
+            setTotalLogCount(0);
+        } finally {
+            setIsLoadingLog(false);
+        }
+    }, [db, toast, canViewAllCampuses, adminUser, allCampuses]);
 
   // --- Initial log load & user change effect ---
   useEffect(() => {
@@ -151,7 +242,7 @@ export default function ManageCompletionsPage() {
         });
         setUserLoggedCourseIds(seen);
       }
-      await loadLogPage(1, [], selectedUser, dateFrom, dateTo, pageSize);
+      await loadLogPage(1, [], selectedUser, dateRange, selectedLogCampus, selectedLogCourse, pageSize);
     };
 
     loadData();
@@ -164,9 +255,9 @@ export default function ManageCompletionsPage() {
     if (!canManage) return;
     setPage(1);
     setCursors([]);
-    loadLogPage(1, [], selectedUser, dateFrom, dateTo, pageSize);
+    loadLogPage(1, [], selectedUser, dateRange, selectedLogCampus, selectedLogCourse, pageSize);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [dateFrom, dateTo, pageSize, canManage]);
+  }, [dateRange, pageSize, canManage, selectedLogCampus, selectedLogCourse]);
 
   // --- Helpers: filtered lists ---
   const filteredUsers = useMemo(() => {
@@ -240,25 +331,10 @@ export default function ManageCompletionsPage() {
         return;
       }
 
-      // ***** Campus logic — OVERRIDE for moderators *****
-      // If actor is a moderator and has a campus, ALWAYS write that campus on the log.
-      // This guarantees the Firestore rule (request.resource.data.userCampus == actorCampus()) passes.
-      const actorCampus = isModerator ? (adminUser?.campus ?? null) : null;
-      const userCampus =
-        actorCampus // moderator override
-        ?? (selectedUser as any).campus
-        ?? (selectedUser as any).userCampus
-        ?? null;
+      const userCampus = canViewAllCampuses 
+        ? selectedUser.campus 
+        : adminUser?.campus;
 
-      if (isModerator && !actorCampus) {
-        toast({
-          variant: "destructive",
-          title: "Your account has no campus",
-          description: "Ask an admin to set your campus on your profile."
-        });
-        setIsSaving(false);
-        return;
-      }
       if (!userCampus) {
         toast({
           variant: "destructive",
@@ -268,7 +344,6 @@ export default function ManageCompletionsPage() {
         setIsSaving(false);
         return;
       }
-      // ***** End Campus fix *****
 
       const ladderId = (selectedUser as any).classLadderId || null;
       const ladderObj = ladderId ? ladderById.get(ladderId) : undefined;
@@ -281,10 +356,9 @@ export default function ManageCompletionsPage() {
       await Promise.all(
         finalToCreate.map(courseId =>
           addDoc(collection(db, "onsiteCompletions"), {
-            // required / old
             userId: selectedUser.uid,
             userName: selectedUser.displayName || selectedUser.email || "Unknown User",
-            userCampus, // forced to moderator campus when applicable
+            userCampus,
             courseId,
             courseName: titleById.get(courseId) || "Untitled Course",
             completedAt: serverTimestamp(),
@@ -293,8 +367,6 @@ export default function ManageCompletionsPage() {
                 ? `${adminUser.displayName} <${adminUser.email}>`
                 : adminUser?.email || "Admin",
             markedById: adminUser?.uid || null,
-
-            // richer fields
             userEmail: selectedUser.email || null,
             userPhone: (selectedUser as any).phoneNumber || null,
             userGender: (selectedUser as any).gender || null,
@@ -314,7 +386,7 @@ export default function ManageCompletionsPage() {
       setCourseSearchTerm("");
       setPage(1);
       setCursors([]);
-      await loadLogPage(1, [], selectedUser, dateFrom, dateTo, pageSize);
+      await loadLogPage(1, [], selectedUser, dateRange, selectedLogCampus, selectedLogCourse, pageSize);
 
       // refresh userLoggedCourseIds quickly
       const newSet = new Set(userLoggedCourseIds);
@@ -328,76 +400,14 @@ export default function ManageCompletionsPage() {
     }
   };
 
-  // --- Fetch paginated log ---
-  async function loadLogPage(
-    targetPage: number,
-    cursorStack: DocumentSnapshot[],
-    user: User | null,
-    from: string,
-    to: string,
-    size: number
-  ) {
-    setIsLoadingLog(true);
-    setSelectedLogIds(new Set());
-    setSelectAllOnPage(false);
-
-    try {
-      const col = collection(db, "onsiteCompletions");
-      const baseClauses: any[] = [];
-      
-      if (user) {
-        baseClauses.push(where("userId", "==", user.uid));
-      } else if (isModerator && adminUser?.campus) {
-        baseClauses.push(where("userCampus", "==", adminUser.campus));
-      }
-
-      if (from) {
-        const startDate = new Date(from);
-        baseClauses.push(where("completedAt", ">=", Timestamp.fromDate(new Date(startDate.setHours(0, 0, 0, 0)))));
-      }
-      if (to) {
-        const endDate = new Date(to);
-        baseClauses.push(where("completedAt", "<=", Timestamp.fromDate(new Date(endDate.setHours(23, 59, 59, 999)))));
-      }
-
-      let qRef = query(col, ...baseClauses, orderBy("completedAt", "desc"), limit(size + 1));
-
-      if (targetPage > 1 && cursorStack[targetPage - 2]) {
-        qRef = query(col, ...baseClauses, orderBy("completedAt", "desc"), startAfter(cursorStack[targetPage - 2]), limit(size + 1));
-      }
-
-      const snap = await getDocs(qRef);
-      const docs = snap.docs.map(d => ({ id: d.id, ...d.data() } as any));
-      const pageHasNext = docs.length > size;
-      const pageDocs = pageHasNext ? docs.slice(0, size) : docs;
-
-      setLogRows(pageDocs);
-
-      const newStack = [...cursorStack];
-      if (pageDocs.length > 0) {
-        newStack[targetPage - 1] = snap.docs[Math.min(size - 1, snap.docs.length - 1)];
-      }
-      setCursors(newStack);
-      setPage(targetPage);
-      setHasNextPage(pageHasNext);
-    } catch (e) {
-      console.error(e);
-      toast({ variant: "destructive", title: "Failed to load log." });
-      setLogRows([]);
-      setHasNextPage(false);
-    } finally {
-      setIsLoadingLog(false);
-    }
-  }
-
   // Pagination
   const goPrev = async () => {
     if (page <= 1) return;
-    await loadLogPage(page - 1, cursors, selectedUser, dateFrom, dateTo, pageSize);
+    await loadLogPage(page - 1, cursors, selectedUser, dateRange, selectedLogCampus, selectedLogCourse, pageSize);
   };
   const goNext = async () => {
     if (!hasNextPage) return;
-    await loadLogPage(page + 1, cursors, selectedUser, dateFrom, dateTo, pageSize);
+    await loadLogPage(page + 1, cursors, selectedUser, dateRange, selectedLogCampus, selectedLogCourse, pageSize);
   };
 
   // Log selection
@@ -432,7 +442,7 @@ export default function ManageCompletionsPage() {
 
       toast({ title: "Deleted", description: `Removed ${selectedLogIds.size} record(s).` });
 
-      await loadLogPage(page, cursors, selectedUser, dateFrom, dateTo, pageSize);
+      await loadLogPage(page, cursors, selectedUser, dateRange, selectedLogCampus, selectedLogCourse, pageSize);
     } catch (e: any) {
       console.error(e);
       toast({ variant: "destructive", title: "Delete failed", description: e?.message || "Could not delete records." });
@@ -442,22 +452,77 @@ export default function ManageCompletionsPage() {
     }
   };
 
-  // CSV of current page
-  const handleDownloadCSV = () => {
-    if (logRows.length === 0) {
-      toast({ variant: "destructive", title: "No rows to download." });
-      return;
-    }
-    const header = ["User", "Email", "Phone", "Gender", "Campus", "Ladder", "Course", "Date", "Marked By"];
+  const filteredLogRows = useMemo(() => {
+    if (!logSearchTerm) return logRows;
+    const q = logSearchTerm.toLowerCase();
+    return logRows.filter((r: any) =>
+      (r.userName || "").toLowerCase().includes(q) ||
+      (r.userCampus || "").toLowerCase().includes(q) ||
+      (r.courseName || "").toLowerCase().includes(q) ||
+      (r.markedBy || "").toLowerCase().includes(q) ||
+      (r.userEmail || "").toLowerCase().includes(q)
+    );
+  }, [logRows, logSearchTerm]);
+
+
+  // CSV of all filtered data
+  const handleDownloadCSV = async () => {
+      const col = collection(db, "onsiteCompletions");
+      const baseClauses: any[] = [];
+      
+      if (selectedUser) {
+          baseClauses.push(where("userId", "==", selectedUser.uid));
+      } else if (!canViewAllCampuses && adminUser?.campus) {
+          baseClauses.push(where("userCampus", "==", adminUser.campus));
+      } else if (selectedLogCampus && selectedLogCampus !== 'all') {
+          const campus = allCampuses.find(c => c.id === selectedLogCampus);
+          if (campus) baseClauses.push(where("userCampus", "==", campus["Campus Name"]));
+      }
+
+      if (selectedLogCourse && selectedLogCourse !== 'all') {
+          baseClauses.push(where("courseId", "==", selectedLogCourse));
+      }
+
+      if (dateRange?.from) {
+          baseClauses.push(where("completedAt", ">=", startOfDay(dateRange.from)));
+      }
+      if (dateRange?.to) {
+          baseClauses.push(where("completedAt", "<=", endOfDay(dateRange.to)));
+      }
+
+      const finalQuery = query(col, ...baseClauses, orderBy("completedAt", "desc"));
+      const snapshot = await getDocs(finalQuery);
+
+      let dataToExport = snapshot.docs.map(d => d.data() as OnsiteCompletion);
+
+      if (logSearchTerm) {
+          const q = logSearchTerm.toLowerCase();
+          dataToExport = dataToExport.filter((r: any) =>
+              (r.userName || "").toLowerCase().includes(q) ||
+              (r.userCampus || "").toLowerCase().includes(q) ||
+              (r.courseName || "").toLowerCase().includes(q) ||
+              (r.markedBy || "").toLowerCase().includes(q) ||
+              (r.userEmail || "").toLowerCase().includes(q)
+          );
+      }
+
+      if (dataToExport.length === 0) {
+          toast({ variant: "destructive", title: "No records found for the current filters." });
+          return;
+      }
+      
+    const header = ["First Name", "Last Name", "Email", "Phone", "HP Number", "Facilitator", "Gender", "Campus", "Ladder", "Course", "Date", "Marked By"];
     const lines = [
       header.join(","),
-      ...logRows.map((r: any) => {
+      ...dataToExport.map((r: any) => {
         const dateStr = r.completedAt ? format(new Date((r.completedAt as Timestamp).seconds * 1000), "yyyy-MM-dd HH:mm:ss") : "";
         const u = users.find(u => u.uid === r.userId);
         const email = r.userEmail ?? u?.email ?? "—";
         const phone = r.userPhone ?? (u as any)?.phoneNumber ?? "—";
         const gender = r.userGender ?? (u as any)?.gender ?? "—";
         const campus = r.userCampus || (u as any)?.campus || "N/A";
+        const hpNumber = u?.hpNumber || "N/A";
+        const facilitatorName = u?.facilitatorName || "N/A";
         const ladderName =
           r.userLadderName ??
           (() => {
@@ -468,9 +533,12 @@ export default function ManageCompletionsPage() {
           })();
 
         const fields = [
-          r.userName || u?.displayName || "",
+          u?.firstName || (r.userName || "").split(" ")[0],
+          u?.lastName || (r.userName || "").split(" ").slice(1).join(" "),
           email,
           phone,
+          hpNumber,
+          facilitatorName,
           gender,
           campus,
           ladderName,
@@ -485,25 +553,13 @@ export default function ManageCompletionsPage() {
     const url = URL.createObjectURL(csv);
     const link = document.createElement("a");
     link.href = url;
-    link.download = `onsite_completions_page_${page}.csv`;
+    link.download = `onsite_completions_report.csv`;
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
     URL.revokeObjectURL(url);
   };
-
-  const visibleLogRows = useMemo(() => {
-    if (!logSearchTerm) return logRows;
-    const q = logSearchTerm.toLowerCase();
-    return logRows.filter((r: any) =>
-      (r.userName || "").toLowerCase().includes(q) ||
-      (r.userCampus || "").toLowerCase().includes(q) ||
-      (r.courseName || "").toLowerCase().includes(q) ||
-      (r.markedBy || "").toLowerCase().includes(q) ||
-      (r.userEmail || "").toLowerCase().includes(q)
-    );
-  }, [logRows, logSearchTerm]);
-
+  
   if (!canManage) {
     return (
       <Alert variant="destructive">
@@ -619,41 +675,70 @@ export default function ManageCompletionsPage() {
 
       {/* Log table */}
       <Card>
-        <CardHeader className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-            <div>
-              <CardTitle>On-Site Completion Log</CardTitle>
-              <CardDescription>
-                {selectedUser ? `Viewing logs for ${selectedUser.displayName || selectedUser.email}` : isModerator ? `Viewing logs for ${adminUser?.campus} campus` : "Viewing all logs"}
-              </CardDescription>
+        <CardHeader>
+            <div className="flex flex-col sm:flex-row justify-between items-start gap-4">
+                <div>
+                  <CardTitle>On-Site Completion Log</CardTitle>
+                    <CardDescription>
+                       Viewing {totalLogCount} total records
+                    </CardDescription>
+                </div>
+                <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
+                    <Select value={selectedLogCampus} onValueChange={setSelectedLogCampus} disabled={!canViewAllCampuses}>
+                        <SelectTrigger className="w-full sm:w-auto">
+                            <SelectValue placeholder="Filter by campus" />
+                        </SelectTrigger>
+                        <SelectContent>
+                            <SelectItem value="all">All Campuses</SelectItem>
+                            {allCampuses.map(c => <SelectItem key={c.id} value={c.id}>{c["Campus Name"]}</SelectItem>)}
+                        </SelectContent>
+                    </Select>
+                    <Select value={selectedLogCourse} onValueChange={setSelectedLogCourse}>
+                        <SelectTrigger className="w-full sm:w-auto">
+                            <SelectValue placeholder="Filter by course" />
+                        </SelectTrigger>
+                        <SelectContent>
+                            <SelectItem value="all">All Courses</SelectItem>
+                            {courses.map(c => <SelectItem key={c.id} value={c.id}>{c.title}</SelectItem>)}
+                        </SelectContent>
+                    </Select>
+                     <Popover>
+                      <PopoverTrigger asChild>
+                        <Button id="date" variant={"outline"} className={cn("w-full sm:w-auto justify-start text-left font-normal", !dateRange && "text-muted-foreground")}>
+                          <CalendarIcon className="mr-2 h-4 w-4" />
+                          {dateRange?.from ? (
+                            dateRange.to ? (
+                              <>{format(dateRange.from, "LLL dd, y")} - {format(dateRange.to, "LLL dd, y")}</>
+                            ) : (
+                              format(dateRange.from, "LLL dd, y")
+                            )
+                          ) : (
+                            <span>Filter by date</span>
+                          )}
+                        </Button>
+                      </PopoverTrigger>
+                      <PopoverContent className="w-auto p-0" align="start">
+                        <Calendar initialFocus mode="range" defaultMonth={dateRange?.from} selected={dateRange} onSelect={setDateRange} numberOfMonths={2} />
+                      </PopoverContent>
+                    </Popover>
+                    {dateRange && <Button variant="ghost" size="icon" onClick={() => setDateRange(undefined)}><XIcon className="h-4 w-4" /></Button>}
+                    <Button variant="outline" className="w-full sm:w-auto" onClick={handleDownloadCSV}><Download className="h-4 w-4 mr-2" />CSV</Button>
+                </div>
             </div>
-            <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
-                 <Input 
-                  placeholder="Date From" 
-                  type="date" 
-                  value={dateFrom} 
-                  onChange={e => setDateFrom(e.target.value)} 
-                  className="w-full sm:w-auto"
-                />
+            <div className="relative pt-4">
+                <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                 <Input 
-                  placeholder="Date To" 
-                  type="date" 
-                  value={dateTo} 
-                  onChange={e => setDateTo(e.target.value)} 
-                  className="w-full sm:w-auto"
-                />
-                <Input 
-                  placeholder="Search page..." 
+                  placeholder="Search current page results..." 
                   value={logSearchTerm} 
                   onChange={e => setLogSearchTerm(e.target.value)} 
-                  className="w-full sm:w-auto"
+                  className="pl-8"
                 />
-                <Button variant="outline" className="w-full sm:w-auto" onClick={handleDownloadCSV}><Download className="h-4 w-4 mr-2" />CSV</Button>
             </div>
         </CardHeader>
         <CardContent>
            <div className="flex items-center gap-2 mb-4">
-              <input type="checkbox" checked={selectAllOnPage} onChange={toggleSelectAllOnPage} className="w-4 h-4" />
-              <label className="text-sm font-medium">Select all on page</label>
+              <Checkbox id="select-all" checked={selectAllOnPage} onCheckedChange={toggleSelectAllOnPage} />
+              <label htmlFor="select-all" className="text-sm font-medium">Select all on page</label>
               {selectedLogIds.size > 0 && (
                 <Button variant="destructive" size="sm" onClick={handleDeleteSelected}>
                   <Trash2 className="h-4 w-4 mr-2" /> Delete selected ({selectedLogIds.size})
@@ -663,67 +748,57 @@ export default function ManageCompletionsPage() {
            {isLoadingLog ? (
             <div className="flex items-center justify-center h-48"><Loader2 className="h-6 w-6 animate-spin" /></div>
           ) : (
-            <ScrollArea className="h-96">
+            <div className="overflow-x-auto">
               <Table>
                 <TableHeader>
                   <TableRow>
                     <TableHead className="w-[42px]"></TableHead>
-                    <TableHead>User</TableHead>
+                    <TableHead>First Name</TableHead>
+                    <TableHead>Last Name</TableHead>
                     <TableHead>Email</TableHead>
                     <TableHead>Phone</TableHead>
-                    <TableHead>Gender</TableHead>
+                    <TableHead>HP Number</TableHead>
+                    <TableHead>Facilitator</TableHead>
                     <TableHead>Campus</TableHead>
-                    <TableHead>Ladder</TableHead>
                     <TableHead>Course</TableHead>
                     <TableHead>Date</TableHead>
                     <TableHead>Marked By</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {visibleLogRows.map((oc: any) => {
+                  {filteredLogRows.map((oc: any) => {
                     const id = oc.id;
                     const checked = selectedLogIds.has(id);
                     const dateStr = oc.completedAt ? format(new Date((oc.completedAt as Timestamp).seconds * 1000), "PPP") : "N/A";
-
-                    const u = users.find(u => u.uid === oc.userId);
-                    const email = oc.userEmail ?? u?.email ?? "—";
-                    const phone = oc.userPhone ?? (u as any)?.phoneNumber ?? "—";
-                    const gender = oc.userGender ?? (u as any)?.gender ?? "—";
-                    const campus = oc.userCampus || (u as any)?.campus || "N/A";
-                    const ladderName =
-                      oc.userLadderName ??
-                      (() => {
-                        const id = oc.userLadderId ?? (u as any)?.classLadderId;
-                        if (!id) return "Not assigned";
-                        const L = ladderById.get(id);
-                        return L ? `${L.name}${L.side && L.side !== "none" ? ` (${L.side})` : ""}` : "Not assigned";
-                      })();
+                    const campus = oc.userCampus || "N/A";
+                    const userRecord = users.find(u => u.id === oc.userId);
 
                     return (
-                      <TableRow key={id} className={checked ? "bg-muted/50" : undefined}>
+                      <TableRow key={id} data-state={checked ? 'selected' : undefined}>
                         <TableCell>
-                          <input type="checkbox" checked={checked} onChange={() => toggleSelectLog(id)} />
+                          <Checkbox checked={checked} onCheckedChange={() => toggleSelectLog(id)} />
                         </TableCell>
-                        <TableCell>{oc.userName || u?.displayName || "—"}</TableCell>
-                        <TableCell>{email}</TableCell>
-                        <TableCell>{phone}</TableCell>
-                        <TableCell className="capitalize">{gender}</TableCell>
+                        <TableCell>{userRecord?.firstName || (oc.userName || '').split(' ')[0] || "—"}</TableCell>
+                        <TableCell>{userRecord?.lastName || (oc.userName || '').split(' ').slice(1).join(' ') || "—"}</TableCell>
+                        <TableCell>{oc.userEmail || "—"}</TableCell>
+                        <TableCell>{oc.userPhone || "—"}</TableCell>
+                        <TableCell>{userRecord?.hpNumber || "—"}</TableCell>
+                        <TableCell>{userRecord?.facilitatorName || "—"}</TableCell>
                         <TableCell>{campus}</TableCell>
-                        <TableCell>{ladderName}</TableCell>
                         <TableCell>{oc.courseName}</TableCell>
                         <TableCell>{dateStr}</TableCell>
                         <TableCell>{oc.markedBy || "N/A"}</TableCell>
                       </TableRow>
                     );
                   })}
-                  {visibleLogRows.length === 0 && (
+                  {filteredLogRows.length === 0 && (
                     <TableRow>
-                      <TableCell colSpan={10} className="text-center text-muted-foreground">No records on this page.</TableCell>
+                      <TableCell colSpan={11} className="text-center text-muted-foreground">No records match your filters.</TableCell>
                     </TableRow>
                   )}
                 </TableBody>
               </Table>
-            </ScrollArea>
+            </div>
           )}
         </CardContent>
         <CardFooter className="flex justify-end items-center gap-4">
@@ -740,7 +815,9 @@ export default function ManageCompletionsPage() {
                     </SelectContent>
                 </Select>
             </div>
-            <span className="text-sm text-muted-foreground">Page {page} of ?</span>
+            <span className="text-sm text-muted-foreground">
+                Page {page}
+            </span>
             <div className="flex items-center gap-2">
                 <Button variant="outline" size="sm" onClick={goPrev} disabled={page <= 1}>
                     <ChevronLeft className="h-4 w-4" />

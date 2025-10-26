@@ -41,7 +41,6 @@ export type CourseWithStatus = Course & {
   lastWatchedVideoId?: string;
   isLocked?: boolean;
   prerequisiteCourse?: { id: string; title: string } | undefined;
-  allCoursesInGroupCompleted?: boolean;
 };
 
 export function useProcessedCourses(forAllCoursesPage: boolean = false) {
@@ -172,40 +171,36 @@ export function useProcessedCourses(forAllCoursesPage: boolean = false) {
           ...(course.ladderIds || []).map((id) => laddersList.find((l) => l.id === id)?.order ?? Infinity)
         );
 
-        if (userLadder && course.ladderIds) {
+        if (userLadder) {
+          // Rule 1: Lock if the course's ladder is strictly higher than the user's ladder.
           if (courseMinLadderOrder > userLadderOrder) {
             isLocked = true;
           }
-        }
+          
+          // Rule 2: If the course's ladder is the same as the user's, check prerequisites.
+          // This rule does NOT apply if the user's ladder is higher than the course's ladder.
+          if (courseMinLadderOrder === userLadderOrder) {
+             // Prerequisite: previous order in same ladder(s) AND SAME LANGUAGE
+            if (course.order !== undefined && course.order > 0) {
+              const prereq = sortedCourses.find(
+                (c) =>
+                  c.language === course.language && // MUST BE SAME LANGUAGE
+                  c.ladderIds?.some((lId) => course.ladderIds?.includes(lId)) && // MUST BE IN SAME LADDER
+                  c.order === course.order - 1
+              );
 
-        // Prerequisite: previous order in same ladder(s) AND SAME LANGUAGE
-        if (!isLocked && course.order !== undefined && course.order > 0) {
-          const prereq = sortedCourses.find(
-            (c) =>
-              c.language === course.language && // MUST BE SAME LANGUAGE
-              c.ladderIds?.some((lId) => course.ladderIds?.includes(lId)) && // MUST BE IN SAME LADDER
-              c.order === course.order - 1
-          );
-
-          if (prereq && !completedCourseIds.has(prereq.id)) {
-            isLocked = true;
-            prerequisiteCourse = { id: prereq.id, title: prereq.title };
+              if (prereq && !completedCourseIds.has(prereq.id)) {
+                isLocked = true;
+                prerequisiteCourse = { id: prereq.id, title: prereq.title };
+              }
+            }
           }
+        } else {
+            // If user has no ladder, assume they are at the lowest level and lock everything not at that level
+            if (courseMinLadderOrder > 0) {
+                 isLocked = true;
+            }
         }
-
-        // If another course in the same ladder is in progress, lock this one unless already enrolled
-        if (!isLocked && !enrollment) {
-          const sameLadderCoursesInProgress = Array.from(coursesInProgress).some((inProgressCourseId) => {
-            const inProgressCourse = sortedCourses.find((c) => c.id === inProgressCourseId);
-            return inProgressCourse?.ladderIds?.some((lId) => course.ladderIds?.includes(lId));
-          });
-          if (sameLadderCoursesInProgress) isLocked = true;
-        }
-
-        const coursesInSameGroup = sortedCourses.filter((c) =>
-          c.ladderIds?.some((id) => course.ladderIds?.includes(id))
-        );
-        const allCoursesInGroupCompleted = coursesInSameGroup.every((c) => completedCourseIds.has(c.id!));
 
         return {
           ...course,
@@ -216,10 +211,8 @@ export function useProcessedCourses(forAllCoursesPage: boolean = false) {
           totalProgress: totalVideos > 0 ? Math.round((completedVideosCount / totalVideos) * 100) : 0,
           lastWatchedVideoId: progress?.lastWatchedVideoId,
           completedAt: (enrollment?.completedAt as Timestamp | undefined)?.toDate().toISOString(),
-          allCoursesInGroupCompleted,
         };
       });
-
       setProcessedCourses(coursesWithStatus);
     } catch (error) {
       console.error("Error fetching and processing courses:", error);

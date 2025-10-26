@@ -40,6 +40,9 @@ import {
   Sparkles,
   Users2,
   AlertTriangle,
+  Play,
+  Library,
+  Theater,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
@@ -61,7 +64,7 @@ import GlobalSearch from "@/components/global-search";
 import { useI18n } from "@/hooks/use-i18n";
 
 
-const NavItem = ({ href, label, icon: Icon, subItems, permission }: { href?: string; label:string; icon: React.ElementType; subItems?: any[]; permission?: string }) => {
+const NavItem = ({ href, label, icon: Icon, subItems, permission, isSidebarOpen }: { href?: string; label:string; icon: React.ElementType; subItems?: any[]; permission?: string, isSidebarOpen: boolean }) => {
   const pathname = usePathname();
   const { hasPermission } = useAuth();
   const [isOpen, setIsOpen] = useState(subItems?.some(item => pathname.startsWith(item.href || '')));
@@ -77,18 +80,18 @@ const NavItem = ({ href, label, icon: Icon, subItems, permission }: { href?: str
     return (
       <Collapsible open={isOpen} onOpenChange={setIsOpen}>
         <CollapsibleTrigger asChild>
-          <Button variant="ghost" className="w-full justify-between pr-2">
+          <Button variant="ghost" className={cn("w-full pr-2", isSidebarOpen ? "justify-between" : "justify-center")}>
             <div className="flex items-center gap-3">
               <Icon className="h-5 w-5" />
-              <span>{label}</span>
+              {isSidebarOpen && <span>{label}</span>}
             </div>
-            {isOpen ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+            {isSidebarOpen && (isOpen ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />)}
           </Button>
         </CollapsibleTrigger>
         <CollapsibleContent className="pl-6">
           <div className="flex flex-col gap-1">
             {visibleSubItems.map((item, index) => (
-              <NavItem key={`${item.label}-${index}`} {...item} />
+              <NavItem key={`${item.label}-${index}`} {...item} isSidebarOpen={isSidebarOpen} />
             ))}
           </div>
         </CollapsibleContent>
@@ -97,16 +100,15 @@ const NavItem = ({ href, label, icon: Icon, subItems, permission }: { href?: str
   }
 
   return (
-    <Link href={href!} className={cn('flex items-center gap-3 rounded-lg px-3 py-2 text-muted-foreground transition-all hover:text-primary', pathname === href && 'bg-muted text-primary')}>
+    <Link href={href!} className={cn('flex items-center gap-3 rounded-lg px-3 py-2 text-muted-foreground transition-all hover:text-primary', pathname === href && 'bg-muted text-primary', !isSidebarOpen && 'justify-center')}>
         <Icon className="h-5 w-5" />
-        <span>{label}</span>
+        {isSidebarOpen && <span>{label}</span>}
     </Link>
   );
 };
 
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
-  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const isMobile = useIsMobile();
   const { user, loading, hasPermission, refreshUser } = useAuth();
   const { t } = useI18n();
@@ -114,6 +116,19 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   const pathname = usePathname();
   const [userLadder, setUserLadder] = useState<Ladder | null>(null);
   const db = getFirebaseFirestore();
+
+  const isFormBuilderPage = pathname.startsWith('/admin/forms/builder');
+  const isUnrestrictedPlayerPage = pathname.startsWith('/admin/courses/player');
+  const [isSidebarOpen, setIsSidebarOpen] = useState(isMobile ? false : (!isFormBuilderPage && !isUnrestrictedPlayerPage));
+
+  useEffect(() => {
+    if (isMobile) {
+        setIsSidebarOpen(false);
+    } else {
+        setIsSidebarOpen(!isFormBuilderPage && !isUnrestrictedPlayerPage);
+    }
+  }, [isMobile, isFormBuilderPage, isUnrestrictedPlayerPage, pathname]);
+  
 
   const isFullscreenPage = pathname.startsWith('/admin/glory-live') || pathname.startsWith('/admin/live/');
 
@@ -151,6 +166,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
           permission: 'viewCourseManagement',
           subItems: [
             { href: "/admin/courses", label: "Course Manager", icon: Settings },
+            { href: "/admin/courses/teaching", label: "Teaching", icon: Play },
             { href: "/admin/courses/enrollments", label: "Enrollment Activity", icon: Users2 },
             { href: "/admin/courses/enrollment-issues", label: "Enrollment Issues", icon: AlertTriangle },
           ]
@@ -179,8 +195,10 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     },
     {
       group: "Reports",
+      permission: "viewReports",
       items: [
-        { href: "/admin/reports/quizzes", label: "Quiz Reports", icon: BarChart2, permission: 'viewAnalytics' },
+        { href: "/admin/reports/courses", label: "Course Reports", icon: BarChart2 },
+        { href: "/admin/reports/quizzes", label: "Quiz Reports", icon: BarChart2 },
       ],
     },
     {
@@ -264,22 +282,24 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   
   return (
     <div className="min-h-screen w-full">
-      <aside className={`fixed inset-y-0 left-0 z-50 flex h-full max-h-screen flex-col w-[220px] lg:w-[280px] bg-background border-r transition-transform duration-300 ease-in-out md:translate-x-0 ${isMobile && (isSidebarOpen ? 'translate-x-0' : '-translate-x-full')}`}>
+      <aside className={cn(`fixed inset-y-0 left-0 z-50 flex h-full max-h-screen flex-col bg-background border-r transition-all duration-300 ease-in-out`, isSidebarOpen ? 'w-[220px] lg:w-[280px]' : 'w-0 md:w-16')}>
         <div className="flex h-14 items-center border-b px-4 lg:h-[60px] lg:px-6">
           <Link href="/" className="flex items-center gap-2 font-semibold">
-            <Home className="h-6 w-6" />
-            <span className="">Glory Training Hub</span>
+            <Home className={cn("h-6 w-6", !isSidebarOpen && 'mx-auto md:block', isMobile && 'hidden')} />
+            {isSidebarOpen && <span className="">Glory Training Hub</span>}
           </Link>
         </div>
         <div className="flex-1 overflow-auto py-2">
           <nav className="grid items-start px-2 text-sm font-medium lg:px-4">
             {navLinks.map((group) => (
               <div key={group.group} className="mb-4">
-                <h3 className="mb-2 px-3 text-xs font-semibold uppercase text-muted-foreground">
-                  {group.group}
-                </h3>
+                 {isSidebarOpen && (
+                    <h3 className="mb-2 px-3 text-xs font-semibold uppercase text-muted-foreground">
+                    {group.group}
+                    </h3>
+                )}
                 {group.items.map((item, index) => (
-                  <NavItem key={`${group.group}-${item.label}-${index}`} {...item} />
+                  <NavItem key={`${group.group}-${item.label}-${index}`} {...item} isSidebarOpen={isSidebarOpen} />
                 ))}
               </div>
             ))}
@@ -293,9 +313,11 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
                             <AvatarImage src={user?.photoURL || undefined} alt="User avatar" />
                             <AvatarFallback>{getInitials(user?.displayName)}</AvatarFallback>
                         </Avatar>
-                        <div className="flex flex-col items-start">
-                            <span className="text-sm font-medium">{user?.displayName}</span>
-                        </div>
+                        {isSidebarOpen && 
+                          <div className="flex flex-col items-start">
+                              <span className="text-sm font-medium">{user?.displayName}</span>
+                          </div>
+                        }
                     </Button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="start" className="w-56" side="top" sideOffset={8}>
@@ -329,29 +351,28 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
                     </DropdownMenuItem>
                 </DropdownMenuContent>
             </DropdownMenu>
-            <ThemeToggle />
+            {isSidebarOpen && <ThemeToggle />}
         </div>
       </aside>
-       {isMobile && isSidebarOpen && (
+       {isSidebarOpen && isMobile && (
           <div 
               className="fixed inset-0 z-40 bg-black/50" 
               onClick={() => setIsSidebarOpen(false)} 
           />
         )}
-       <div className="flex flex-col md:pl-[220px] lg:pl-[280px]">
+       <div className={cn("flex flex-col transition-[padding]", isSidebarOpen ? "md:pl-[220px] lg:pl-[280px]" : "md:pl-16")}>
         <header className="sticky top-0 z-40 flex h-14 items-center gap-4 border-b bg-background/95 px-4 backdrop-blur-sm lg:h-[60px] lg:px-6">
             <div className="flex items-center gap-2">
-                 {isMobile && (
-                    <Button variant="outline" size="icon" onClick={() => setIsSidebarOpen(prev => !prev)}>
-                        <Menu className="h-5 w-5" />
-                    </Button>
-                )}
-                 {isMobile && <Logo />}
+                <Button variant="outline" size="icon" onClick={() => setIsSidebarOpen(prev => !prev)}>
+                    <Menu className="h-5 w-5" />
+                </Button>
+                 {isMobile && !isSidebarOpen && <Logo />}
             </div>
-            <div className="flex-1 px-4">
+            <div className="hidden md:flex flex-1 justify-center px-4">
                 <GlobalSearch />
             </div>
             <div className="ml-auto flex items-center gap-2">
+                 {isMobile && <GlobalSearch />}
                 <ThemeToggle />
             </div>
         </header>

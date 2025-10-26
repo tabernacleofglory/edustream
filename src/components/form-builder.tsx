@@ -29,6 +29,8 @@ const formBuilderSchema = z.object({
   title: z.string().min(1, 'Form title is required.'),
   type: z.enum(['userProfile', 'blank']),
   fields: z.array(fieldConfigSchema),
+  public: z.boolean().default(false),
+  submissionCount: z.number().default(0),
 });
 
 type FormBuilderValues = z.infer<typeof formBuilderSchema>;
@@ -88,6 +90,8 @@ export default function FormBuilder({ formType, formId }: FormBuilderProps) {
                 title: formType === 'userProfile' ? 'New User Registration' : 'New Form',
                 type: formType || 'blank',
                 fields: formType ? getInitialFields(formType) : [],
+                public: false,
+                submissionCount: 0,
             }
         }
     });
@@ -103,12 +107,16 @@ export default function FormBuilder({ formType, formId }: FormBuilderProps) {
         setIsSubmitting(true);
         try {
             if (formId) {
-                 await updateDoc(doc(db, "forms", formId), data);
+                 await updateDoc(doc(db, "forms", formId), {
+                     ...data,
+                     updatedAt: serverTimestamp(),
+                 });
                  toast({ title: 'Form Updated', description: `Your "${data.title}" form has been saved.` });
             } else {
                 await addDoc(collection(db, 'forms'), {
                     ...data,
                     submissionCount: 0,
+                    public: false, // Forms are private by default
                     createdAt: serverTimestamp(),
                 });
                 toast({ title: 'Form Created', description: `Your "${data.title}" form has been saved.` });
@@ -125,6 +133,14 @@ export default function FormBuilder({ formType, formId }: FormBuilderProps) {
     if (loadingForm) {
         return <Skeleton className="h-96 w-full" />
     }
+    
+    // Do not render the form builder if the type is blank, for now.
+    // This will be implemented in a future step.
+    if (form.getValues('type') === 'blank' && !formId) {
+         router.replace('/admin/forms/builder/blank-form');
+         return null;
+    }
+
 
     return (
         <form onSubmit={handleSubmit(onSubmit)}>
@@ -175,11 +191,6 @@ export default function FormBuilder({ formType, formId }: FormBuilderProps) {
                             )
                         })}
                     </div>
-                    {form.getValues('type') === 'blank' && (
-                        <div className="text-center p-8 text-muted-foreground border-2 border-dashed rounded-lg">
-                            <p>Blank form builder coming soon.</p>
-                        </div>
-                    )}
                 </CardContent>
                 <CardFooter>
                     <Button type="submit" disabled={isSubmitting}>

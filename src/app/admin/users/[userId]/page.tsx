@@ -8,15 +8,17 @@ import { collection, query, where, doc, getDoc, getDocs, documentId } from 'fire
 import { useToast } from '@/hooks/use-toast';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Loader2, ArrowLeft, Mail, Edit, Eye, CheckCircle, Circle } from 'lucide-react';
+import { Loader2, ArrowLeft, Mail, Edit, Eye, CheckCircle, Circle, Trash } from 'lucide-react';
 import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar';
 import type { Course, User, Enrollment, UserProgress, Ladder, UserLadderProgress, Video } from '@/lib/types';
 import { useAuth } from '@/hooks/use-auth';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
 import { sendPasswordResetEmail, getAuth } from 'firebase/auth';
-import { getFirebaseFirestore } from '@/lib/firebase';
+import { getFirebaseFirestore, getFirebaseFunctions } from '@/lib/firebase';
+import { httpsCallable } from 'firebase/functions';
 import { Dialog, DialogHeader, DialogTitle, DialogContent } from '@/components/ui/dialog';
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import EditUserForm from '@/components/edit-user-form';
@@ -48,6 +50,7 @@ export default function UserProfilePage() {
   const [viewingCourseProgress, setViewingCourseProgress] = useState<CourseProgressDetail | null>(null);
   const [isEditing, setIsEditing] = useState(false);
   const db = getFirebaseFirestore();
+  const functions = getFirebaseFunctions();
 
   const fetchUserData = useCallback(async () => {
     if (!userId) {
@@ -223,6 +226,26 @@ export default function UserProfilePage() {
     }
   };
 
+  const handleDeleteUser = async () => {
+    if (!user) return;
+    try {
+        const deleteUserAccount = httpsCallable(functions, 'deleteUserAccount');
+        await deleteUserAccount({ uid: user.id });
+
+        toast({
+            title: "User Deleted",
+            description: `User ${user.displayName} has been removed.`
+        });
+        router.replace('/admin/users');
+    } catch (error: any) {
+        toast({
+            variant: "destructive",
+            title: "Deletion Failed",
+            description: "Could not delete user account. " + error.message
+        });
+    }
+  };
+
   if (loading) {
     return (
       <div className="flex items-center justify-center h-full">
@@ -249,6 +272,28 @@ export default function UserProfilePage() {
               <Edit className="mr-2 h-4 w-4" />
               Edit User
             </Button>
+             <AlertDialog>
+                <AlertDialogTrigger asChild>
+                    <Button variant="destructive">
+                        <Trash className="mr-2 h-4 w-4" />
+                        Delete User
+                    </Button>
+                </AlertDialogTrigger>
+                <AlertDialogContent>
+                    <AlertDialogHeader>
+                        <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
+                        <AlertDialogDescription>
+                            This will permanently delete the user <span className="font-bold">{user.displayName}</span> and all associated data. This action cannot be undone.
+                        </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                        <AlertDialogCancel>Cancel</AlertDialogCancel>
+                        <AlertDialogAction onClick={handleDeleteUser}>
+                            Yes, delete user
+                        </AlertDialogAction>
+                    </AlertDialogFooter>
+                </AlertDialogContent>
+            </AlertDialog>
           </div>
         </div>
 

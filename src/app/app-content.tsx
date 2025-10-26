@@ -29,7 +29,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
-import { LayoutDashboard, BookOpen, UserCog, Settings, LogOut, Tv, Music, MessageSquare, BookCopy, Shield, Menu, Award } from "lucide-react";
+import { LayoutDashboard, BookOpen, UserCog, Settings, LogOut, Tv, Music, MessageSquare, BookCopy, Shield, Menu, Award, Theater, Play } from "lucide-react";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { getFirebaseAuth, getFirebaseFirestore } from "@/lib/firebase";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -51,6 +51,7 @@ const navItems = [
   { href: "/courses", icon: BookOpen, label: "All Courses", permission: "viewCoursesPage" },
   { href: "/my-certificates", icon: Award, label: "My Certificates", permission: "viewDashboard" },
   { href: "/live", icon: Tv, label: "Live", permission: "viewLivePage" },
+  { href: "/admin/courses/teaching", icon: Play, label: "Teaching", permission: "viewTeachingPage" },
   { href: "/music", icon: Music, label: "Music", permission: "viewMusicPage" },
   { href: "/community", icon: MessageSquare, label: "Community", permission: "viewCommunityPage" },
   { href: "/documentation", icon: BookCopy, label: "Documentation", permission: "viewDocumentationPage" },
@@ -164,14 +165,10 @@ const HeaderContent = () => {
   return (
      <header className="sticky top-0 z-40 flex h-16 w-full items-center gap-4 border-b bg-background/95 px-4 backdrop-blur supports-[backdrop-filter]:bg-background/60 md:px-6">
         <div className="flex items-center gap-2">
-            {isMobile ? (
-                <Button variant="ghost" size="icon" onClick={() => setOpen(!isSidebarOpen)}>
-                    <Menu className="h-6 w-6" />
-                </Button>
-            ) : (
-                <SidebarTrigger className="md:flex" />
-            )}
-             <div className="md:hidden">
+            <Button variant="ghost" size="icon" onClick={() => setOpen(!isSidebarOpen)}>
+                <Menu className="h-6 w-6" />
+            </Button>
+            <div className={cn(isMobile ? 'block' : 'hidden', isSidebarOpen && 'hidden')}>
                 <Logo />
             </div>
              {!isSidebarOpen && !isMobile && (
@@ -210,7 +207,8 @@ function AppContentInternal({ children }: { children: React.ReactNode }) {
   const { currentTrack } = useAudioPlayer();
 
   const isMobile = useIsMobile();
-  const [isSidebarOpen, setIsSidebarOpen] = useState(isMobile === undefined ? false : !isMobile);
+  const isVideoPage = pathname.includes('/courses/') && pathname.includes('/video/');
+  const [isSidebarOpen, setIsSidebarOpen] = useState(isMobile === undefined ? false : !isMobile && !isVideoPage);
 
 
   const isAuthPage = pathname.startsWith('/login') || pathname.startsWith('/signup');
@@ -218,8 +216,6 @@ function AppContentInternal({ children }: { children: React.ReactNode }) {
   const isExternalPage = pathname.startsWith('/external');
   
   const showAppLayout = !isAuthPage && !isLandingPage && !isExternalPage;
-
-  const isVideoPage = pathname.includes('/courses/') && pathname.includes('/video/');
 
   const canSeeFullMenu = isProfileComplete && user?.isInHpGroup;
 

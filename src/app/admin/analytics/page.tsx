@@ -1,4 +1,5 @@
 
+
 "use client";
 
 import { useState, useEffect, useRef, useMemo, useCallback } from "react";
@@ -46,6 +47,7 @@ import { Calendar } from "@/components/ui/calendar";
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/hooks/use-auth";
 
 interface Campus {
   id: string;
@@ -132,6 +134,7 @@ function formatDuration(seconds: number) {
 
 
 export default function AnalyticsDashboard() {
+  const { user: currentUser, canViewAllCampuses } = useAuth();
   const [selectedUser, setSelectedUser] = useState<string | "all">("all");
   const [selectedCourse, setSelectedCourse] = useState<string | "all">("all");
   const [selectedCampus, setSelectedCampus] = useState<string | "all">("all");
@@ -274,7 +277,7 @@ export default function AnalyticsDashboard() {
       const socialInteractionData = await Promise.all(socialDataPromises);
       setSocialData(socialInteractionData);
       
-      const completionCountsByCourse = enrollmentsList.reduce((acc, enrollment) => {
+       const completionCountsByCourse = enrollmentsList.reduce((acc, enrollment) => {
           if (enrollment.completedAt) {
               acc[enrollment.courseId] = (acc[enrollment.courseId] || 0) + 1;
           }
@@ -391,19 +394,26 @@ export default function AnalyticsDashboard() {
         };
       });
 
-      if (selectedCampus !== 'all') {
-        const campus = allCampuses.find(c => c.id === selectedCampus);
-        if (campus) {
-          const userIdsInCampus = new Set(allUsers.filter(u => u.campus === campus["Campus Name"]).map(u => u.id));
-          progressList = progressList.filter(p => userIdsInCampus.has(p.userId));
-        }
+      if (!canViewAllCampuses) {
+          const userCampusName = currentUser?.campus;
+          if (userCampusName) {
+            const userIdsInCampus = new Set(allUsers.filter(u => u.campus === userCampusName).map(u => u.id));
+            progressList = progressList.filter(p => userIdsInCampus.has(p.userId));
+          }
+      } else if (selectedCampus !== 'all') {
+          const campus = allCampuses.find(c => c.id === selectedCampus);
+          if (campus) {
+              const userIdsInCampus = new Set(allUsers.filter(u => u.campus === campus["Campus Name"]).map(u => u.id));
+              progressList = progressList.filter(p => userIdsInCampus.has(p.userId));
+          }
       }
+
       setUserProgressData(progressList);
     } catch (error) {
       console.error("Error fetching progress data:", error);
       setUserProgressData([]);
     }
-  }, [db, selectedUser, selectedCourse, selectedCampus, allUsers, allCourses, allCampuses, allVideos, allCourseGroups]);
+  }, [db, selectedUser, selectedCourse, canViewAllCampuses, selectedCampus, allUsers, allCourses, allCampuses, allVideos, allCourseGroups, currentUser]);
 
   useEffect(() => {
     fetchAllStaticData();
@@ -523,7 +533,7 @@ export default function AnalyticsDashboard() {
   
   const totalHpRequests = useMemo(() => hpRequestData.reduce((sum, item) => sum + item.requests, 0), [hpRequestData]);
   
-  const groupedCourseEngagement = useMemo(() => {
+ const groupedCourseEngagement = useMemo(() => {
     const groups: { [key: string]: CourseEngagementData[] } = {};
     const uncategorizedCourses: CourseEngagementData[] = [];
 
@@ -550,6 +560,18 @@ export default function AnalyticsDashboard() {
             uncategorizedCourses.push(course);
         }
     });
+
+    // Function to extract number from session title for sorting
+    const extractSessionNumber = (title: string) => {
+        const match = title.match(/Session (\d+)/i);
+        return match ? parseInt(match[1], 10) : Infinity;
+    };
+    
+    // Sort courses within each group
+    for (const groupTitle in groups) {
+        groups[groupTitle].sort((a, b) => extractSessionNumber(a.courseTitle) - extractSessionNumber(b.courseTitle));
+    }
+    uncategorizedCourses.sort((a, b) => extractSessionNumber(a.courseTitle) - extractSessionNumber(b.courseTitle));
     
     const groupedArray = Object.entries(groups).map(([title, courses]) => ({
       title,
@@ -738,7 +760,7 @@ export default function AnalyticsDashboard() {
                     ))}
                   </SelectContent>
                 </Select>
-                <Select value={selectedCampus} onValueChange={setSelectedCampus}>
+                <Select value={selectedCampus} onValueChange={setSelectedCampus} disabled={!canViewAllCampuses}>
                   <SelectTrigger className="w-full sm:w-[180px]">
                     <SelectValue placeholder="Select Campus" />
                   </SelectTrigger>
@@ -1161,7 +1183,7 @@ export default function AnalyticsDashboard() {
                 </SelectGroup>
               </SelectContent>
             </Select>
-            <Select value={selectedCampus} onValueChange={setSelectedCampus}>
+            <Select value={selectedCampus} onValueChange={setSelectedCampus} disabled={!canViewAllCampuses}>
               <SelectTrigger className="w-full sm:w-auto flex-grow">
                 <SelectValue placeholder="Select Campus" />
               </SelectTrigger>

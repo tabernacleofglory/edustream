@@ -2,16 +2,31 @@
 "use client";
 
 import { useSearchParams } from "next/navigation";
-import { Suspense } from 'react';
+import { Suspense, useEffect } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Lock } from "lucide-react";
 import FormBuilder from "@/components/form-builder";
+import { useRouter } from 'next/navigation';
+import { doc, getDoc } from "firebase/firestore";
+import { db } from "@/lib/firebase";
 
 function FormBuilderPageContent() {
     const searchParams = useSearchParams();
-    const formType = searchParams.get('type') as 'userProfile' | 'blank' | null;
+    const router = useRouter();
+    const formType = searchParams.get('type') as 'userProfile' | 'blank' | 'hybrid' | null;
     const formId = searchParams.get('formId');
+    
+    useEffect(() => {
+        if (!formId) return;
+        const docRef = doc(db, 'forms', formId);
+        getDoc(docRef).then(docSnap => {
+            if (docSnap.exists() && (docSnap.data().type === 'blank' || docSnap.data().type === 'hybrid')) {
+                router.replace(`/admin/forms/builder/blank-form?formId=${formId}`);
+            }
+        })
+    }, [formId, router]);
+
 
     if (!formType && !formId) {
         return (

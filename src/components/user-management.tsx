@@ -4,7 +4,7 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
 import Link from "next/link";
 import { getFirebaseFirestore, getFirebaseApp, getFirebaseFunctions } from "@/lib/firebase";
-import { collection, getDocs, doc, updateDoc, query, orderBy, deleteDoc, setDoc, addDoc, serverTimestamp, where, documentId } from "firebase/firestore";
+import { collection, getDocs, doc, updateDoc, query, orderBy, deleteDoc, setDoc, addDoc, serverTimestamp, where, documentId, writeBatch, getDoc, collectionGroup } from "firebase/firestore";
 import { getAuth, deleteUser as deleteFirebaseAuthUser } from "firebase/auth";
 import { httpsCallable } from 'firebase/functions';
 import type { User, Course, Enrollment, UserProgress as UserProgressType, Ladder, UserLadderProgress } from "@/lib/types";
@@ -14,7 +14,7 @@ import {
   CardHeader,
   CardTitle,
   CardDescription,
-  CardFooter
+  CardFooter,
 } from "@/components/ui/card";
 import {
   Table,
@@ -61,7 +61,7 @@ import {
 } from "@/components/ui/sheet";
 import { Avatar, AvatarFallback, AvatarImage } from "./ui/avatar";
 import { Button } from "./ui/button";
-import { Edit, Eye, Loader2, Plus, Trash, Upload, Download, UserMinus, ChevronLeft, ChevronRight, Mail, BookCheck, Search, Star } from "lucide-react";
+import { Edit, Eye, Loader2, Plus, Trash, Upload, Download, UserMinus, ChevronLeft, ChevronRight, Mail, BookCheck, Search, Star, Trash2, Combine } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { Skeleton } from "./ui/skeleton";
 import AddUserForm from "./add-user-form";
@@ -77,11 +77,19 @@ import { unenrollUserFromCourse } from "@/lib/user-actions";
 import EditUserForm from "./edit-user-form";
 import { cn } from "@/lib/utils";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "./ui/tooltip";
+import { useAuth } from "@/hooks/use-auth";
+import { Checkbox } from "./ui/checkbox";
+import { RadioGroup, RadioGroupItem } from "./ui/radio-group";
 
 interface UserCourseProgress {
     courseId: string;
     courseTitle: string;
     totalProgress: number;
+}
+
+interface Campus {
+    id: string;
+    "Campus Name": string;
 }
 
 const secondaryAppName = "secondary";
@@ -178,10 +186,179 @@ const ImportUsersDialog = ({ onImport }: { onImport: (users: any[]) => void }) =
     );
 };
 
+const MergeUsersDialog = ({ userIds, onClose, onMergeComplete }: { userIds: string[], onClose: () => void, onMergeComplete: () => void }) => {
+    const [usersToMerge, setUsersToMerge] = useState<User[]>([]);
+    const [primaryUserId, setPrimaryUserId] = useState<string>('');
+    const [mergedData, setMergedData] = useState<Record<string, any>>({});
+    const [loading, setLoading] = useState(true);
+    const [isMerging, setIsMerging] = useState(false);
+    const db = getFirebaseFirestore();
+    const { toast } = useToast();
+
+    useEffect(() => {
+        const fetchUsers = async () => {
+            setLoading(true);
+            const userDocs = await Promise.all(userIds.map(id => getDoc(doc(db, 'users', id))));
+            const fetchedUsers = userDocs.map(d => ({ id: d.id, ...d.data() } as User)).filter(u => u.email);
+            setUsersToMerge(fetchedUsers);
+            if (fetchedUsers.length > 0) {
+                setPrimaryUserId(fetchedUsers[0].id);
+                // Initialize mergedData with the first user's data
+                const initialData: Record<string, any> = {};
+                Object.keys(fetchedUsers[0]).forEach(key => {
+                    initialData[key] = { value: (fetchedUsers[0] as any)[key], from: fetchedUsers[0].id };
+                });
+                setMergedData(initialData);
+            }
+            setLoading(false);
+        };
+        fetchUsers();
+    }, [userIds, db]);
+
+    const allKeys = useMemo(() => {
+        const keys = new Set<string>();
+        usersToMerge.forEach(user => {
+            Object.keys(user).forEach(key => {
+                if (!['id', 'uid', 'createdAt', 'classLadderId'].includes(key)) {
+                    keys.add(key);
+                }
+            });
+        });
+        return Array.from(keys);
+    }, [usersToMerge]);
+
+    const handleFieldSelection = (field: string, value: any, fromUserId: string) => {
+        setMergedData(prev => {
+            const next = { ...prev, [field]: { value, from: fromUserId } };
+            // If the user selects a classLadder, also select the corresponding classLadderId
+            if (field === 'classLadder') {
+                const sourceUser = usersToMerge.find(u => u.id === fromUserId);
+                if (sourceUser) {
+                    next['classLadderId'] = { value: sourceUser.classLadderId, from: fromUserId };
+                }
+            }
+            return next;
+        });
+    };
+
+    const handleMerge = async () => {
+        setIsMerging(true);
+        try {
+            const finalData: Record<string, any> = {};
+            Object.keys(mergedData).forEach(key => {
+                finalData[key] = mergedData[key].value;
+            });
+            
+            const batch = writeBatch(db);
+            const primaryUserRef = doc(db, 'users', primaryUserId);
+            const secondaryUserIds = userIds.filter(id => id !== primaryUserId);
+
+            // 1. Update primary user document
+            batch.update(primaryUserRef, finalData);
+
+            // 2. Re-attribute data from secondary users
+            const collectionsToReattribute = ["enrollments", "userVideoProgress", "userQuizResults", "promotionRequests", "onsiteCompletions", "userBadges"];
+            
+            for (const userId of secondaryUserIds) {
+                for (const collectionName of collectionsToReattribute) {
+                    const snapshot = await getDocs(query(collection(db, collectionName), where("userId", "==", userId)));
+                    snapshot.forEach(docToMove => {
+                        const newId = docToMove.id.replace(userId, primaryUserId);
+                        const newDocRef = doc(db, collectionName, newId);
+                        batch.set(newDocRef, { ...docToMove.data(), userId: primaryUserId });
+                        batch.delete(docToMove.ref);
+                    });
+                }
+            }
+
+            // 3. Delete secondary user Firestore documents
+            secondaryUserIds.forEach(userId => {
+                batch.delete(doc(db, 'users', userId));
+            });
+            
+            await batch.commit();
+
+            toast({ title: "Merge Successful", description: "User data has been merged. Please manually delete the old auth accounts from the Firebase Console." });
+            onMergeComplete();
+            onClose();
+
+        } catch (error: any) {
+            console.error("Merge error:", error);
+            toast({ variant: 'destructive', title: "Merge Failed", description: error.message });
+        } finally {
+            setIsMerging(false);
+        }
+    };
+    
+    return (
+        <DialogContent className="max-w-4xl">
+            <DialogHeader>
+                <DialogTitle>Merge Users</DialogTitle>
+                <DialogDescription>Select the primary user and choose which data to keep from each profile. The primary user's account will be kept, and the others will be deleted.</DialogDescription>
+            </DialogHeader>
+            {loading ? <Loader2 className="mx-auto h-8 w-8 animate-spin" /> : (
+                <div className="space-y-4">
+                    <div>
+                        <Label>Select Primary User (Account to Keep)</Label>
+                        <Select value={primaryUserId} onValueChange={setPrimaryUserId}>
+                            <SelectTrigger><SelectValue placeholder="Select primary user..." /></SelectTrigger>
+                            <SelectContent>
+                                {usersToMerge.map(user => (
+                                    <SelectItem key={user.id} value={user.id}>{user.displayName} ({user.email})</SelectItem>
+                                ))}
+                            </SelectContent>
+                        </Select>
+                    </div>
+                    <ScrollArea className="h-[50vh]">
+                        <Table>
+                            <TableHeader>
+                                <TableRow>
+                                    <TableHead>Field</TableHead>
+                                    {usersToMerge.map(user => (
+                                        <TableHead key={user.id} className="text-center">{user.displayName}</TableHead>
+                                    ))}
+                                </TableRow>
+                            </TableHeader>
+                            <TableBody>
+                                {allKeys.map(key => (
+                                    <TableRow key={key}>
+                                        <TableCell className="font-semibold capitalize">{key.replace(/([A-Z])/g, ' $1')}</TableCell>
+                                        {usersToMerge.map(user => (
+                                            <TableCell key={user.id}>
+                                                <div className="flex items-center gap-2">
+                                                    <RadioGroup
+                                                        value={mergedData[key]?.from === user.id ? user.id : ''}
+                                                        onValueChange={() => handleFieldSelection(key, (user as any)[key], user.id)}
+                                                    >
+                                                        <RadioGroupItem value={user.id} />
+                                                    </RadioGroup>
+                                                    <span className="text-xs">{String((user as any)[key] ?? 'N/A')}</span>
+                                                </div>
+                                            </TableCell>
+                                        ))}
+                                    </TableRow>
+                                ))}
+                            </TableBody>
+                        </Table>
+                    </ScrollArea>
+                </div>
+            )}
+             <DialogFooter>
+                <Button variant="outline" onClick={onClose}>Cancel</Button>
+                <Button onClick={handleMerge} disabled={isMerging || loading}>
+                    {isMerging ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Combine className="mr-2 h-4 w-4" />}
+                    Merge Users
+                </Button>
+            </DialogFooter>
+        </DialogContent>
+    );
+};
+
 export default function UserManagement() {
   const [users, setUsers] = useState<User[]>([]);
   const [ladders, setLadders] = useState<Ladder[]>([]);
   const [courses, setCourses] = useState<Course[]>([]);
+  const [allCampuses, setAllCampuses] = useState<Campus[]>([]);
   const [loading, setLoading] = useState(true);
   const [isAddUserOpen, setIsAddUserOpen] = useState(false);
   const [isImportUserOpen, setIsImportUserOpen] = useState(false);
@@ -194,12 +371,16 @@ export default function UserManagement() {
   const { toast } = useToast();
   const db = getFirebaseFirestore();
   const functions = getFirebaseFunctions();
+  const { user: currentUser, canViewAllCampuses, hasPermission, isCurrentUserAdmin } = useAuth();
 
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCampus, setSelectedCampus] = useState('all');
   const [currentPage, setCurrentPage] = useState(1);
   const [usersPerPage, setUsersPerPage] = useState(10);
-
+  const [selectedUserIds, setSelectedUserIds] = useState<string[]>([]);
+  const [isMergeDialogOpen, setIsMergeDialogOpen] = useState(false);
+  
+  const canDeleteUsers = hasPermission('deleteUsersClientSide');
 
   const fetchAllData = useCallback(async () => {
     setLoading(true);
@@ -215,10 +396,14 @@ export default function UserManagement() {
       const coursesSnapshot = await getDocs(collection(db, 'courses'));
       const coursesList = coursesSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Course));
       
+      const campusSnapshot = await getDocs(query(collection(db, "Campus"), orderBy("Campus Name")));
+      const campusList = campusSnapshot.docs.map(d => ({ id: d.id, ...d.data() } as Campus));
+
       usersList.sort((a, b) => (a.displayName || "").localeCompare(b.displayName || ""));
       setUsers(usersList);
       setLadders(laddersList);
       setCourses(coursesList);
+      setAllCampuses(campusList);
 
     } catch (error) {
       console.error("Error fetching data: ", error);
@@ -236,25 +421,30 @@ export default function UserManagement() {
   useEffect(() => {
     fetchAllData();
   }, [fetchAllData]);
-
-  const filteredUsers = useMemo(() => {
+  
+ const filteredUsers = useMemo(() => {
     return users.filter(user => {
+        const lowercasedSearch = searchTerm.toLowerCase();
         const matchesSearch = searchTerm === '' ||
-            user.displayName?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-            user.email?.toLowerCase().includes(searchTerm.toLowerCase());
+            user.displayName?.toLowerCase().includes(lowercasedSearch) ||
+            user.email?.toLowerCase().includes(lowercasedSearch) ||
+            user.phoneNumber?.toLowerCase().includes(lowercasedSearch) ||
+            user.role?.toLowerCase().includes(lowercasedSearch) ||
+            user.charge?.toLowerCase().includes(lowercasedSearch);
         
-        const matchesCampus = selectedCampus === 'all' || 
-            (user.campus && user.campus.toLowerCase() === selectedCampus.toLowerCase());
+        let matchesCampus = true;
+        if (!canViewAllCampuses) {
+            matchesCampus = user.campus === currentUser?.campus;
+        } else if (selectedCampus !== 'all') {
+            const selectedCampusObject = allCampuses.find(c => c.id === selectedCampus);
+            matchesCampus = user.campus === selectedCampusObject?.["Campus Name"];
+        }
 
         return matchesSearch && matchesCampus;
     });
-  }, [users, searchTerm, selectedCampus]);
+}, [users, searchTerm, selectedCampus, currentUser, canViewAllCampuses, allCampuses]);
 
-  const allCampuses = useMemo(() => {
-    const campusSet = new Set(users.map(u => u.campus).filter(Boolean));
-    return Array.from(campusSet).sort();
-  }, [users]);
-
+  
   const totalPages = Math.ceil(filteredUsers.length / usersPerPage);
   const paginatedUsers = filteredUsers.slice((currentPage - 1) * usersPerPage, currentPage * usersPerPage);
 
@@ -360,7 +550,7 @@ export default function UserManagement() {
     const roleInLowercase = newRole.toLowerCase();
     try {
         await updateDoc(userDocRef, { role: roleInLowercase });
-        setUsers(users.map(u => u.id === userId ? { ...u, role: roleInLowercase } : u));
+        setUsers(users.map(u => u.id === userId ? { ...u, role: roleInLowercase as User['role'] } : u));
         toast({
             title: "Success",
             description: "User role updated successfully."
@@ -373,12 +563,35 @@ export default function UserManagement() {
         })
     }
   };
+  
+  const handleCampusChange = async (userId: string, campusName: string) => {
+    const userDocRef = doc(db, "users", userId);
+    try {
+        await updateDoc(userDocRef, { campus: campusName });
+        setUsers(users.map(u => u.id === userId ? { ...u, campus: campusName } : u));
+        toast({
+            title: "Success",
+            description: "User campus updated successfully."
+        })
+    } catch (error) {
+        toast({
+            variant: "destructive",
+            title: "Error",
+            description: "Failed to update user campus."
+        })
+    }
+  };
 
   const handleLadderChange = async (userId: string, newLadderId: string) => {
     const userDocRef = doc(db, "users", userId);
+    const ladder = ladders.find(l => l.id === newLadderId);
+    if (!ladder) return;
     try {
-        await updateDoc(userDocRef, { classLadderId: newLadderId });
-        setUsers(users.map(u => u.id === userId ? { ...u, classLadderId: newLadderId } : u));
+        await updateDoc(userDocRef, { 
+            classLadderId: newLadderId,
+            classLadder: ladder.name
+        });
+        setUsers(users.map(u => u.id === userId ? { ...u, classLadderId: newLadderId, classLadder: ladder.name } : u));
          toast({
             title: "Success",
             description: "User membership ladder updated successfully."
@@ -392,24 +605,39 @@ export default function UserManagement() {
     }
   };
   
-  const handleDeleteUser = async (userId: string, userName: string) => {
-    try {
-        const deleteUserAccount = httpsCallable(functions, 'deleteUserAccount');
-        await deleteUserAccount({ uid: userId });
-
-        setUsers(prevUsers => prevUsers.filter(u => u.id !== userId));
+  const handleDeleteSelected = async () => {
+    if (selectedUserIds.length === 0) return;
+    if (!canDeleteUsers) {
         toast({
-            title: "User Deleted",
-            description: `User ${userName} has been removed from the database and authentication.`
+            variant: 'destructive',
+            title: 'Permission Denied',
+            description: 'You do not have permission to delete users.',
         });
+        return;
+    }
+
+    toast({ title: `Starting deletion of ${selectedUserIds.length} users...` });
+    
+    try {
+        const batch = writeBatch(db);
+        selectedUserIds.forEach(userId => {
+            const userRef = doc(db, 'users', userId);
+            batch.delete(userRef);
+        });
+        await batch.commit();
+
+        toast({ title: "Users Deleted", description: `${selectedUserIds.length} user document(s) have been deleted.` });
+        setSelectedUserIds([]);
+        fetchAllData(); // Refresh data
     } catch (error: any) {
+        console.error(`Failed to delete users:`, error);
         toast({
-            variant: "destructive",
-            title: "Deletion Failed",
-            description: "Could not delete user account. " + error.message
+            variant: 'destructive',
+            title: `Failed to delete users`,
+            description: error.message || "An unknown error occurred.",
         });
     }
-  }
+  };
 
   const handleUnenroll = async (userId: string, courseId: string) => {
       const result = await unenrollUserFromCourse(userId, courseId);
@@ -461,8 +689,8 @@ export default function UserManagement() {
                   displayName: userData.fullName,
                   fullName: userData.fullName,
                   email: userData.email,
-                  role: userData.role || 'user',
-                  membershipStatus: userData.membershipStatus || 'Active',
+                  role: 'user',
+                  membershipStatus: 'Active',
                   classLadder: userData.membershipLadder || 'New Member',
                   campus: userData.campus,
                   phoneNumber: userData.phoneNumber,
@@ -530,12 +758,12 @@ export default function UserManagement() {
   };
 
     const handleExportCSV = () => {
-        if (users.length === 0) {
+        if (filteredUsers.length === 0) {
             toast({ variant: 'destructive', title: 'No users to export' });
             return;
         }
 
-        const dataToExport = users.map(user => ({
+        const dataToExport = filteredUsers.map(user => ({
             "User ID": user.id,
             "Full Name": user.fullName,
             "Email": user.email,
@@ -614,13 +842,31 @@ export default function UserManagement() {
         )
     };
 
+    const handleToggleAllOnPage = () => {
+        if (selectedUserIds.length === paginatedUsers.length) {
+            setSelectedUserIds([]);
+        } else {
+            setSelectedUserIds(paginatedUsers.map(u => u.id));
+        }
+    };
+
+    const handleToggleUserSelection = (userId: string) => {
+        setSelectedUserIds(prev =>
+            prev.includes(userId)
+                ? prev.filter(id => id !== userId)
+                : [...prev, userId]
+        );
+    };
+
   return (
     <>
     <Card>
       <CardHeader className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div>
             <CardTitle>All Users</CardTitle>
-            <CardDescription>A list of all users in the system.</CardDescription>
+            <CardDescription>
+                Found {filteredUsers.length} users matching your filters.
+            </CardDescription>
         </div>
         <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
             <Button variant="outline" onClick={handleExportCSV} className="w-full">
@@ -664,28 +910,68 @@ export default function UserManagement() {
             <div className="relative flex-1">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground" />
                 <Input
-                    placeholder="Search by name or email..."
+                    placeholder="Search name, email, phone, role, or charge..."
                     className="pl-10"
                     value={searchTerm}
                     onChange={(e) => setSearchTerm(e.target.value)}
                 />
             </div>
-             <Select value={selectedCampus} onValueChange={setSelectedCampus}>
+             <Select value={selectedCampus} onValueChange={setSelectedCampus} disabled={!canViewAllCampuses}>
                 <SelectTrigger className="w-full md:w-[200px]">
                     <SelectValue placeholder="Filter by campus" />
                 </SelectTrigger>
                 <SelectContent>
                     <SelectItem value="all">All Campuses</SelectItem>
                     {allCampuses.map(campus => (
-                        <SelectItem key={campus} value={campus}>{campus}</SelectItem>
+                        <SelectItem key={campus.id} value={campus.id}>{campus["Campus Name"]}</SelectItem>
                     ))}
                 </SelectContent>
             </Select>
+            {selectedUserIds.length > 1 && (
+                <Dialog open={isMergeDialogOpen} onOpenChange={setIsMergeDialogOpen}>
+                    <DialogTrigger asChild>
+                        <Button variant="outline">
+                            <Combine className="mr-2 h-4 w-4" />
+                            Merge ({selectedUserIds.length})
+                        </Button>
+                    </DialogTrigger>
+                    {isMergeDialogOpen && <MergeUsersDialog userIds={selectedUserIds} onClose={() => setIsMergeDialogOpen(false)} onMergeComplete={fetchAllData} />}
+                </Dialog>
+            )}
+            {selectedUserIds.length > 0 && (
+                <AlertDialog>
+                    <AlertDialogTrigger asChild>
+                        <Button variant="destructive">
+                            <Trash2 className="mr-2 h-4 w-4" />
+                            Delete Selected ({selectedUserIds.length})
+                        </Button>
+                    </AlertDialogTrigger>
+                    <AlertDialogContent>
+                        <AlertDialogHeader>
+                            <AlertDialogTitle>Are you sure?</AlertDialogTitle>
+                            <AlertDialogDescription>
+                                This will permanently delete {selectedUserIds.length} user(s). This action cannot be undone.
+                            </AlertDialogDescription>
+                        </AlertDialogHeader>
+                        <AlertDialogFooter>
+                            <AlertDialogCancel>Cancel</AlertDialogCancel>
+                            <AlertDialogAction onClick={handleDeleteSelected}>Delete</AlertDialogAction>
+                        </AlertDialogFooter>
+                    </AlertDialogContent>
+                </AlertDialog>
+            )}
         </div>
         <div className="overflow-x-auto">
             <Table>
             <TableHeader>
                 <TableRow>
+                <TableHead className="w-12">
+                    <Checkbox
+                        checked={selectedUserIds.length === paginatedUsers.length && paginatedUsers.length > 0}
+                        onCheckedChange={handleToggleAllOnPage}
+                        aria-label="Select all rows on this page"
+                    />
+                </TableHead>
                 <TableHead>User</TableHead>
                 <TableHead>Campus</TableHead>
                 <TableHead>Role</TableHead>
@@ -697,6 +983,7 @@ export default function UserManagement() {
                 {loading ? (
                     Array.from({ length: 3 }).map((_, index) => (
                         <TableRow key={index}>
+                            <TableCell><Skeleton className="h-5 w-5" /></TableCell>
                             <TableCell>
                                 <div className="flex items-center gap-3">
                                     <Skeleton className="h-10 w-10 rounded-full" />
@@ -706,8 +993,8 @@ export default function UserManagement() {
                                     </div>
                                 </div>
                             </TableCell>
-                             <TableCell><Skeleton className="h-4 w-24" /></TableCell>
-                            <TableCell><Skeleton className="h-6 w-[120px]" /></TableCell>
+                             <TableCell><Skeleton className="h-8 w-24" /></TableCell>
+                            <TableCell><Skeleton className="h-8 w-[120px]" /></TableCell>
                             <TableCell><Skeleton className="h-8 w-[180px]" /></TableCell>
                             <TableCell className="text-right">
                             <Skeleton className="h-8 w-8 rounded-md" />
@@ -716,7 +1003,14 @@ export default function UserManagement() {
                     ))
                 ) : (
                     paginatedUsers.map((user) => (
-                    <TableRow key={user.id} onClick={() => handleRowClick(user)} className="cursor-pointer">
+                    <TableRow key={user.id} onClick={() => handleRowClick(user)} className="cursor-pointer" data-state={selectedUserIds.includes(user.id) ? "selected" : ""}>
+                         <TableCell onClick={(e) => e.stopPropagation()}>
+                            <Checkbox
+                                checked={selectedUserIds.includes(user.id)}
+                                onCheckedChange={() => handleToggleUserSelection(user.id)}
+                                aria-label={`Select user ${user.displayName}`}
+                            />
+                        </TableCell>
                         <TableCell>
                         <div className="flex items-center gap-3">
                             <Avatar>
@@ -732,17 +1026,40 @@ export default function UserManagement() {
                         </div>
                         </TableCell>
                          <TableCell>
-                            {user.campus || 'N/A'}
+                           {isCurrentUserAdmin ? (
+                               <Select value={user.campus} onValueChange={(value) => handleCampusChange(user.id, value)}>
+                                   <SelectTrigger className="w-[180px]">
+                                       <SelectValue placeholder="Select Campus" />
+                                   </SelectTrigger>
+                                   <SelectContent>
+                                       <SelectItem value="All Campuses">All Campuses</SelectItem>
+                                       {allCampuses.filter(c => c["Campus Name"] !== 'All Campuses').map(campus => (
+                                           <SelectItem key={campus.id} value={campus["Campus Name"]}>{campus["Campus Name"]}</SelectItem>
+                                       ))}
+                                   </SelectContent>
+                               </Select>
+                           ) : (
+                               <Badge variant="outline">{user.campus || 'N/A'}</Badge>
+                           )}
                         </TableCell>
                         <TableCell>
-                             <Badge variant={user.role === 'admin' || user.role === 'developer' ? 'default' : 'secondary'} className="capitalize">
-                                {user.role}
-                            </Badge>
+                            <Select value={user.role} onValueChange={(value) => handleRoleChange(user.id, value)}>
+                                <SelectTrigger className="w-[120px]">
+                                    <SelectValue placeholder="Select Role" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="admin">Admin</SelectItem>
+                                    <SelectItem value="moderator">Moderator</SelectItem>
+                                    <SelectItem value="team">Team</SelectItem>
+                                    <SelectItem value="user">User</SelectItem>
+                                    {isCurrentUserAdmin && <SelectItem value="developer">Developer</SelectItem>}
+                                </SelectContent>
+                            </Select>
                         </TableCell>
                         <TableCell>
                             <Select value={user.classLadderId} onValueChange={(value) => handleLadderChange(user.id, value)}>
                                 <SelectTrigger className="w-[180px]">
-                                    <SelectValue placeholder="Select Ladder" />
+                                    <SelectValue placeholder={getUserLadderName(user.classLadderId)} />
                                 </SelectTrigger>
                                 <SelectContent>
                                     {ladders.map(ladder => (
@@ -765,28 +1082,6 @@ export default function UserManagement() {
                                 <Edit className="h-4 w-4" />
                                 <span className="sr-only">Edit User</span>
                             </Button>
-                            <AlertDialog>
-                                <AlertDialogTrigger asChild>
-                                    <Button variant="destructive" size="icon" onClick={(e) => e.stopPropagation()}>
-                                        <Trash className="h-4 w-4" />
-                                        <span className="sr-only">Delete User</span>
-                                    </Button>
-                                </AlertDialogTrigger>
-                                <AlertDialogContent>
-                                    <AlertDialogHeader>
-                                        <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
-                                        <AlertDialogDescription>
-                                            This action will delete the user's data from the database. It cannot be undone.
-                                        </AlertDialogDescription>
-                                    </AlertDialogHeader>
-                                    <AlertDialogFooter>
-                                        <AlertDialogCancel>Cancel</AlertDialogCancel>
-                                        <AlertDialogAction onClick={() => handleDeleteUser(user.id, user.displayName || 'user')}>
-                                            Delete
-                                        </AlertDialogAction>
-                                    </AlertDialogFooter>
-                                </AlertDialogContent>
-                            </AlertDialog>
                            </div>
                         </TableCell>
                     </TableRow>
@@ -961,9 +1256,12 @@ export default function UserManagement() {
                         Send Reset Link
                       </Button>
                       <Button variant="secondary" onClick={() => setViewingUser(null)}>Close</Button>
-                       <Button onClick={() => setEditingUser(viewingUser)}>
+                       <Button onClick={() => { setEditingUser(viewingUser); setViewingUser(null); }}>
                            <Edit className="mr-2 h-4 w-4" />
                            Edit
+                       </Button>
+                       <Button asChild>
+                           <Link href={`/admin/users/${viewingUser?.id}`}>Go to User Profile</Link>
                        </Button>
                   </div>
               </DialogFooter>
@@ -987,3 +1285,4 @@ export default function UserManagement() {
   );
 }
 
+    

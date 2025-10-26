@@ -88,7 +88,6 @@ export default function VideosPage() {
       return;
     }
     
-    // Check for duplicates
     const q = query(collection(db, 'Contents'), where('url', '==', youTubeUrl));
     const existing = await getDocs(q);
     if (!existing.empty) {
@@ -105,9 +104,17 @@ export default function VideosPage() {
     try {
       const response = await fetch(`https://www.youtube.com/oembed?url=${encodeURIComponent(youTubeUrl)}&format=json`);
       if (!response.ok) {
-        throw new Error('Could not fetch video details. Check the URL.');
+        throw new Error('Could not fetch video details. Please check the URL and ensure the video is public.');
       }
-      const videoData = await response.json();
+      
+      const responseText = await response.text();
+      let videoData;
+      try {
+        videoData = JSON.parse(responseText);
+      } catch (e) {
+        throw new Error("Received an invalid response from YouTube. The video may be private or unavailable.");
+      }
+
       const videoTitle = videoData.title || 'YouTube Video';
   
       const docRef = await addDoc(collection(db, 'Contents'), {

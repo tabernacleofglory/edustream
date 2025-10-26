@@ -1,5 +1,4 @@
 
-
 import * as functions from "firebase-functions";
 import * as admin from "firebase-admin";
 import * as sgMail from "@sendgrid/mail";
@@ -8,87 +7,117 @@ import { onVideoDeleted, onVideoUpdate, transcodeVideo, updateVideoOnTranscodeCo
 admin.initializeApp();
 const db = admin.firestore();
 
-export const deleteUserAccount = functions.https.onCall(async (data, context) => {
-    if (!context.auth || !['admin', 'developer'].includes(context.auth.token.role || '')) {
-        throw new functions.https.HttpsError('permission-denied', 'You must be an admin to perform this action.');
+// ---- helpers ----------------------------------------------------
+
+const REGION = "us-central1"; // change if you deploy elsewhere
+
+async function assertAdminOrDeveloper(requesterUid: string) {
+  const snap = await db.doc(`users/${requesterUid}`).get();
+  if (!snap.exists) {
+    throw new functions.https.HttpsError("permission-denied", "Requester profile not found.");
+  }
+  const role = snap.get("role");
+  const ok = role === "admin" || role === "developer";
+  if (!ok) {
+    throw new functions.https.HttpsError("permission-denied", "Only admins or developers can perform this action.");
+  }
+}
+
+// ---- user management functions ----------------------------------
+
+export const deleteUserAccount = functions
+  .region(REGION)
+  .https.onCall(async (data, context) => {
+    const requesterUid = context.auth?.uid;
+    if (!requesterUid) {
+      throw new functions.https.HttpsError("unauthenticated", "You must be signed in to perform this action.");
     }
 
-    const uid = data.uid;
-    if (!uid) {
-        throw new functions.https.HttpsError('invalid-argument', 'The function must be called with a "uid" argument.');
+    await assertAdminOrDeveloper(requesterUid);
+
+    const uidToDelete = String(data?.uid || "");
+    if (!uidToDelete) {
+      throw new functions.https.HttpsError("invalid-argument", 'The function must be called with a "uid" argument.');
+    }
+
+    if (uidToDelete === requesterUid) {
+      throw new functions.https.HttpsError("failed-precondition", "You cannot delete your own account.");
     }
 
     try {
-        // Delete user from Authentication
-        await admin.auth().deleteUser(uid);
-        
-        // Delete user document from Firestore
-        await db.collection('users').doc(uid).delete();
-        
-        return { success: true, message: `Successfully deleted user ${uid}` };
-    } catch (error) {
-        console.error('Error deleting user:', error);
-        throw new functions.https.HttpsError('internal', 'An error occurred while deleting the user.');
+      await admin.auth().deleteUser(uidToDelete);
+      functions.logger.log(`Successfully deleted user ${uidToDelete} from Firebase Authentication.`);
+      
+      await db.doc(`users/${uidToDelete}`).delete();
+      functions.logger.log(`Successfully deleted user document for ${uidToDelete} from Firestore.`);
+      
+      return { success: true, message: `Successfully deleted user ${uidToDelete}.` };
+
+    } catch (err: any) {
+      functions.logger.error(`Error during deletion of user ${uidToDelete}:`, err);
+      if (err instanceof functions.https.HttpsError) throw err;
+      throw new functions.https.HttpsError("internal", err.message || "An unknown error occurred during deletion.");
     }
-});
+  });
 
+// ---- enroll in course -------------------------------------------
 
-export const enrollInCourse = functions.runWith({ memory: '512MB' }).https.onCall(async (data, context) => {
+export const enrollInCourse = functions
+  .runWith({ memory: "512MB" })
+  .region(REGION)
+  .https.onCall(async (data, context) => {
     if (!context.auth) {
-        throw new functions.https.HttpsError('unauthenticated', 'You must be logged in to enroll.');
+      throw new functions.https.HttpsError("unauthenticated", "You must be logged in to enroll.");
     }
 
     const userId = context.auth.uid;
     const courseId = data.courseId;
 
     if (!courseId) {
-        throw new functions.https.HttpsError('invalid-argument', 'Course ID is required.');
+      throw new functions.https.HttpsError("invalid-argument", "Course ID is required.");
     }
 
     try {
-        const enrollmentRef = db.collection('enrollments').doc(`${userId}_${courseId}`);
-        const courseRef = db.collection('courses').doc(courseId);
+      const enrollmentRef = db.collection("enrollments").doc(`${userId}_${courseId}`);
+      const courseRef = db.collection("courses").doc(courseId);
 
-        // Use a transaction to ensure atomicity
-        await db.runTransaction(async (transaction) => {
-            const enrollmentDoc = await transaction.get(enrollmentRef);
-            if (enrollmentDoc.exists) {
-                // User is already enrolled, do nothing.
-                return;
-            }
-
-            // Create enrollment document
-            transaction.set(enrollmentRef, {
-                userId: userId,
-                courseId: courseId,
-                enrolledAt: admin.firestore.FieldValue.serverTimestamp(),
-            });
-
-            // Increment enrollment count on the course
-            transaction.update(courseRef, { enrollmentCount: admin.firestore.FieldValue.increment(1) });
+      await db.runTransaction(async (transaction) => {
+        const enrollmentDoc = await transaction.get(enrollmentRef);
+        if (enrollmentDoc.exists) return;
+        transaction.set(enrollmentRef, {
+          userId,
+          courseId,
+          enrolledAt: admin.firestore.FieldValue.serverTimestamp(),
         });
-        
-        return { success: true, message: 'Successfully enrolled in the course.' };
+        transaction.update(courseRef, { enrollmentCount: admin.firestore.FieldValue.increment(1) });
+      });
 
+      return { success: true, message: "Successfully enrolled in the course." };
     } catch (error) {
-        console.error("Error enrolling in course:", error);
-        throw new functions.https.HttpsError('internal', 'An error occurred while enrolling in the course.');
+      functions.logger.error("Error enrolling in course:", error);
+      throw new functions.https.HttpsError("internal", "An error occurred while enrolling in the course.");
     }
-});
+  });
 
+// ---- email functions --------------------------------------------
 
-export const sendCertificateEmail = functions.https.onCall(async (data, context) => {
+export const sendCertificateEmail = functions
+  .region(REGION)
+  .https.onCall(async (data, context) => {
     const sendgridApiKey = functions.config().sendgrid?.key;
     if (!sendgridApiKey) {
-        throw new functions.https.HttpsError('failed-precondition', 'SendGrid API key is not set in the environment configuration.');
+      throw new functions.https.HttpsError(
+        "failed-precondition",
+        "SendGrid API key is not set in the environment configuration."
+      );
     }
     sgMail.setApiKey(sendgridApiKey);
 
     const msg = {
-        to: data.email,
-        from: 'glorytraining@tabernacleofglory.net', // Ensure this is a verified SendGrid sender
-        subject: `Your Certificate for ${data.courseName}`,
-        html: `
+      to: data.email,
+      from: "glorytraining@tabernacleofglory.net",
+      subject: `Your Certificate for ${data.courseName}`,
+      html: `
             <h1>Congratulations, ${data.userName}!</h1>
             <p>You have successfully completed the course: <strong>${data.courseName}</strong>.</p>
             <p>You can view and download your certificate of completion here:</p>
@@ -99,26 +128,31 @@ export const sendCertificateEmail = functions.https.onCall(async (data, context)
     };
 
     try {
-        await sgMail.send(msg);
-        return { success: true };
+      await sgMail.send(msg);
+      return { success: true };
     } catch (error) {
-        console.error("Error sending email:", error);
-        throw new functions.https.HttpsError('internal', 'An error occurred while trying to send the email.');
+      functions.logger.error("Error sending certificate email:", error);
+      throw new functions.https.HttpsError("internal", "An error occurred while trying to send the email.");
     }
-});
+  });
 
-export const sendHpFollowUp = functions.https.onCall(async (data, context) => {
+export const sendHpFollowUp = functions
+  .region(REGION)
+  .https.onCall(async (data, context) => {
     const sendgridApiKey = functions.config().sendgrid?.key;
     if (!sendgridApiKey) {
-        throw new functions.https.HttpsError('failed-precondition', 'SendGrid API key is not set in the environment configuration.');
+      throw new functions.https.HttpsError(
+        "failed-precondition",
+        "SendGrid API key is not set in the environment configuration."
+      );
     }
     sgMail.setApiKey(sendgridApiKey);
 
     const msg = {
-        to: data.email,
-        from: 'glorytraining@tabernacleofglory.net', // Ensure this is a verified SendGrid sender
-        subject: 'HP Placement Request Received',
-        html: `
+      to: data.email,
+      from: "glorytraining@tabernacleofglory.net", // verified sender
+      subject: "HP Placement Request Received",
+      html: `
             <h1>Hello, ${data.name}!</h1>
             <p>We are happy to inform you that we have received your request and are beginning the follow-up process to place you in an HP (Prayer Group).</p>
             <p>We will be in touch with further updates soon.</p>
@@ -129,163 +163,192 @@ export const sendHpFollowUp = functions.https.onCall(async (data, context) => {
     };
 
     try {
-        await sgMail.send(msg);
-        return { success: true, message: 'Follow-up email sent successfully.' };
+      await sgMail.send(msg);
+      return { success: true, message: "Follow-up email sent successfully." };
     } catch (error) {
-        console.error("Error sending HP follow-up email:", error);
-        throw new functions.https.HttpsError('internal', 'An error occurred while trying to send the email.');
+      functions.logger.error("Error sending HP follow-up email:", error);
+      throw new functions.https.HttpsError("internal", "An error occurred while trying to send the email.");
     }
-});
+  });
 
-export const setCourseCompletions = functions.runWith({ memory: '512MB' }).https.onCall(async (data, context) => {
-    if (!context.auth || !['admin', 'developer'].includes(context.auth.token.role || '')) {
-        throw new functions.https.HttpsError('permission-denied', 'You must be an admin to perform this action.');
+// ---- completions ------------------------------------------------
+
+export const setCourseCompletions = functions
+  .runWith({ memory: "512MB" })
+  .region(REGION)
+  .https.onCall(async (data, context) => {
+    if (!context.auth) {
+      throw new functions.https.HttpsError("unauthenticated", "You must be signed in.");
     }
+    await assertAdminOrDeveloper(context.auth.uid);
 
     const { userId, completions } = data;
     if (!userId || !Array.isArray(completions)) {
-        throw new functions.https.HttpsError('invalid-argument', 'Invalid data provided. "userId" and "completions" array are required.');
+      throw new functions.https.HttpsError(
+        "invalid-argument",
+        'Invalid data provided. "userId" and "completions" array are required.'
+      );
     }
-    
+
     const adminUser = await admin.auth().getUser(context.auth.uid);
-    
+
     try {
-        const batch = db.batch();
-        const coursesRef = db.collection('courses');
-        const userRef = db.collection('users').doc(userId);
-        
-        const [allCoursesSnap, userDoc] = await Promise.all([
-            coursesRef.get(),
-            userRef.get()
-        ]);
-        
-        const coursesMap = new Map(allCoursesSnap.docs.map(doc => [doc.id, doc.data()]));
-        const userData = userDoc.data();
+      const batch = db.batch();
+      const coursesRef = db.collection("courses");
+      const userRef = db.collection("users").doc(userId);
 
-        const newCompletions = completions.filter((c: any) => c.isCompleted);
+      const [allCoursesSnap, userDoc] = await Promise.all([coursesRef.get(), userRef.get()]);
 
-        for (const completion of newCompletions) {
-            const courseData = coursesMap.get(completion.courseId);
-            if (!courseData || !courseData.videos) {
-                console.warn(`Course data or videos not found for courseId: ${completion.courseId}. Skipping.`);
-                continue;
-            }
+      const coursesMap = new Map(allCoursesSnap.docs.map((doc) => [doc.id, doc.data()]));
+      const userData = userDoc.data();
 
-            const enrollmentRef = db.collection('enrollments').doc(`${userId}_${completion.courseId}`);
-            const enrollmentDoc = await enrollmentRef.get(); // Check if enrollment exists
+      const newCompletions = completions.filter((c: any) => c.isCompleted);
 
-            // Mark enrollment and completion
-            batch.set(enrollmentRef, {
-                userId,
-                courseId: completion.courseId,
-                enrolledAt: enrollmentDoc.exists ? enrollmentDoc.data()?.enrolledAt : admin.firestore.FieldValue.serverTimestamp(),
-                completedAt: admin.firestore.FieldValue.serverTimestamp(),
-            }, { merge: true });
-
-            // Mark all videos as complete
-            const progressRef = db.collection('userVideoProgress').doc(`${userId}_${completion.courseId}`);
-            const videoProgress = courseData.videos.map((videoId: string) => ({
-                videoId,
-                completed: true,
-                timeSpent: 1, // Mark as watched
-            }));
-            batch.set(progressRef, {
-                userId,
-                courseId: completion.courseId,
-                videoProgress,
-                totalProgress: 100,
-                updatedAt: admin.firestore.FieldValue.serverTimestamp()
-            }, { merge: true });
-
-            // If marked as onsite, create a log entry
-            if (completion.isOnsite) {
-                const onsiteRef = db.collection('onsiteCompletions').doc();
-                batch.set(onsiteRef, {
-                    userId,
-                    userName: userData?.displayName,
-                    userCampus: userData?.campus,
-                    courseId: completion.courseId,
-                    courseName: courseData.title,
-                    completedAt: admin.firestore.FieldValue.serverTimestamp(),
-                    markedBy: adminUser.displayName || adminUser.email,
-                });
-            }
-
-            // Grant badge if enabled
-            if (courseData.badgeEnabled) {
-                const badgeRef = db.collection('userBadges').doc(`${userId}_${completion.courseId}`);
-                batch.set(badgeRef, {
-                    userId,
-                    courseId: completion.courseId,
-                    badgeTitle: courseData.title,
-                    badgeIconUrl: courseData['Image ID'], // Using course thumbnail as badge icon
-                    earnedAt: admin.firestore.FieldValue.serverTimestamp(),
-                }, { merge: true });
-            }
-            
-            // Only increment enrollment count if it's a new enrollment
-            if (!enrollmentDoc.exists) {
-                const courseRef = coursesRef.doc(completion.courseId);
-                batch.update(courseRef, { enrollmentCount: admin.firestore.FieldValue.increment(1) });
-            }
+      for (const completion of newCompletions) {
+        const courseData: any = coursesMap.get(completion.courseId);
+        if (!courseData || !courseData.videos) {
+          functions.logger.warn(
+            `Course data or videos not found for courseId: ${completion.courseId}. Skipping.`
+          );
+          continue;
         }
-        
-        await batch.commit();
-        return { success: true, message: "User's course completions have been updated." };
 
+        const enrollmentRef = db.collection("enrollments").doc(`${userId}_${completion.courseId}`);
+        const enrollmentDoc = await enrollmentRef.get();
+
+        // Mark enrollment and completion
+        batch.set(
+          enrollmentRef,
+          {
+            userId,
+            courseId: completion.courseId,
+            enrolledAt: enrollmentDoc.exists
+              ? enrollmentDoc.data()?.enrolledAt
+              : admin.firestore.FieldValue.serverTimestamp(),
+            completedAt: admin.firestore.FieldValue.serverTimestamp(),
+          },
+          { merge: true }
+        );
+
+        // Mark all videos as complete
+        const progressRef = db.collection("userVideoProgress").doc(`${userId}_${completion.courseId}`);
+        const videoProgress = (courseData.videos as string[]).map((videoId: string) => ({
+          videoId,
+          completed: true,
+          timeSpent: 1,
+        }));
+        batch.set(
+          progressRef,
+          {
+            userId,
+            courseId: completion.courseId,
+            videoProgress,
+            totalProgress: 100,
+            updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+          },
+          { merge: true }
+        );
+
+        // If marked as onsite, create a log entry
+        if (completion.isOnsite) {
+          const onsiteRef = db.collection("onsiteCompletions").doc();
+          batch.set(onsiteRef, {
+            userId,
+            userName: userData?.displayName,
+            userCampus: userData?.campus,
+            courseId: completion.courseId,
+            courseName: courseData.title,
+            completedAt: admin.firestore.FieldValue.serverTimestamp(),
+            markedBy: adminUser.displayName || adminUser.email,
+          });
+        }
+
+        // Grant badge if enabled
+        if (courseData.badgeEnabled) {
+          const badgeRef = db.collection("userBadges").doc(`${userId}_${completion.courseId}`);
+          batch.set(
+            badgeRef,
+            {
+              userId,
+              courseId: completion.courseId,
+              badgeTitle: courseData.title,
+              badgeIconUrl: courseData["Image ID"],
+              earnedAt: admin.firestore.FieldValue.serverTimestamp(),
+            },
+            { merge: true }
+          );
+        }
+
+        // Only increment enrollment count if it's a new enrollment
+        if (!enrollmentDoc.exists) {
+          const courseRef = coursesRef.doc(completion.courseId);
+          batch.update(courseRef, { enrollmentCount: admin.firestore.FieldValue.increment(1) });
+        }
+      }
+
+      await batch.commit();
+      return { success: true, message: "User's course completions have been updated." };
     } catch (error) {
-        console.error("Error setting course completions: ", error);
-        throw new functions.https.HttpsError('internal', 'An internal error occurred while updating completions.');
+      functions.logger.error("Error setting course completions:", error);
+      throw new functions.https.HttpsError(
+        "internal",
+        "An internal error occurred while updating completions."
+      );
     }
-});
+  });
 
+// ---- video sync/transcoding exports -----------------------------
 
-export const syncVideos = functions.https.onCall(async (data, context) => {
+export const syncVideos = functions
+  .region(REGION)
+  .https.onCall(async (data, context) => {
     const bucket = admin.storage().bucket();
-    const videoFolderPath = 'contents/videos/';
+    const videoFolderPath = "contents/videos/";
     const [files] = await bucket.getFiles({ prefix: videoFolderPath });
-    
-    const contentsCollection = db.collection('Contents');
-    const existingVideosSnapshot = await contentsCollection.where('Type', '==', 'video').get();
-    const existingVideoPaths = new Set(existingVideosSnapshot.docs.map(doc => doc.data().path));
 
-    const batch = db.batch();
+    const contentsCollection = db.collection("Contents");
+    const existingVideosSnapshot = await contentsCollection.where("Type", "==", "video").get();
+    const existingVideoPaths = new Set(existingVideosSnapshot.docs.map((doc) => doc.data().path));
+
+    let batch = db.batch();
     let count = 0;
 
     for (const file of files) {
-        if (file.name.endsWith('/') || existingVideoPaths.has(file.name)) {
-            continue; // Skip folders and existing videos
-        }
+      if (file.name.endsWith("/") || existingVideoPaths.has(file.name)) {
+        continue; // Skip folders and existing videos
+      }
 
-        const fileName = file.name.split('/').pop() || '';
-        const newContentRef = db.collection('Contents').doc();
-        
-        const [url] = await file.getSignedUrl({ action: 'read', expires: '03-09-2491' });
+      const fileName = file.name.split("/").pop() || "";
+      const newContentRef = db.collection("Contents").doc();
 
-        batch.set(newContentRef, {
-            title: fileName.substring(0, fileName.lastIndexOf('.')),
-            path: file.name,
-            url: url,
-            'File name': fileName,
-            Type: 'video',
-            status: 'published',
-            createdAt: admin.firestore.FieldValue.serverTimestamp(),
-        });
+      const [url] = await file.getSignedUrl({ action: "read", expires: "03-09-2491" });
 
-        count++;
-        if (count > 0 && count % 499 === 0) { // commit every 499 operations
-            await batch.commit();
-        }
+      batch.set(newContentRef, {
+        title: fileName.substring(0, fileName.lastIndexOf(".")),
+        path: file.name,
+        url: url,
+        "File name": fileName,
+        Type: "video",
+        status: "published",
+        createdAt: admin.firestore.FieldValue.serverTimestamp(),
+      });
+
+      count++;
+
+      // Commit every 450 to stay well under the 500 limit
+      if (count % 450 === 0) {
+        await batch.commit();
+        batch = db.batch();
+      }
     }
 
-    if (count > 0 && count % 499 !== 0) {
-        await batch.commit();
+    if (count % 450 !== 0) {
+      await batch.commit();
     }
 
     const message = `Successfully created Firestore documents for ${count} new videos.`;
     functions.logger.log(message);
-    return { status: 'success', message: message };
-});
-    
-export { onVideoDeleted, onVideoUpdate, transcodeVideo, updateVideoOnTranscodeComplete };
+    return { status: "success", message };
+  });
 
+export { onVideoDeleted, onVideoUpdate, transcodeVideo, updateVideoOnTranscodeComplete };

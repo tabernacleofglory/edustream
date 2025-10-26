@@ -193,6 +193,10 @@ export default function CampusManagement() {
   };
 
   const handleDeleteCampus = async (campusId: string, campusName: string) => {
+    if (campusName === 'All Campuses') {
+        toast({ variant: 'destructive', title: 'Action Not Allowed', description: '"All Campuses" cannot be deleted.' });
+        return;
+    }
     try {
         await deleteDoc(doc(db, "Campus", campusId));
         setCampuses(campuses.filter((campus) => campus.id !== campusId));
@@ -288,7 +292,7 @@ export default function CampusManagement() {
                         </Button>
                         <AlertDialog>
                             <AlertDialogTrigger asChild>
-                                <Button variant="ghost" size="icon">
+                                <Button variant="ghost" size="icon" disabled={campus["Campus Name"] === 'All Campuses'}>
                                     <Trash className="h-4 w-4 text-destructive" />
                                 </Button>
                             </AlertDialogTrigger>

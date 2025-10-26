@@ -22,7 +22,6 @@ interface CoursePreviewProps {
   isEnrolled: boolean;
   isCompleted: boolean;
   onEnroll: () => void;
-  isLocked?: boolean; // trusted from parent/hook
 }
 
 export default function CoursePreview({
@@ -30,13 +29,14 @@ export default function CoursePreview({
   isEnrolled,
   isCompleted,
   onEnroll,
-  isLocked,
 }: CoursePreviewProps) {
   const [videos, setVideos] = useState<VideoType[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const router = useRouter();
   const { user } = useAuth();
   const db = getFirebaseFirestore();
+
+  const isLocked = course.isLocked && !isEnrolled;
 
   useEffect(() => {
     const fetchVideos = async () => {
@@ -97,23 +97,10 @@ export default function CoursePreview({
 
   const PrimaryButton = () => {
     if (isCompleted) {
-      return (
-        <Dialog>
-          <DialogTrigger asChild>
-            <Button className="w-full" size="lg">
-              View Certificate
-            </Button>
-          </DialogTrigger>
-          <DialogContent className="max-w-4xl">
-            <DialogHeader>
-              <DialogTitle>Certificate of Completion</DialogTitle>
-              <DialogDescription id="cert-desc">
-                Your certificate for completing {course.title}.
-              </DialogDescription>
-            </DialogHeader>
-            <CertificatePrint userName={user?.displayName || "Valued Student"} course={course} />
-          </DialogContent>
-        </Dialog>
+       return (
+        <Button onClick={handlePrimaryAction} className="w-full" size="lg" disabled={!firstVideoId}>
+            Review Course
+        </Button>
       );
     }
 
