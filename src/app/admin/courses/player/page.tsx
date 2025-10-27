@@ -34,7 +34,7 @@ function UnrestrictedPlayerPage() {
 
   useEffect(() => {
     if (authLoading) return;
-    if (!hasPermission('viewCourseManagement')) {
+    if (!hasPermission('viewTeachingPage')) {
       router.replace("/admin/analytics");
       return;
     }

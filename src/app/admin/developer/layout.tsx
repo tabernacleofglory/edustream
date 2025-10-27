@@ -3,7 +3,7 @@
 
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { ArrowRight, Settings, Shield, Link as LinkIcon, Award, Sparkles, Lock } from "lucide-react";
+import { ArrowRight, Settings, Shield, Link as LinkIcon, Award, Sparkles, Lock, Globe } from "lucide-react";
 import Link from "next/link";
 import { useAuth } from "@/hooks/use-auth";
 import { ReactNode, useEffect } from "react";
@@ -45,6 +45,13 @@ const tools = [
     href: "/admin/developer/ai-tools",
     icon: Sparkles,
     permission: 'developer'
+  },
+  {
+    title: "Localization",
+    description: "Manage text translations for different languages.",
+    href: "/admin/developer/localization",
+    icon: Globe,
+    permission: 'manageLocalization'
   },
 ];
 

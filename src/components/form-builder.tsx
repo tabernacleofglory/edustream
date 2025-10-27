@@ -1,4 +1,5 @@
 
+
 "use client";
 
 import { useState, useEffect } from 'react';
@@ -27,7 +28,7 @@ const fieldConfigSchema = z.object({
 
 const formBuilderSchema = z.object({
   title: z.string().min(1, 'Form title is required.'),
-  type: z.enum(['userProfile', 'blank']),
+  type: z.enum(['userProfile', 'custom']),
   fields: z.array(fieldConfigSchema),
   public: z.boolean().default(false),
   submissionCount: z.number().default(0),
@@ -53,7 +54,7 @@ const USER_PROFILE_FIELDS: Omit<z.infer<typeof fieldConfigSchema>, 'visible' | '
     { fieldId: 'hpAvailabilityTime', label: 'HP Availability Time' },
 ];
 
-const getInitialFields = (formType: 'userProfile' | 'blank') => {
+const getInitialFields = (formType: 'userProfile' | 'custom') => {
     if (formType === 'userProfile') {
         return USER_PROFILE_FIELDS.map(field => {
             const isRequired = ['firstName', 'lastName', 'email', 'password'].includes(field.fieldId);
@@ -64,7 +65,7 @@ const getInitialFields = (formType: 'userProfile' | 'blank') => {
 }
 
 interface FormBuilderProps {
-    formType: 'userProfile' | 'blank' | null;
+    formType: 'userProfile' | 'custom' | null;
     formId?: string | null;
 }
 
@@ -88,7 +89,7 @@ export default function FormBuilder({ formType, formId }: FormBuilderProps) {
             setLoadingForm(false);
             return {
                 title: formType === 'userProfile' ? 'New User Registration' : 'New Form',
-                type: formType || 'blank',
+                type: formType || 'custom',
                 fields: formType ? getInitialFields(formType) : [],
                 public: false,
                 submissionCount: 0,
@@ -134,10 +135,8 @@ export default function FormBuilder({ formType, formId }: FormBuilderProps) {
         return <Skeleton className="h-96 w-full" />
     }
     
-    // Do not render the form builder if the type is blank, for now.
-    // This will be implemented in a future step.
-    if (form.getValues('type') === 'blank' && !formId) {
-         router.replace('/admin/forms/builder/blank-form');
+    if (form.getValues('type') === 'custom' && !formId) {
+         router.replace('/admin/forms/builder/blank-form?type=custom');
          return null;
     }
 

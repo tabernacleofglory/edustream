@@ -1,4 +1,5 @@
 
+
 "use client";
 
 import { useSearchParams } from "next/navigation";
@@ -14,14 +15,14 @@ import { db } from "@/lib/firebase";
 function FormBuilderPageContent() {
     const searchParams = useSearchParams();
     const router = useRouter();
-    const formType = searchParams.get('type') as 'userProfile' | 'blank' | 'hybrid' | null;
+    const formType = searchParams.get('type') as 'userProfile' | 'custom' | null;
     const formId = searchParams.get('formId');
     
     useEffect(() => {
         if (!formId) return;
         const docRef = doc(db, 'forms', formId);
         getDoc(docRef).then(docSnap => {
-            if (docSnap.exists() && (docSnap.data().type === 'blank' || docSnap.data().type === 'hybrid')) {
+            if (docSnap.exists() && (docSnap.data().type === 'custom' || docSnap.data().type === 'hybrid')) {
                 router.replace(`/admin/forms/builder/blank-form?formId=${formId}`);
             }
         })
@@ -42,7 +43,7 @@ function FormBuilderPageContent() {
         <div className="space-y-8">
              <div>
                 <h1 className="font-headline text-3xl font-bold md:text-4xl capitalize">
-                  {formId ? 'Edit Form' : `${formType === 'userProfile' ? 'User Profile' : 'Blank'} Form Builder`}
+                  {formId ? 'Edit Form' : `${formType === 'userProfile' ? 'User Profile' : 'Custom'} Form Builder`}
                 </h1>
                 <p className="text-muted-foreground">
                     Configure the fields and settings for your form.

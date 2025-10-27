@@ -72,8 +72,8 @@ const ResponsesDialog = ({ form, onOpenChange }: { form: CustomForm, onOpenChang
         setLoading(true);
         setSubmissions([]); // Clear previous submissions
 
-        // "Blank" and "Hybrid" forms store data in a subcollection
-        if (form.type === 'blank' || form.type === 'hybrid') {
+        // "custom" and "hybrid" forms store data in a subcollection
+        if (form.type === 'custom' || form.type === 'hybrid') {
             const nestedCollectionPath = collection(db, "forms", form.id, "submissions");
             unsubNested = onSnapshot(
                 query(nestedCollectionPath, orderBy("submittedAt", "desc")),
@@ -252,10 +252,8 @@ export default function FormsPage() {
     let formUrl = '';
     if (formType === 'userProfile') {
         formUrl = `${window.location.origin}/external/${formId}`;
-    } else if (formType === 'blank') {
+    } else if (formType === 'custom' || formType === 'hybrid') { // Use 'custom' now
         formUrl = `${window.location.origin}/external/form/${formId}`;
-    } else if (formType === 'hybrid') {
-        formUrl = `${window.location.origin}/external/hybrid/${formId}`;
     }
 
     if(formUrl) {
@@ -292,8 +290,8 @@ export default function FormsPage() {
   };
 
   const getFormBuilderUrl = (form: CustomForm) => {
-    if (form.type === 'blank' || form.type === 'hybrid') {
-        return `/admin/forms/builder/blank-form?formId=${form.id}&type=${form.type}`;
+    if (form.type === 'custom' || form.type === 'hybrid') {
+        return `/admin/forms/builder/blank-form?formId=${form.id}&type=custom`;
     }
     return `/admin/forms/builder?formId=${form.id}&type=${form.type}`;
   };
@@ -302,10 +300,9 @@ export default function FormsPage() {
       switch(form.type) {
           case 'userProfile':
               return `/external/${form.id}`;
-          case 'blank':
-              return `/external/form/${form.id}`;
+          case 'custom':
           case 'hybrid':
-              return `/external/hybrid/${form.id}`;
+              return `/external/form/${form.id}`;
           default:
               return '#';
       }
@@ -350,7 +347,7 @@ export default function FormsPage() {
                       Choose a template to get started or create a form from scratch.
                     </DialogDescription>
                   </DialogHeader>
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4 py-4">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 py-4">
                     <Link href="/admin/forms/builder?type=userProfile" onClick={() => setIsCreateDialogOpen(false)}>
                        <Card className="cursor-pointer hover:border-primary h-full">
                           <CardHeader>
@@ -360,21 +357,12 @@ export default function FormsPage() {
                           </CardHeader>
                       </Card>
                     </Link>
-                    <Link href="/admin/forms/builder/blank-form" onClick={() => setIsCreateDialogOpen(false)}>
+                    <Link href="/admin/forms/builder/blank-form?type=custom" onClick={() => setIsCreateDialogOpen(false)}>
                       <Card className="cursor-pointer hover:border-primary h-full">
                           <CardHeader>
                               <FileQuestion className="h-8 w-8 text-primary mb-2" />
-                              <CardTitle>Blank Form</CardTitle>
-                              <CardDescription>A simple form that only stores submission data.</CardDescription>
-                          </CardHeader>
-                      </Card>
-                    </Link>
-                     <Link href="/admin/forms/builder/blank-form?type=hybrid" onClick={() => setIsCreateDialogOpen(false)}>
-                      <Card className="cursor-pointer hover:border-primary h-full">
-                          <CardHeader>
-                              <Combine className="h-8 w-8 text-primary mb-2" />
-                              <CardTitle>Hybrid Form</CardTitle>
-                              <CardDescription>Creates a user account and stores submission data.</CardDescription>
+                              <CardTitle>Custom Form</CardTitle>
+                              <CardDescription>A flexible form to collect any type of data.</CardDescription>
                           </CardHeader>
                       </Card>
                     </Link>
@@ -395,7 +383,9 @@ export default function FormsPage() {
                       <div key={form.id} className="flex items-center justify-between p-4 border-b last:border-b-0">
                           <div>
                               <p className="font-semibold">{form.title}</p>
-                              <p className="text-sm text-muted-foreground capitalize">{form.type === 'userProfile' ? 'User Profile' : form.type} Form</p>
+                              <p className="text-sm text-muted-foreground capitalize">
+                                {form.type === 'userProfile' ? 'User Profile' : 'Custom'} Form
+                              </p>
                           </div>
                           <div className="flex items-center gap-4">
                               <div className="flex items-center space-x-2">

@@ -32,7 +32,7 @@ export default function AdminTeachingPage() {
   const [searchTerm, setSearchTerm] = useState("");
   const db = getFirebaseFirestore();
 
-  const canViewPage = hasPermission('viewCourseManagement');
+  const canViewPage = hasPermission('viewTeachingPage');
 
   useEffect(() => {
     const fetchCatalogData = async () => {

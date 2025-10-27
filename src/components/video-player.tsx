@@ -852,7 +852,7 @@ export default function VideoPlayerClient({
                         onSeek={handlePlayerSeek}
                         config={{ youtube: { playerVars: { showinfo: 0, modestbranding: 1, rel: 0, controls: 0, disablekb: 1 } } }}
                     />
-                    <div className="absolute inset-0" onClick={togglePlayPause} />
+                    <div className="absolute inset-0 z-10" onClick={togglePlayPause} />
                     {showGradientOverlay && (
                       <>
                         <div className="absolute top-0 left-0 right-0 h-1/5 bg-gradient-to-b from-black/95 via-black/80 to-transparent pointer-events-none transition-opacity duration-300" />
@@ -982,51 +982,51 @@ export default function VideoPlayerClient({
           </div>
         </div>
 
-        <div className="flex flex-col flex-1 lg:h-screen">
+        <div className="flex flex-col flex-1">
           <ScrollArea className="flex-1 p-4 md:p-6 lg:p-8 lg:pb-0">
-            <div className={cn(isMobile && "pb-20")}>
-              <h1 className="text-2xl md:text-3xl font-bold font-headline">{currentVideo.title}</h1>
-              {isCompleted && (
-                 <div className="mt-4 p-4 bg-green-100 dark:bg-green-900/50 border border-green-200 dark:border-green-800 rounded-lg flex flex-col sm:flex-row items-center justify-between gap-4">
-                  <div className="flex items-center gap-3">
-                    <CheckCircle2 className="h-8 w-8 text-green-600 dark:text-green-400" />
+             <div className={cn(isMobile && "pb-20")}>
+                <h1 className="text-2xl md:text-3xl font-bold font-headline">{currentVideo.title}</h1>
+                {isCompleted && (
+                   <div className="mt-4 p-4 bg-green-100 dark:bg-green-900/50 border border-green-200 dark:border-green-800 rounded-lg flex flex-col sm:flex-row items-center justify-between gap-4">
+                    <div className="flex items-center gap-3">
+                      <CheckCircle2 className="h-8 w-8 text-green-600 dark:text-green-400" />
+                      <div>
+                        <h3 className="font-bold text-green-800 dark:text-green-300">Congratulations! You've completed the course.</h3>
+                        <p className="text-sm text-green-700 dark:text-green-400">You can now view and download your certificate.</p>
+                      </div>
+                    </div>
+                    <Button asChild className="bg-green-600 hover:bg-green-700 text-white flex-shrink-0">
+                      <Link href={`/certificate/${course.id}`}><Award className="mr-2 h-4 w-4" />View Certificate</Link>
+                    </Button>
+                  </div>
+                )}
+                <div className="flex flex-wrap items-center justify-between gap-4 mt-4">
+                  <div className="flex items-center gap-2">
+                    <Avatar>
+                      <AvatarImage src={speaker?.photoURL || undefined} />
+                      <AvatarFallback>{getInitials(speaker?.name || "GTH")}</AvatarFallback>
+                    </Avatar>
                     <div>
-                      <h3 className="font-bold text-green-800 dark:text-green-300">Congratulations! You've completed the course.</h3>
-                      <p className="text-sm text-green-700 dark:text-green-400">You can now view and download your certificate.</p>
+                      <p className="font-semibold">{speaker?.name || "Glory Training Hub"}</p>
+                      <p className="text-sm text-muted-foreground">{Math.max(0, course.enrollmentCount || 0)} Learners</p>
                     </div>
                   </div>
-                  <Button asChild className="bg-green-600 hover:bg-green-700 text-white flex-shrink-0">
-                    <Link href={`/certificate/${course.id}`}><Award className="mr-2 h-4 w-4" />View Certificate</Link>
-                  </Button>
-                </div>
-              )}
-              <div className="flex flex-wrap items-center justify-between gap-4 mt-4">
-                <div className="flex items-center gap-2">
-                  <Avatar>
-                    <AvatarImage src={speaker?.photoURL || undefined} />
-                    <AvatarFallback>{getInitials(speaker?.name || "GTH")}</AvatarFallback>
-                  </Avatar>
-                  <div>
-                    <p className="font-semibold">{speaker?.name || "Glory Training Hub"}</p>
-                    <p className="text-sm text-muted-foreground">{Math.max(0, course.enrollmentCount || 0)} Learners</p>
+                  <div className="flex items-center gap-2">
+                    <Button onClick={handleLike} variant="outline" size="sm" disabled={!user}>
+                      <Heart className={cn("mr-2 h-4 w-4", isLiked && "fill-destructive text-destructive")}/>{likeCount}
+                    </Button>
+                    {isCurrentUserAdmin &&
+                      <Button onClick={handleShare} variant="outline" size="sm"><Share2 className="mr-2 h-4 w-4" />{shareCount}</Button>
+                    }
+                    {canDownload && (<a href={currentVideo.url} download target="_blank" rel="noopener noreferrer"><Button variant="outline" size="sm"><Download className="mr-2 h-4 w-4" />Download</Button></a>)}
                   </div>
                 </div>
-                <div className="flex items-center gap-2">
-                  <Button onClick={handleLike} variant="outline" size="sm" disabled={!user}>
-                    <Heart className={cn("mr-2 h-4 w-4", isLiked && "fill-destructive text-destructive")}/>{likeCount}
-                  </Button>
-                  {isCurrentUserAdmin &&
-                    <Button onClick={handleShare} variant="outline" size="sm"><Share2 className="mr-2 h-4 w-4" />{shareCount}</Button>
-                  }
-                  {canDownload && (<a href={currentVideo.url} download target="_blank" rel="noopener noreferrer"><Button variant="outline" size="sm"><Download className="mr-2 h-4 w-4" />Download</Button></a>)}
-                </div>
-              </div>
 
-              <div className="lg:hidden mt-6">
-                <PlaylistAndResources course={course} courseVideos={courseVideos} currentVideo={currentVideo} watchedVideos={watchedVideos} relatedCourses={relatedCourses} onRelatedChange={refresh} quizzes={quizzes} quizResults={quizResults} lastVideoCompleted={lastVideoCompleted} />
-              </div>
-              <CommentSection videoId={currentVideo.id} />
-            </div>
+                <div className="lg:hidden mt-6">
+                  <PlaylistAndResources course={course} courseVideos={courseVideos} currentVideo={currentVideo} watchedVideos={watchedVideos} relatedCourses={relatedCourses} onRelatedChange={refresh} quizzes={quizzes} quizResults={quizResults} lastVideoCompleted={lastVideoCompleted} />
+                </div>
+                <CommentSection videoId={currentVideo.id} />
+             </div>
           </ScrollArea>
            <CommentForm videoId={currentVideo.id} />
         </div>

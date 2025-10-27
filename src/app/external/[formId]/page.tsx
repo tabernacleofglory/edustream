@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useParams } from "next/navigation";
@@ -219,11 +220,10 @@ const DynamicForm = ({ formConfig }: { formConfig: CustomForm }) => {
       const providedRealEmail = data.email && !String(data.email).endsWith("@tg.admin");
 
       let finalEmail = data.email;
-      if (!finalEmail) {
-        const campusName = data.campus ? String(data.campus).toLowerCase().replace(/\s+/g, "") : "user";
-        finalEmail = `${campusName}${Date.now()}@tg.admin`;
+      if (!finalEmail || finalEmail.trim() === '') {
+        finalEmail = `user${Date.now()}@tg.admin`;
       }
-
+      
       const userCredential = await createUserWithEmailAndPassword(
         secondaryAuth,
         finalEmail,

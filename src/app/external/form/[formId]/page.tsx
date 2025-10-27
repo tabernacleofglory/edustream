@@ -1,4 +1,5 @@
 
+
 "use client";
 
 import { useParams } from "next/navigation";
@@ -17,8 +18,11 @@ import {
   orderBy,
   query,
   serverTimestamp,
+  updateDoc,
   where,
 } from "firebase/firestore";
+import PhoneInput from 'react-phone-number-input';
+import 'react-phone-number-input/style.css';
 
 import {
   Card,
@@ -29,31 +33,16 @@ import {
   CardFooter,
 } from "@/components/ui/card";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { FileWarning, Loader2, PartyPopper } from "lucide-react";
+import { FileWarning, Loader2, PartyPopper, ImageIcon, Music, File as FileIcon, FileText, FileType } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
-import PhoneInput from "react-phone-number-input";
-import "react-phone-number-input/style.css";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import type { CustomForm, FormFieldConfig } from "@/lib/types";
-
-
-// ------- Types (match builder) -------
-type FieldType =
-  | "text"
-  | "email"
-  | "phone"
-  | "textarea"
-  | "select"
-  | "multiple-choice"
-  | "multiple-select"
-  | "password";
-type DataSource = "manual" | "campuses";
 
 type Opt = { value: string; label: string };
 
@@ -75,7 +64,6 @@ const DynamicForm = ({ formConfig }: { formConfig: CustomForm }) => {
   const [selectOptions, setSelectOptions] = useState<Record<string, Opt[]>>({});
   const db = getFirebaseFirestore();
 
-  // ---- Validation (align with builder) ----
   const validationSchema = useMemo(() => {
     const shape: Record<string, z.ZodTypeAny> = {};
     for (const f of formConfig.fields) {
@@ -96,29 +84,17 @@ const DynamicForm = ({ formConfig }: { formConfig: CustomForm }) => {
     return z.object(shape);
   }, [formConfig.fields]);
 
-  // ---- Default values per type ----
   const defaultValues = useMemo(() => {
     const dv: Record<string, any> = {};
     for (const f of formConfig.fields) {
       if (!f.visible) continue;
-      switch (f.type) {
-        case "multiple-select":
-          dv[f.fieldId] = [];
-          break;
-        case "select":
-        case "multiple-choice":
-          dv[f.fieldId] = ""; // native <select>/<radio> like empty string for “no selection”
-          break;
-        default:
-          dv[f.fieldId] = "";
-      }
+      dv[f.fieldId] = f.type === "multiple-select" ? [] : "";
     }
     return dv;
   }, [formConfig.fields]);
 
   const form = useForm({ resolver: zodResolver(validationSchema), defaultValues });
 
-  // ---- Load dynamic option sources (campuses) ----
   useEffect(() => {
     const load = async () => {
       const options: Record<string, Opt[]> = {};
@@ -132,6 +108,21 @@ const DynamicForm = ({ formConfig }: { formConfig: CustomForm }) => {
             .map((d) => toStr(d.data()?.["Campus Name"]).trim())
             .filter(Boolean)
             .map((name) => ({ value: name, label: name }));
+        } else if (f.dataSource) {
+            let collectionName = '';
+            switch(f.dataSource) {
+                case 'ladders': collectionName = 'courseLevels'; break;
+                case 'ministries': collectionName = 'ministries'; break;
+                case 'charges': collectionName = 'charges'; break;
+                case 'roles': collectionName = 'roles'; break;
+            }
+            if (collectionName) {
+                const snap = await getDocs(query(collection(db, collectionName), orderBy("name")));
+                options[f.fieldId] = snap.docs.map(d => ({ value: d.data().name, label: d.data().name }));
+            } else if (f.dataSource === 'languages') {
+                 const snap = await getDocs(query(collection(db, 'languages'), where('status', '==', 'published')));
+                 options[f.fieldId] = snap.docs.map(d => ({ value: d.data().name, label: d.data().name }));
+            }
         }
       }
       setSelectOptions(options);
@@ -140,7 +131,6 @@ const DynamicForm = ({ formConfig }: { formConfig: CustomForm }) => {
     load();
   }, [formConfig.fields, db]);
 
-  // ---- Submit ----
   const onSubmit = async (data: any) => {
     setIsSubmitting(true);
     try {
@@ -159,19 +149,23 @@ const DynamicForm = ({ formConfig }: { formConfig: CustomForm }) => {
     }
   };
 
-  // ---- Field renderer (only native elements) ----
   const renderField = (cfg: FormFieldConfig) => {
     if (!cfg.visible) return null;
     const { fieldId, required, type, options, dataSource } = cfg;
-    const label = cfg.label || ''; // Ensure label is a string
+    const label = cfg.label || ''; 
     const err = (form.formState.errors as any)[fieldId];
 
-    switch (type) {
-      case "select": {
-        const manual = normalizeOptions(options);
-        const ds = dataSource === "campuses" ? selectOptions[fieldId] || [] : manual;
-        const opts = ds.filter((o) => o.value);
+    const getOptions = () => {
+      if (dataSource && dataSource !== 'manual' && selectOptions[fieldId]) {
+        return selectOptions[fieldId];
+      }
+      return normalizeOptions(options);
+    };
+    
+    const opts = getOptions();
 
+    switch (type) {
+      case "select":
         return (
           <div className="space-y-2">
             <Label htmlFor={fieldId}>{label} {required && <span className="text-destructive">*</span>}</Label>
@@ -188,13 +182,8 @@ const DynamicForm = ({ formConfig }: { formConfig: CustomForm }) => {
             {err && <p className="text-sm text-destructive">{String(err.message)}</p>}
           </div>
         );
-      }
 
-      case "multiple-choice": {
-        const manual = normalizeOptions(options);
-        const ds = dataSource === "campuses" ? selectOptions[fieldId] || [] : manual;
-        const opts = ds.filter((o) => o.value);
-
+      case "multiple-choice":
         return (
           <div className="space-y-2 md:col-span-2">
             <Label>
@@ -220,13 +209,8 @@ const DynamicForm = ({ formConfig }: { formConfig: CustomForm }) => {
             {err && <p className="text-sm text-destructive">{String(err.message)}</p>}
           </div>
         );
-      }
 
-      case "multiple-select": {
-        const manual = normalizeOptions(options);
-        const ds = dataSource === "campuses" ? selectOptions[fieldId] || [] : manual;
-        const opts = ds.filter((o) => o.value);
-
+      case "multiple-select":
         return (
           <div className="space-y-2 md:col-span-2">
             <Label>
@@ -264,7 +248,6 @@ const DynamicForm = ({ formConfig }: { formConfig: CustomForm }) => {
             {err && <p className="text-sm text-destructive">{String(err.message)}</p>}
           </div>
         );
-      }
 
       case "textarea":
         return (
@@ -314,18 +297,36 @@ const DynamicForm = ({ formConfig }: { formConfig: CustomForm }) => {
 
       case "email":
       case "text":
+      case "url":
+      case "file":
+      case "image":
+      case "audio":
       default:
+        let inputType: string;
+        switch(type) {
+            case 'email': inputType = 'email'; break;
+            case 'url': inputType = 'url'; break;
+            case 'file': inputType = 'file'; break;
+            case 'image': inputType = 'file'; break;
+            case 'audio': inputType = 'file'; break;
+            default: inputType = 'text';
+        }
+        let acceptTypes = {};
+        if (type === 'image') acceptTypes = { accept: "image/*" };
+        if (type === 'audio') acceptTypes = { accept: "audio/*" };
+
         return (
           <div className="space-y-2">
             <Label htmlFor={fieldId}>
               {label} {required && <span className="text-destructive">*</span>}
             </Label>
-            <Input id={fieldId} type={type === "email" ? "email" : "text"} {...form.register(fieldId as any)} />
+            <Input id={fieldId} type={inputType} {...form.register(fieldId as any)} {...acceptTypes} />
             {err && <p className="text-sm text-destructive">{String(err.message)}</p>}
           </div>
         );
     }
   };
+
 
   if (submissionSuccess) {
     return (
@@ -392,7 +393,7 @@ export default function PublicBlankFormPage() {
           return;
         }
         const data = snap.data() as any;
-        if (data.type !== "blank") {
+        if (data.type !== "custom" && data.type !== "hybrid") {
           setError("This form is not available at this URL.");
           return;
         }
@@ -454,7 +455,9 @@ export default function PublicBlankFormPage() {
         <Alert className="w-full max-w-lg">
           <FileWarning className="h-4 w-4" />
           <AlertTitle>No Form Found</AlertTitle>
-          <AlertDescription>The requested form could not be loaded.</AlertDescription>
+          <AlertDescription>
+            The requested form could not be loaded.
+          </AlertDescription>
         </Alert>
       </div>
     );

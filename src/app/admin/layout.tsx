@@ -166,7 +166,6 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
           permission: 'viewCourseManagement',
           subItems: [
             { href: "/admin/courses", label: "Course Manager", icon: Settings },
-            { href: "/admin/courses/teaching", label: "Teaching", icon: Play },
             { href: "/admin/courses/enrollments", label: "Enrollment Activity", icon: Users2 },
             { href: "/admin/courses/enrollment-issues", label: "Enrollment Issues", icon: AlertTriangle },
           ]
@@ -205,6 +204,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
       group: t('admin.nav.group.platform', "Platform"),
       items: [
         { href: "/admin/campus", label: t('admin.nav.platform.campus', "Campus"), icon: Building, permission: 'viewCampusManagement' },
+        { href: "/admin/courses/teaching", label: "Teaching", icon: Play },
         { href: "/admin/live", label: t('admin.nav.platform.live', "Live"), icon: Tv, permission: 'viewLiveManagement' },
         { href: "/my-certificates", label: t('admin.nav.platform.my_certificates', "My Certificates"), icon: Award, permission: 'viewDashboard' },
         {

@@ -283,7 +283,7 @@ export interface PromotionRequest {
 export interface CustomForm {
     id: string;
     title: string;
-    type: 'userProfile' | 'blank' | 'hybrid';
+    type: 'userProfile' | 'custom';
     public?: boolean;
     fields: FormFieldConfig[];
     submissionCount: number;

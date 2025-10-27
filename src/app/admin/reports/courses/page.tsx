@@ -32,7 +32,7 @@ import { collection, getDocs, query, where, orderBy } from "firebase/firestore";
 import { getFirebaseFirestore } from "@/lib/firebase";
 import type { User, Course, UserProgress, Enrollment, CourseGroup, OnsiteCompletion, Ladder } from "@/lib/types";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Download, Calendar as CalendarIcon, X as XIcon, Search, ChevronLeft, ChevronRight } from "lucide-react";
+import { Download, Calendar as CalendarIcon, X as XIcon, Search, ChevronLeft, ChevronRight, Lock } from "lucide-react";
 import Papa from 'papaparse';
 import { format, isValid, startOfDay, endOfDay } from "date-fns";
 import { DateRange } from "react-day-picker";
@@ -44,6 +44,8 @@ import { useToast } from "@/hooks/use-toast";
 import { Input } from "@/components/ui/input";
 import { useAuth } from "@/hooks/use-auth";
 import { Progress } from "@/components/ui/progress";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+
 
 interface Campus {
   id: string;
@@ -64,7 +66,7 @@ interface EnrollmentReportData {
 }
 
 export default function CourseReportsPage() {
-  const { user: currentUser, canViewAllCampuses } = useAuth();
+  const { user: currentUser, canViewAllCampuses, hasPermission } = useAuth();
   const [allUsers, setAllUsers] = useState<User[]>([]);
   const [allCourses, setAllCourses] = useState<Course[]>([]);
   const [allCourseGroups, setAllCourseGroups] = useState<CourseGroup[]>([]);
@@ -85,7 +87,13 @@ export default function CourseReportsPage() {
   const { toast } = useToast();
   const db = getFirebaseFirestore();
 
+  const canViewReports = hasPermission('viewReports');
+
   const fetchAllData = useCallback(async () => {
+    if (!canViewReports) {
+      setLoading(false);
+      return;
+    }
     setLoading(true);
     try {
       const [usersSnap, coursesSnap, groupsSnap, laddersSnap, campusesSnap, enrollmentsSnap, progressSnap, onsiteCompletionsSnap] = await Promise.all([
@@ -160,7 +168,7 @@ export default function CourseReportsPage() {
     } finally {
       setLoading(false);
     }
-  }, [db, toast]);
+  }, [db, toast, canViewReports]);
 
   useEffect(() => {
     fetchAllData();
@@ -173,7 +181,16 @@ export default function CourseReportsPage() {
                 ? allCourseGroups.find(g => `group_${g.id}` === selectedCourse)?.courseIds.includes(item.courseId)
                 : item.courseId === selectedCourse);
 
-        const matchesCampus = selectedCampus === 'all' || item.userCampus === allCampuses.find(c => c.id === selectedCampus)?.["Campus Name"];
+        const userForReport = allUsers.find(u => u.id === item.userId);
+        const userCampus = userForReport?.campus || item.userCampus;
+        
+        let matchesCampus = true;
+        if (!canViewAllCampuses) {
+            matchesCampus = userCampus === currentUser?.campus;
+        } else if (selectedCampus !== 'all') {
+            const campusData = allCampuses.find(c => c.id === selectedCampus);
+            matchesCampus = userCampus === campusData?.["Campus Name"];
+        }
         
         const matchesCompletionType = selectedCompletionType === 'all' || item.completionType === selectedCompletionType;
         
@@ -193,7 +210,7 @@ export default function CourseReportsPage() {
 
         return matchesCourse && matchesCampus && matchesCompletionType && matchesDate && matchesSearch && matchesStatus;
     });
-  }, [enrollmentReportData, selectedCourse, selectedCampus, selectedCompletionType, dateRange, searchTerm, allCourseGroups, allCampuses, completionStatusFilter]);
+  }, [enrollmentReportData, selectedCourse, selectedCampus, selectedCompletionType, dateRange, searchTerm, allCourseGroups, allCampuses, completionStatusFilter, allUsers, canViewAllCampuses, currentUser]);
   
   const completionCount = useMemo(() => {
     return filteredEnrollmentData.filter(item => item.completedAt).length;
@@ -292,6 +309,7 @@ export default function CourseReportsPage() {
             "Enrollment Date": item.enrolledAt && isValid(item.enrolledAt) ? format(item.enrolledAt, 'yyyy-MM-dd HH:mm') : 'N/A',
             "Completion Date": item.completedAt && isValid(item.completedAt) ? format(item.completedAt, 'yyyy-MM-dd HH:mm') : 'In Progress',
             "Status": item.completedAt ? 'Completed' : 'In Progress',
+            "Completion Type": item.completionType,
         }
     });
     const csv = Papa.unparse(dataToExport);
@@ -303,6 +321,16 @@ export default function CourseReportsPage() {
     link.click();
     document.body.removeChild(link);
   };
+  
+  if (!canViewReports) {
+      return (
+          <Alert variant="destructive">
+            <Lock className="h-4 w-4" />
+            <AlertTitle>Access Denied</AlertTitle>
+            <AlertDescription>You do not have permission to view reports.</AlertDescription>
+          </Alert>
+      );
+  }
 
   return (
     <div className="space-y-8">

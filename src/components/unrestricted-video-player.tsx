@@ -21,6 +21,8 @@ import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "./
 import { useProcessedCourses } from "@/hooks/useProcessedCourses";
 import { TeachingCard } from "./teaching-card";
 import { Avatar, AvatarFallback, AvatarImage } from "./ui/avatar";
+import { useAudioPlayer } from "@/hooks/use-audio-player";
+
 
 interface UnrestrictedVideoPlayerProps {
   course: Course;
@@ -168,6 +170,7 @@ export default function UnrestrictedVideoPlayer({
   const [showGradientOverlay, setShowGradientOverlay] = useState(true);
   const [isLooping, setIsLooping] = useState(false);
   const [isAutoNextEnabled, setIsAutoNextEnabled] = useState(true);
+  const { currentTrack } = useAudioPlayer();
 
   const isMobile = useIsMobile();
   const isYouTube = currentVideo?.type === 'youtube' || (currentVideo?.url && (currentVideo.url.includes('youtube.com') || currentVideo.url.includes('youtu.be')));
@@ -272,7 +275,7 @@ export default function UnrestrictedVideoPlayer({
 
   return (
     <div className="flex flex-col lg:flex-row flex-1">
-      <div className="flex-1 flex flex-col lg:h-screen">
+      <div className={cn("flex-1 flex flex-col lg:h-screen", currentTrack && 'pb-16 lg:pb-0')}>
         <div className="lg:px-8 lg:pt-8 flex-shrink-0">
           <div ref={videoContainerRef} className={cn("relative aspect-video w-full overflow-hidden bg-slate-900", isFullScreen ? "rounded-none" : "lg:rounded-lg")}>
           {(isYouTube || isGoogleDrive) ? (
@@ -352,15 +355,15 @@ export default function UnrestrictedVideoPlayer({
                     {new Date(currentTime * 1000).toISOString().substr(14, 5)} / {new Date(duration * 1000).toISOString().substr(14, 5)}
                 </div>
                 <div className="flex items-center justify-center gap-1 md:gap-2">
-                    <Button variant="ghost" size="icon" onClick={() => setIsLooping(!isLooping)} className={cn("text-white hover:text-white hover:bg-white/20", isLooping && "bg-white/20")}>
-                        <Repeat />
-                    </Button>
-                     <Button variant="ghost" size="icon" onClick={() => setIsAutoNextEnabled(!isAutoNextEnabled)} className="text-white hover:text-white hover:bg-white/20">
-                        {isAutoNextEnabled ? <ToggleRight /> : <ToggleLeft />}
-                    </Button>
-                    <Button variant="ghost" size="icon" onClick={handleFullScreen} className="text-white hover:text-white hover:bg-white/20">
-                        {isFullScreen ? <Minimize /> : <Maximize />}
-                    </Button>
+                <Button variant="ghost" size="icon" onClick={() => setIsLooping(!isLooping)} className={cn("text-white hover:text-white hover:bg-white/20", isLooping && "bg-white/20")}>
+                    <Repeat />
+                </Button>
+                 <Button variant="ghost" size="icon" onClick={() => setIsAutoNextEnabled(!isAutoNextEnabled)} className="text-white hover:text-white hover:bg-white/20">
+                    {isAutoNextEnabled ? <ToggleRight /> : <ToggleLeft />}
+                </Button>
+                <Button variant="ghost" size="icon" onClick={handleFullScreen} className="text-white hover:text-white hover:bg-white/20">
+                    {isFullScreen ? <Minimize /> : <Maximize />}
+                </Button>
                 </div>
             </div>
           </div>
@@ -389,10 +392,12 @@ export default function UnrestrictedVideoPlayer({
               <CommentSection videoId={currentVideo.id} />
              </div>
           </ScrollArea>
-           <CommentForm videoId={currentVideo.id} />
+           <div className="sticky bottom-0">
+                <CommentForm videoId={currentVideo.id} />
+            </div>
         </div>
       </div>
-      <div className="w-full lg:w-[420px] lg:flex-shrink-0 lg:border-l flex-col lg:h-screen lg:sticky lg:top-0 bg-background hidden lg:flex">
+      <div className="w-full lg:w-[320px] lg:flex-shrink-0 lg:border-l flex-col lg:h-screen lg:sticky lg:top-0 bg-background hidden lg:flex">
         <ScrollArea className="flex-1">
           <PlaylistAndResources course={course} courseVideos={courseVideos} currentVideo={currentVideo} />
         </ScrollArea>
