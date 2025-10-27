@@ -72,6 +72,10 @@ import { useProcessedCourses } from "@/hooks/useProcessedCourses";
 import { Progress } from "./ui/progress";
 import Image from "next/image";
 
+const getInitials = (name?: string | null) => {
+  if (!name) return "U";
+  return name.trim().split(/\s+/).map((n) => n[0]).join("").toUpperCase();
+};
 
 interface PlaylistAndResourcesProps {
   course: Course;
