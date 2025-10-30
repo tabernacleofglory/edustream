@@ -1,4 +1,3 @@
-
 "use client";
 
 import { useState, useEffect, useCallback, useMemo } from 'react';
@@ -8,7 +7,7 @@ import { collection, query, where, doc, getDoc, getDocs, documentId } from 'fire
 import { useToast } from '@/hooks/use-toast';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Loader2, ArrowLeft, Mail, Edit, Eye, CheckCircle, Circle, Trash } from 'lucide-react';
+import { Loader2, ArrowLeft, Mail, Edit, Eye, CheckCircle, Circle, Trash, UserMinus } from 'lucide-react';
 import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar';
 import type { Course, User, Enrollment, UserProgress, Ladder, UserLadderProgress, Video } from '@/lib/types';
 import { useAuth } from '@/hooks/use-auth';
@@ -23,9 +22,17 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import EditUserForm from '@/components/edit-user-form';
 import { Skeleton } from '@/components/ui/skeleton';
+import { unenrollUserFromCourse } from '@/lib/user-actions';
 
 const getInitials = (name?: string | null) =>
   (!name ? "U" : name.trim().split(/\s+/).map(p => p[0]?.toUpperCase()).join(""));
+
+// Helper to chunk an array (Firestore 'in' max 10)
+const chunk = <T,>(arr: T[], size: number) => {
+  const out: T[][] = [];
+  for (let i = 0; i < arr.length; i += size) out.push(arr.slice(i, i + size));
+  return out;
+};
 
 interface CourseProgressDetail extends UserProgress {
   videos: Video[];
@@ -44,6 +51,7 @@ export default function UserProfilePage() {
   const [courses, setCourses] = useState<Course[]>([]);
   const [ladders, setLadders] = useState<Ladder[]>([]);
   const [userProgress, setUserProgress] = useState<UserProgress[]>([]);
+  const [enrollments, setEnrollments] = useState<Enrollment[]>([]);
   const [completedCourses, setCompletedCourses] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(true);
   const { toast } = useToast();
@@ -51,6 +59,11 @@ export default function UserProfilePage() {
   const [isEditing, setIsEditing] = useState(false);
   const db = getFirebaseFirestore();
   const functions = getFirebaseFunctions();
+
+  // computed (dialog-parity) course progress
+  const [computedCourseProgress, setComputedCourseProgress] = useState<
+    { courseId: string; courseTitle: string; totalProgress: number; ladderIds: string[] }[]
+  >([]);
 
   const fetchUserData = useCallback(async () => {
     if (!userId) {
@@ -77,7 +90,7 @@ export default function UserProfilePage() {
       setCourses(coursesSnap.docs.map(d => ({ id: d.id, ...d.data() } as Course)));
       setLadders(laddersSnap.docs.map(d => ({ id: d.id, ...d.data() } as Ladder)));
 
-      // Fetch progress and completions
+      // === Progress + completions (mirror the dialog logic) ===
       const enrollmentsQuery = query(collection(db, 'enrollments'), where('userId', '==', userId));
       const onsiteQuery = query(collection(db, 'onsiteCompletions'), where('userId', '==', userId));
       const progressQuery = query(collection(db, 'userVideoProgress'), where('userId', '==', userId));
@@ -85,25 +98,73 @@ export default function UserProfilePage() {
       const [enrollmentsSnap, onsiteSnap, progressSnap] = await Promise.all([
         getDocs(enrollmentsQuery),
         getDocs(onsiteQuery),
-        getDocs(progressQuery)
+        getDocs(progressQuery),
       ]);
 
-      const completed = new Set<string>();
-      onsiteSnap.forEach(d => completed.add(d.data().courseId));
-      enrollmentsSnap.docs.forEach(d => {
-        if ((d.data() as Enrollment).completedAt) {
-          completed.add(d.data().courseId);
-        }
-      });
-      setCompletedCourses(completed);
-      setUserProgress(progressSnap.docs.map(d => d.data() as UserProgress));
+      const onlineEnrollments = enrollmentsSnap.docs.map(d => d.data() as Enrollment);
+      setEnrollments(onlineEnrollments);
+
+      const allCompletedCourseIds = new Set<string>();
+      // onsite completions always count
+      onsiteSnap.forEach(d => allCompletedCourseIds.add(d.data().courseId));
+
+      const enrolledCourseIds = onlineEnrollments.map(e => e.courseId);
+
+      // If no enrollments, just set and bail
+      if (enrolledCourseIds.length === 0) {
+        setComputedCourseProgress([]);
+        setCompletedCourses(allCompletedCourseIds);
+        setUserProgress([]); // keep consistent
+        return;
+      }
+
+      // Fetch only enrolled courses (chunked for Firestore `in`)
+      const courseIdChunks = chunk(enrolledCourseIds, 10);
+      const courseSnaps = await Promise.all(
+        courseIdChunks.map(ids => getDocs(query(collection(db, 'courses'), where(documentId(), 'in', ids))))
+      );
+      const enrolledCourses = courseSnaps.flatMap(s => s.docs.map(d => ({ id: d.id, ...d.data() } as Course)));
+
+      // Raw progress docs
+      const progressDocs = progressSnap.docs.map(d => d.data() as UserProgress);
+
+      // Build map of completed videoIds per course
+      const progressByCourse: Record<string, { completedVideos: Set<string> }> = {};
+      for (const p of progressDocs) {
+        if (!progressByCourse[p.courseId]) progressByCourse[p.courseId] = { completedVideos: new Set() };
+        p.videoProgress?.forEach(vp => {
+          if (vp.completed) progressByCourse[p.courseId].completedVideos.add(vp.videoId);
+        });
+      }
+
+      // Compute % by videos, respect language like dialog
+      const detailedCourseProgress = enrolledCourses
+        .filter(c => c.language === userData.language) // use freshly loaded userData; avoids render loop
+        .map(c => {
+          const totalVideos = c.videos?.length || 0;
+          const completed = progressByCourse[c.id]?.completedVideos.size || 0;
+          const totalProgress = totalVideos > 0 ? Math.round((completed / totalVideos) * 100) : 0;
+          if (totalProgress === 100) allCompletedCourseIds.add(c.id);
+          return {
+            courseId: c.id,
+            courseTitle: c.title,
+            totalProgress,
+            ladderIds: c.ladderIds || [],
+          };
+        })
+        .sort((a, b) => a.courseTitle.localeCompare(b.courseTitle));
+
+      setComputedCourseProgress(detailedCourseProgress);
+      setCompletedCourses(allCompletedCourseIds);
+      setUserProgress(progressDocs); // keep raw to power the video-by-video dialog
+
     } catch (error) {
       toast({ variant: 'destructive', title: 'Failed to load user data.' });
       console.error(error);
     } finally {
       setLoading(false);
     }
-  }, [userId, toast, router, db]);
+  }, [userId, toast, router, db]); // <-- user REMOVED from deps
 
   // Fetch data independent of permission to avoid the loading deadlock
   useEffect(() => {
@@ -143,19 +204,20 @@ export default function UserProfilePage() {
       .filter((lp): lp is UserLadderProgress => lp !== null);
   }, [user, ladders, courses, completedCourses]);
 
+  // Use computed (dialog-parity) progress for enrolled courses
   const enrolledCoursesProgress = useMemo(() => {
-    return userProgress
-      .map(p => {
-        const course = courses.find(c => c.id === p.courseId);
-        return {
-          courseId: p.courseId,
-          courseTitle: course?.title || 'Unknown Course',
-          totalProgress: p.totalProgress,
-          ladderIds: course?.ladderIds || []
-        };
-      })
-      .filter(p => !completedCourses.has(p.courseId));
-  }, [userProgress, courses, completedCourses]);
+    const index = new Map(computedCourseProgress.map(p => [p.courseId, p]));
+    return enrollments
+      .filter(en => !completedCourses.has(en.courseId))
+      .map(en => index.get(en.courseId))
+      .filter(Boolean)
+      .sort((a, b) => a!.courseTitle.localeCompare(b!.courseTitle)) as {
+        courseId: string;
+        courseTitle: string;
+        totalProgress: number;
+        ladderIds: string[];
+      }[];
+  }, [enrollments, completedCourses, computedCourseProgress]);
 
   const groupedEnrolledCourses = useMemo(() => {
     const grouped: { [key: string]: { ladderId: string, ladderName: string, courses: any[] } } = {};
@@ -171,16 +233,45 @@ export default function UserProfilePage() {
         grouped[ladderId].courses.push(course);
     });
 
-    return Object.values(grouped);
+    return Object.values(grouped).sort((a,b) => {
+        const ladderA = ladders.find(l => l.id === a.ladderId);
+        const ladderB = ladders.find(l => l.id === b.ladderId);
+        return (ladderA?.order ?? 999) - (ladderB?.order ?? 999);
+    });
   }, [enrolledCoursesProgress, ladders]);
 
+  // NEW: Completed courses (onsite OR 100% videos). Group by ladder like above.
+  const completedCoursesList = useMemo(() => {
+    if (!user) return [];
+    const progMap = new Map(computedCourseProgress.map(p => [p.courseId, p.totalProgress]));
+    return courses
+      .filter(c => completedCourses.has(c.id) && c.language === user.language)
+      .map(c => ({
+        courseId: c.id,
+        courseTitle: c.title,
+        totalProgress: progMap.get(c.id) ?? 100,
+        ladderIds: c.ladderIds || [],
+      }))
+      .sort((a, b) => a.courseTitle.localeCompare(b.courseTitle));
+  }, [courses, completedCourses, user, computedCourseProgress]);
 
-  // Helper to chunk an array (Firestore 'in' max 10)
-  const chunk = <T,>(arr: T[], size: number) => {
-    const out: T[][] = [];
-    for (let i = 0; i < arr.length; i += size) out.push(arr.slice(i, i + size));
-    return out;
-  };
+  const groupedCompletedCourses = useMemo(() => {
+    const grouped: { [key: string]: { ladderId: string, ladderName: string, courses: any[] } } = {};
+    completedCoursesList.forEach(course => {
+      const ladderId = course.ladderIds.length > 0 ? course.ladderIds[0] : 'uncategorized';
+      const ladder = ladders.find(l => l.id === ladderId);
+      const ladderName = ladder ? ladder.name : 'Uncategorized';
+      if (!grouped[ladderId]) {
+        grouped[ladderId] = { ladderId, ladderName, courses: [] };
+      }
+      grouped[ladderId].courses.push(course);
+    });
+    return Object.values(grouped).sort((a, b) => {
+      const ladderA = ladders.find(l => l.id === a.ladderId);
+      const ladderB = ladders.find(l => l.id === b.ladderId);
+      return (ladderA?.order ?? 999) - (ladderB?.order ?? 999);
+    });
+  }, [completedCoursesList, ladders]);
 
   const handleViewCourseProgress = async (progressItem: { courseId: string; courseTitle: string }) => {
     const course = courses.find(c => c.id === progressItem.courseId);
@@ -245,6 +336,16 @@ export default function UserProfilePage() {
         });
     }
   };
+
+  const handleUnenroll = async (userId: string, courseId: string) => {
+      const result = await unenrollUserFromCourse(userId, courseId);
+      if (result.success) {
+          toast({ title: 'Success', description: result.message });
+          fetchUserData(); // Refresh all user data (keeps parity)
+      } else {
+          toast({ variant: 'destructive', title: 'Error', description: result.message });
+      }
+  }
 
   if (loading) {
     return (
@@ -380,7 +481,7 @@ export default function UserProfilePage() {
                     <div key={group.ladderId}>
                       <h4 className="font-semibold mb-2">{group.ladderName}</h4>
                       <div className="space-y-4 pl-4 border-l">
-                        {group.courses.map(p => (
+                        {group.courses.map((p: any) => (
                           <div key={p.courseId} className="flex items-center justify-between">
                             <div>
                               <p className="font-medium">{p.courseTitle}</p>
@@ -389,9 +490,14 @@ export default function UserProfilePage() {
                                 <span className="text-xs font-bold">{p.totalProgress}%</span>
                               </div>
                             </div>
-                            <Button variant="ghost" size="icon" onClick={() => handleViewCourseProgress(p)}>
-                              <Eye className="h-4 w-4" />
-                            </Button>
+                            <div className='flex gap-2'>
+                                <Button variant="ghost" size="icon" onClick={() => handleViewCourseProgress(p)}>
+                                  <Eye className="mr-2 h-4 w-4" />
+                                </Button>
+                                <Button size="sm" variant="outline" onClick={() => handleUnenroll(user.id, p.courseId)}>
+                                  <UserMinus className="mr-2 h-4 w-4" /> Un-enroll
+                                </Button>
+                            </div>
                           </div>
                         ))}
                       </div>
@@ -399,6 +505,46 @@ export default function UserProfilePage() {
                   ))
                 ) : (
                   <p className="text-sm text-muted-foreground">No active enrollments.</p>
+                )}
+              </CardContent>
+            </Card>
+
+            {/* NEW: Completed Courses */}
+            <Card>
+              <CardHeader>
+                <CardTitle>Completed Courses</CardTitle>
+                <CardDescription>Courses finished by this user.</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                {groupedCompletedCourses.length > 0 ? (
+                  groupedCompletedCourses.map(group => (
+                    <div key={group.ladderId}>
+                      <h4 className="font-semibold mb-2">{group.ladderName}</h4>
+                      <div className="space-y-4 pl-4 border-l">
+                        {group.courses.map((p: any) => (
+                          <div key={p.courseId} className="flex items-center justify-between">
+                            <div>
+                              <p className="font-medium flex items-center gap-2">
+                                <CheckCircle className="h-4 w-4 text-green-500" />
+                                {p.courseTitle}
+                              </p>
+                              <div className="flex items-center gap-2">
+                                <Progress value={p.totalProgress ?? 100} className="h-2 w-40" />
+                                <span className="text-xs font-bold">{p.totalProgress ?? 100}%</span>
+                              </div>
+                            </div>
+                            <div className="flex gap-2">
+                              <Button variant="ghost" size="icon" onClick={() => handleViewCourseProgress(p)}>
+                                <Eye className="h-4 w-4" />
+                              </Button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ))
+                ) : (
+                  <p className="text-sm text-muted-foreground">No completed courses yet.</p>
                 )}
               </CardContent>
             </Card>

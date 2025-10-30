@@ -495,19 +495,23 @@ export default function UserManagement() {
             }
         });
         
-        const detailedCourseProgress = enrolledCourses.map(course => {
-            const totalVideos = course.videos?.length || 0;
-            const completedCount = progressByCourse[course.id]?.completedVideos.size || 0;
-            const totalProgress = totalVideos > 0 ? Math.round((completedCount / totalVideos) * 100) : 0;
-            if (totalProgress === 100) {
-                allCompletedCourseIds.add(course.id);
-            }
-            return {
-                courseId: course.id,
-                courseTitle: course.title,
-                totalProgress: totalProgress
-            }
-        });
+        const detailedCourseProgress = enrolledCourses
+            .filter(course => course.language === user.language) // Filter by user language
+            .map(course => {
+                const totalVideos = course.videos?.length || 0;
+                const completedCount = progressByCourse[course.id]?.completedVideos.size || 0;
+                const totalProgress = totalVideos > 0 ? Math.round((completedCount / totalVideos) * 100) : 0;
+                if (totalProgress === 100) {
+                    allCompletedCourseIds.add(course.id);
+                }
+                return {
+                    courseId: course.id,
+                    courseTitle: course.title,
+                    totalProgress: totalProgress
+                }
+            })
+            .sort((a, b) => a.courseTitle.localeCompare(b.courseTitle)); // Sort alphabetically
+
         setViewingUserProgress(detailedCourseProgress);
         setViewingUserCompletions(allCompletedCourseIds);
 
@@ -803,43 +807,42 @@ export default function UserManagement() {
         }
     };
     
-    const LadderProgressStars = ({user}: {user: User}) => {
+    const LadderProgressStars = ({ user }: { user: User }) => {
         const ladder = ladders.find(l => l.id === user.classLadderId);
         if (!ladder) return <p className="text-sm text-muted-foreground">Not assigned to a ladder.</p>;
-
-        const coursesInLadder = courses.filter(c => 
+    
+        const coursesInLadder = courses.filter(c =>
             c.ladderIds?.includes(ladder.id) &&
-            c.language === user.language // Filter by user's language
+            c.language === user.language
         );
-        const totalCourses = coursesInLadder.length;
-
-        if (totalCourses === 0) return <p className="text-sm text-muted-foreground">No courses for this ladder in your language.</p>;
-
+    
+        if (coursesInLadder.length === 0) {
+            return <p className="text-sm text-muted-foreground">No courses for this ladder in your language.</p>;
+        }
+    
+        const completedCoursesInLadder = coursesInLadder.filter(c => viewingUserCompletions.has(c.id));
+    
         return (
             <div>
-                 <p className="font-semibold mb-2">Ladder Progress: {ladder.name}</p>
-                 <div className="flex items-center gap-1">
+                <p className="font-semibold mb-2">Ladder Progress: {ladder.name}</p>
+                <div className="flex items-center gap-1">
                     <TooltipProvider>
-                    {Array.from({ length: totalCourses }).map((_, index) => {
-                        const course = coursesInLadder[index];
-                        const isCompleted = viewingUserCompletions.has(course.id);
-                        return (
-                             <Tooltip key={index}>
+                        {completedCoursesInLadder.map((course, index) => (
+                            <Tooltip key={index}>
                                 <TooltipTrigger asChild>
                                     <span tabIndex={0}>
-                                        <Star className={cn("h-6 w-6", isCompleted ? "text-yellow-500 fill-yellow-400" : "text-gray-300 dark:text-gray-600")} />
+                                        <Star className="h-6 w-6 text-yellow-500 fill-yellow-400" />
                                     </span>
                                 </TooltipTrigger>
                                 <TooltipContent>
                                     <p>{course.title}</p>
                                 </TooltipContent>
                             </Tooltip>
-                        )
-                    })}
+                        ))}
                     </TooltipProvider>
                 </div>
             </div>
-        )
+        );
     };
 
     const handleToggleAllOnPage = () => {
@@ -1284,5 +1287,3 @@ export default function UserManagement() {
     </>
   );
 }
-
-    

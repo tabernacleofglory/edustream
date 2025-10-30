@@ -7,9 +7,9 @@ import { useRouter } from "next/navigation";
 import Hls from "hls.js";
 import ReactPlayer from 'react-player/lazy';
 import {
-  Play, Pause, SkipBack, SkipForward, Maximize, Minimize, Volume2, VolumeX, Repeat, ToggleLeft, ToggleRight, MessageCircle, FileText, Link as LinkIcon
+  Play, Pause, SkipBack, SkipForward, Maximize, Minimize, Volume2, VolumeX, Repeat, ToggleLeft, ToggleRight, MessageCircle, FileText, Link as LinkIcon, CheckCircle2
 } from "lucide-react";
-import type { Course, Video, Speaker, Quiz, UserQuizResult } from "@/lib/types";
+import type { Course, Video, Speaker, Quiz, UserQuizResult, UserProgress as UserProgressType } from "@/lib/types";
 import { Button } from "@/components/ui/button";
 import { Slider } from "@/components/ui/slider";
 import { cn } from "@/lib/utils";
