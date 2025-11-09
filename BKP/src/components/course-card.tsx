@@ -60,7 +60,6 @@ interface CourseCardProps {
     lastWatchedVideoId?: string;
     isLocked?: boolean;
     prerequisiteCourse?: { id: string; title: string };
-    allCoursesInGroupCompleted?: boolean;
   };
   onEdit?: () => void;
   onDelete?: () => void;
@@ -438,16 +437,7 @@ export function CourseCard({
                     <EnrollButton />
                   </div>
                 ) : isCompleted ? (
-                   course.allCoursesInGroupCompleted ? (
-                      <Button asChild className="w-full" variant="outline">
-                        <Link href="/my-certificates">View Certificate</Link>
-                      </Button>
-                    ) : (
-                      <Button disabled className="w-full">
-                        <CheckCircle className="mr-2 h-4 w-4" />
-                        Complete
-                      </Button>
-                    )
+                   null
                 ) : isInProgress ? (
                   <div className="w-full">
                     <div className="flex justify-between items-center mb-2">
@@ -498,7 +488,6 @@ export function CourseCard({
             isEnrolled={isEnrolled}
             isCompleted={isCompleted}
             onEnroll={handleEnroll}
-            isLocked={isLocked}
           />
         </DialogContent>
       </Dialog>

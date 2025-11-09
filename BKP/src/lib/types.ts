@@ -82,6 +82,7 @@ export interface Course {
   logoUrl?: string;
   attendanceLinks?: { title: string; url: string }[];
   quizIds?: string[];
+  formId?: string;
   createdAt?: any;
   updatedAt?: any;
   completedAt?: any;
@@ -282,7 +283,7 @@ export interface PromotionRequest {
 export interface CustomForm {
     id: string;
     title: string;
-    type: 'userProfile' | 'blank';
+    type: 'userProfile' | 'custom';
     public?: boolean;
     fields: FormFieldConfig[];
     submissionCount: number;
@@ -291,10 +292,13 @@ export interface CustomForm {
 }
 
 export interface FormFieldConfig {
-    fieldId: keyof User; // e.g., 'firstName', 'hpNumber'
+    fieldId: string; // Not just keyof User, can be custom
     label: string;
     visible: boolean;
     required: boolean;
+    type?: 'text' | 'email' | 'phone' | 'textarea' | 'select' | 'multiple-choice' | 'multiple-select' | 'password';
+    options?: string[];
+    dataSource?: 'manual' | 'campuses';
 }
 
 export interface SiteSettings {

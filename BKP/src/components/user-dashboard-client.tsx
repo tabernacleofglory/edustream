@@ -24,6 +24,7 @@ import { Progress } from "./ui/progress";
 import { useToast } from "@/hooks/use-toast";
 import { requestPromotion } from "@/lib/user-actions";
 import AnnouncementCard from "./announcement-card";
+import VideoAnnouncement from "./video-announcement";
 
 
 const progressChartConfig = {
@@ -129,39 +130,6 @@ export default function UserDashboardClient() {
     return { completed, total, percentage };
   }, [currentLadderDetails, coursesInCurrentLadder]);
 
-  const groupedCourses = useMemo(() => {
-    const groups: { [key: string]: (typeof processedCourses[0])[] } = {};
-    
-    processedCourses.forEach(course => {
-      if (course.ladderIds && course.ladderIds.length > 0) {
-        course.ladderIds.forEach(ladderId => {
-          if (!groups[ladderId]) groups[ladderId] = [];
-          groups[ladderId].push(course);
-        });
-      } else {
-        if (!groups['uncategorized']) groups['uncategorized'] = [];
-        groups['uncategorized'].push(course);
-      }
-    });
-
-    return Object.keys(groups).map(ladderId => {
-        const ladder = allLadders.find(l => l.id === ladderId);
-        return {
-            ladderId,
-            ladderName: ladder?.name || 'Uncategorized',
-            order: ladder?.order ?? Infinity,
-            courses: groups[ladderId]
-        }
-    }).sort((a, b) => {
-        if (user?.classLadderId) {
-            if (a.ladderId === user.classLadderId) return -1;
-            if (b.ladderId === user.classLadderId) return 1;
-        }
-        return a.order - b.order;
-    });
-  }, [processedCourses, allLadders, user]);
-
-  
   const handleRequestPromotion = async () => {
     if (!user || !currentLadderDetails || !nextLadder) return;
     setIsRequestingPromotion(true);
@@ -196,6 +164,7 @@ export default function UserDashboardClient() {
             </CardHeader>
         </Card>
        )}
+       <VideoAnnouncement />
        <AnnouncementCard />
         
         {currentLadderDetails && (
@@ -298,51 +267,27 @@ export default function UserDashboardClient() {
           </section>
       )}
 
-      <section>
-          <div className="space-y-12">
-            {loading ? (
-                Array.from({ length: 2 }).map((_, groupIndex) => (
-                    <div key={groupIndex} className="space-y-4">
-                         <Skeleton className="h-8 w-1/3" />
-                         <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-2 xl:grid-cols-3">
-                            {Array.from({ length: 3 }).map((_, index) => (
-                                <div key={index} className="space-y-4">
-                                    <Skeleton className="h-48 w-full" />
-                                    <div className="space-y-2 p-4">
-                                        <Skeleton className="h-4 w-1/4" />
-                                        <Skeleton className="h-6 w-3/4" />
-                                        <Skeleton className="h-4 w-full" />
-                                    </div>
-                                </div>
-                            ))}
-                        </div>
-                    </div>
-                ))
-            ) : groupedCourses.length > 0 ? (
-                groupedCourses.map(group => (
-                    <div key={group.ladderId} id={`ladder-group-${group.ladderId}`} className="scroll-mt-32">
-                        <h3 className="font-headline text-2xl font-bold mb-4">{group.ladderName}</h3>
-                        <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-2 xl:grid-cols-3">
-                        {group.courses.map((course) => (
-                            <div key={course.id} className="relative group">
-                                <CourseCard 
-                                course={course} 
-                                onChange={refresh} 
-                                showEnroll={!user} 
-                                isAdminView={false}
-                                />
-                            </div>
-                        ))}
-                        </div>
-                    </div>
-                ))
-            ) : (
-                <div className="text-center py-16 text-muted-foreground">
-                    <p>No courses available at this time.</p>
+      {currentLadderDetails && coursesInCurrentLadder.length > 0 && (
+          <section>
+            <div className="flex justify-between items-center mb-4">
+              <h2 className="font-headline text-2xl font-semibold">
+                Courses in: {currentLadderDetails.name}
+              </h2>
+              <Button asChild variant="outline">
+                <Link href="/courses">
+                  View All <ArrowRight className="ml-2 h-4 w-4" />
+                </Link>
+              </Button>
+            </div>
+            <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-2 xl:grid-cols-3">
+              {coursesInCurrentLadder.map((course) => (
+                <div key={course.id} className="relative group">
+                  <CourseCard course={course} onChange={refresh} showEnroll={!user} />
                 </div>
-            )}
-        </div>
-      </section>
+              ))}
+            </div>
+          </section>
+      )}
 
       {completedCourses.length > 0 && (
           <section>

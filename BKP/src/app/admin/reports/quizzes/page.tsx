@@ -46,6 +46,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
+import { useAuth } from "@/hooks/use-auth";
 
 interface Campus {
   id: string;
@@ -68,6 +69,7 @@ interface QuizReportData {
 }
 
 export default function QuizReportsPage() {
+  const { user: currentUser, canViewAllCampuses } = useAuth();
   const [allUsers, setAllUsers] = useState<User[]>([]);
   const [allCourses, setAllCourses] = useState<Course[]>([]);
   const [allCourseGroups, setAllCourseGroups] = useState<CourseGroup[]>([]);
@@ -178,6 +180,7 @@ export default function QuizReportsPage() {
         filtered = filtered.filter(r => userIdsInCampus.has(r.userId));
       }
     }
+
     if (dateRange?.from) {
       filtered = filtered.filter(r => r.attemptedAt >= startOfDay(dateRange.from!));
     }
@@ -361,7 +364,7 @@ export default function QuizReportsPage() {
                 </SelectGroup>
               </SelectContent>
             </Select>
-            <Select value={selectedCampus} onValueChange={setSelectedCampus}>
+            <Select value={selectedCampus} onValueChange={setSelectedCampus} disabled={!canViewAllCampuses}>
               <SelectTrigger className="w-full sm:w-auto flex-grow">
                 <SelectValue placeholder="Select Campus" />
               </SelectTrigger>

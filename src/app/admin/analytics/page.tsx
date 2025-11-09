@@ -31,11 +31,11 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { Button } from "@/components/ui/button";
 import { Bar, BarChart, CartesianGrid, XAxis, YAxis, Tooltip, ResponsiveContainer } from "recharts";
 import { ChartConfig, ChartContainer, ChartTooltipContent } from "@/components/ui/chart";
-import { collection, getDocs, query, where, getCountFromServer, documentId, orderBy } from "firebase/firestore";
+import { collection, getDocs, query, where, getCountFromServer, documentId, orderBy, collectionGroup } from "firebase/firestore";
 import { getFirebaseFirestore } from "@/lib/firebase";
-import type { User, Course, UserProgress as UserProgressType, Video, Enrollment, Post, Quiz, UserQuizResult, QuizQuestion, CourseGroup } from "@/lib/types";
+import type { User, Course, UserProgress as UserProgressType, Video, Enrollment, Post, Quiz, UserQuizResult, QuizQuestion, CourseGroup, OnsiteCompletion } from "@/lib/types";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Eye, Download, ArrowUpDown, MessageSquare, ThumbsUp, Share2, ChevronLeft, ChevronRight, Repeat2, Calendar as CalendarIcon, X as XIcon, CheckCircle, XCircle, Trash2, BookCopy, FileQuestion } from "lucide-react";
+import { Eye, Download, ArrowUpDown, ChevronLeft, ChevronRight, Calendar as CalendarIcon, X as XIcon, CheckCircle, XCircle, Trash2, BookCopy, FileQuestion, Loader2, RefreshCw } from "lucide-react";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import Papa from 'papaparse';
@@ -88,16 +88,6 @@ interface ProgressDetail {
   course: Course;
 }
 
-interface SocialInteractionData {
-    postId: string;
-    postContent: string;
-    authorName: string;
-    likes: number;
-    shares: number;
-    reposts: number;
-    comments: number;
-}
-
 interface CourseEngagementData {
     courseId: string;
     courseTitle: string;
@@ -131,36 +121,44 @@ function formatDuration(seconds: number) {
   return result.trim() || "0s";
 }
 
+const ClickToLoad = ({ onFetch, title }: { onFetch: () => void, title: string }) => (
+  <div className="flex items-center justify-center h-full min-h-[300px]">
+    <Button onClick={onFetch} variant="outline">
+      <RefreshCw className="mr-2 h-4 w-4" />
+      Load {title}
+    </Button>
+  </div>
+);
+
 
 export default function AnalyticsDashboard() {
   const { user: currentUser, canViewAllCampuses } = useAuth();
   const [selectedUser, setSelectedUser] = useState<string | "all">("all");
   const [selectedCourse, setSelectedCourse] = useState<string | "all">("all");
   const [selectedCampus, setSelectedCampus] = useState<string | "all">("all");
-  const [userProgressData, setUserProgressData] = useState<(UserProgressType & { enrollment?: Enrollment })[]>([]);
+  
+  // Data states
+  const [userProgressData, setUserProgressData] = useState<(UserProgressType & { enrollment?: Enrollment })[] | null>(null);
   const [allUsers, setAllUsers] = useState<User[]>([]);
   const [allCourses, setAllCourses] = useState<Course[]>([]);
   const [allCourseGroups, setAllCourseGroups] = useState<CourseGroup[]>([]);
   const [allQuizzes, setAllQuizzes] = useState<Quiz[]>([]);
   const [allVideos, setAllVideos] = useState<Video[]>([]);
   const [allCampuses, setAllCampuses] = useState<Campus[]>([]);
-  const [socialData, setSocialData] = useState<SocialInteractionData[]>([]);
-  const [courseEngagementData, setCourseEngagementData] = useState<CourseEngagementData[]>([]);
-  const [userRoleData, setUserRoleData] = useState<{ name: string; users: number }[]>([]);
-  const [hpRequestData, setHpRequestData] = useState<{ day: string; requests: number }[]>([]);
-  const [quizPerformanceSummary, setQuizPerformanceSummary] = useState<QuizPerformanceSummary[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [courseEngagementData, setCourseEngagementData] = useState<CourseEngagementData[] | null>(null);
+  const [userRoleData, setUserRoleData] = useState<{ name: string; users: number }[] | null>(null);
+  const [hpRequestData, setHpRequestData] = useState<{ day: string; requests: number }[] | null>(null);
+  const [quizPerformanceSummary, setQuizPerformanceSummary] = useState<QuizPerformanceSummary[] | null>(null);
+  const [campusProgressChartData, setCampusProgressChartData] = useState<{ campus: string; averageProgress: number }[] | null>(null);
+
+  // Loading states
+  const [loading, setLoading] = useState(false);
   const [isClient, setIsClient] = useState(false);
+  
   const [selectedProgressDetail, setSelectedProgressDetail] = useState<ProgressDetail | null>(null);
-  const dashboardRef = useRef<HTMLDivElement>(null);
-  const [sortConfig, setSortConfig] = useState < {
-    key: SortKey;
-    direction: SortDirection
-  } | null > (null);
+  const [sortConfig, setSortConfig] = useState < { key: SortKey; direction: SortDirection } | null > (null);
   const [dateRange, setDateRange] = useState < DateRange | undefined > ();
 
-  const [socialDataPage, setSocialDataPage] = useState(1);
-  const [socialDataPageSize, setSocialDataPageSize] = useState(10);
   const [detailedReportPage, setDetailedReportPage] = useState(1);
   const [detailedReportPageSize, setDetailedReportPageSize] = useState(10);
   const [quizPerformancePage, setQuizPerformancePage] = useState(1);
@@ -172,149 +170,170 @@ export default function AnalyticsDashboard() {
     setIsClient(true);
   }, []);
 
-  const fetchAllStaticData = useCallback(async () => {
+  const fetchBaseData = useCallback(async () => {
+    if (allUsers.length > 0) return; // Don't refetch if already loaded
     setLoading(true);
     try {
-      const usersCollection = collection(db, 'users');
-      const coursesCollection = query(collection(db, 'courses'), where('status', '==', 'published'));
-      const courseGroupsCollection = collection(db, 'courseGroups');
-      const videosCollection = query(collection(db, 'Contents'), where("Type", "in", ["video", "youtube", "googledrive"]));
-      const quizzesCollection = collection(db, 'quizzes');
-      const quizResultsCollection = collection(db, 'userQuizResults');
-      const campusesCollection = collection(db, 'Campus');
-      const communityPostsCollection = collection(db, 'communityPosts');
-      const enrollmentsCollection = collection(db, 'enrollments');
+        const usersCollection = collection(db, 'users');
+        const coursesCollection = query(collection(db, 'courses'), where('status', '==', 'published'));
+        const courseGroupsCollection = collection(db, 'courseGroups');
+        const videosCollection = query(collection(db, 'Contents'), where("Type", "in", ["video", "youtube", "googledrive"]));
+        const quizzesCollection = collection(db, 'quizzes');
+        const campusesCollection = collection(db, 'Campus');
+        
+        const [usersSnapshot, coursesSnapshot, courseGroupsSnapshot, videosSnapshot, quizzesSnapshot, campusesSnapshot] = await Promise.all([
+            getDocs(usersCollection),
+            getDocs(coursesCollection),
+            getDocs(courseGroupsCollection),
+            getDocs(videosCollection),
+            getDocs(quizzesCollection),
+            getDocs(campusesCollection),
+        ]);
 
-      const [usersSnapshot, coursesSnapshot, courseGroupsSnapshot, videosSnapshot, quizzesSnapshot, quizResultsSnapshot, campusesSnapshot, communityPostsSnapshot, enrollmentsSnapshot] = await Promise.all([
-        getDocs(usersCollection),
-        getDocs(coursesCollection),
-        getDocs(courseGroupsCollection),
-        getDocs(videosCollection),
-        getDocs(quizzesCollection),
-        getDocs(quizResultsCollection),
-        getDocs(campusesCollection),
-        getDocs(communityPostsCollection),
-        getDocs(enrollmentsCollection),
-      ]);
+        setAllUsers(usersSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as User)));
+        setAllCourses(coursesSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Course)));
+        setAllCourseGroups(courseGroupsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as CourseGroup)));
+        setAllVideos(videosSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Video)));
+        setAllQuizzes(quizzesSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Quiz)));
+        setAllCampuses(campusesSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Campus)));
+    } catch (error) {
+        console.error("Error fetching base data:", error);
+        toast({ variant: 'destructive', title: 'Failed to load essential data.' });
+    } finally {
+        setLoading(false);
+    }
+  }, [allUsers.length, db, toast]);
 
-      const usersList = usersSnapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data()
-      } as User));
-      const coursesList = coursesSnapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data()
-      } as Course));
-       const courseGroupsList = courseGroupsSnapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data()
-      } as CourseGroup));
-      const videosList = videosSnapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data()
-      } as Video));
-      const quizzesList = quizzesSnapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data()
-      } as Quiz));
-      const quizResultsList = quizResultsSnapshot.docs.map(doc => doc.data() as UserQuizResult);
-      const campusesList = campusesSnapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data()
-      } as Campus));
-      const postsList = communityPostsSnapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data()
-      } as Post));
-      const enrollmentsList = enrollmentsSnapshot.docs.map(doc => doc.data() as Enrollment);
+  useEffect(() => {
+    fetchBaseData();
+  }, [fetchBaseData]);
 
-      setAllUsers(usersList);
-      setAllCourses(coursesList);
-      setAllCourseGroups(courseGroupsList);
-      setAllVideos(videosList);
-      setAllQuizzes(quizzesList);
-      setAllCampuses(campusesList);
 
-      const rolesCount = usersList.reduce((acc, user) => {
+  const fetchUserRoles = useCallback(async () => {
+    setLoading(true);
+    const rolesCount = allUsers.reduce((acc, user) => {
         const role = user.role || 'user';
         acc[role] = (acc[role] || 0) + 1;
         return acc;
-      }, {} as { [key: string]: number });
-      
-      const roleData = Object.entries(rolesCount).map(([name, count]) => ({
+    }, {} as { [key: string]: number });
+    const roleData = Object.entries(rolesCount).map(([name, count]) => ({
         name: name.charAt(0).toUpperCase() + name.slice(1),
         users: count,
-      }));
-      setUserRoleData(roleData);
+    }));
+    setUserRoleData(roleData);
+    setLoading(false);
+  }, [allUsers]);
 
-      const hpRequestingUsers = usersList.filter(u => 
+  const fetchHpRequests = useCallback(async () => {
+    setLoading(true);
+    const hpRequestingUsers = allUsers.filter(u => 
         (u.isInHpGroup === false || u.isInHpGroup === undefined || u.isInHpGroup === null) && u.hpAvailabilityDay
-      );
-      const hpRequestsByDay = hpRequestingUsers.reduce((acc, user) => {
-        const day = user.hpAvailabilityDay!; // We've already filtered for this
+    );
+    const hpRequestsByDay = hpRequestingUsers.reduce((acc, user) => {
+        const day = user.hpAvailabilityDay!;
         acc[day] = (acc[day] || 0) + 1;
         return acc;
-      }, {} as { [key: string]: number });
-      
-      const hpChartData = Object.entries(hpRequestsByDay).map(([day, count]) => ({ day, requests: count }));
-      setHpRequestData(hpChartData);
+    }, {} as { [key: string]: number });
+    const hpChartData = Object.entries(hpRequestsByDay).map(([day, count]) => ({ day, requests: count }));
+    setHpRequestData(hpChartData);
+    setLoading(false);
+  }, [allUsers]);
+  
+  const fetchCourseEngagement = useCallback(async () => {
+    setLoading(true);
+    try {
+        const [enrollmentsSnap, onsiteCompletionsSnap, formSubmissionsSnap, quizResultsSnap, progressSnap] = await Promise.all([
+          getDocs(collection(db, 'enrollments')),
+          getDocs(collection(db, 'onsiteCompletions')),
+          getDocs(query(collectionGroup(db, 'submissions'))),
+          getDocs(collection(db, 'userQuizResults')),
+          getDocs(collection(db, 'userVideoProgress')),
+        ]);
 
-
-      const socialDataPromises = postsList.map(async (post) => {
-        const repliesQuery = query(collection(db, 'communityPosts', post.id, 'replies'));
-        const repliesSnapshot = await getCountFromServer(repliesQuery);
-        return {
-          postId: post.id,
-          postContent: post.content,
-          authorName: post.authorName,
-          likes: post.likeCount || 0,
-          shares: post.shareCount || 0,
-          reposts: post.repostCount || 0,
-          comments: repliesSnapshot.data().count,
-        };
-      });
-      const socialInteractionData = await Promise.all(socialDataPromises);
-      setSocialData(socialInteractionData);
-      
-       const completionCountsByCourse = enrollmentsList.reduce((acc, enrollment) => {
-          if (enrollment.completedAt) {
-              acc[enrollment.courseId] = (acc[enrollment.courseId] || 0) + 1;
-          }
-          return acc;
-      }, {} as Record<string, number>);
-
-      const courseEngagementPromises = coursesList.map(async (course) => {
-        const videosInCourse = videosList.filter(video => course.videos?.includes(video.id));
+        const quizResultsList = quizResultsSnap.docs.map(d => d.data() as UserQuizResult);
+        const formSubmissionsList = formSubmissionsSnap.docs.map(d => d.data() as {userId: string, courseId: string, formId: string});
+        const progressDocs = progressSnap.docs.map(doc => doc.data() as UserProgressType);
         
-        const likeCounts = await Promise.all(videosInCourse.map(async video => {
-            const likesQuery = query(collection(db, 'Contents', video.id, 'likes'));
-            const snapshot = await getCountFromServer(likesQuery);
-            return snapshot.data().count;
-        }));
-        const commentCounts = await Promise.all(videosInCourse.map(async video => {
-            const commentsQuery = query(collection(db, 'Contents', video.id, 'comments'));
-            const snapshot = await getCountFromServer(commentsQuery);
-            return snapshot.data().count;
-        }));
+        const passedQuizzesByCourseAndUser = new Map<string, Set<string>>();
+        quizResultsList.forEach(qr => {
+            if (qr.passed) {
+                const key = `${qr.userId}_${qr.courseId}`;
+                if (!passedQuizzesByCourseAndUser.has(key)) passedQuizzesByCourseAndUser.set(key, new Set());
+                passedQuizzesByCourseAndUser.get(key)!.add(qr.quizId);
+            }
+        });
+        const completedFormsByCourseAndUser = new Map<string, Set<string>>();
+        formSubmissionsList.forEach(fs => {
+            const key = `${fs.userId}_${fs.courseId}`;
+            if (!completedFormsByCourseAndUser.has(key)) completedFormsByCourseAndUser.set(key, new Set());
+            completedFormsByCourseAndUser.get(key)!.add(fs.formId);
+        });
 
-        const totalLikes = likeCounts.reduce((sum, count) => sum + count, 0);
-        const totalComments = commentCounts.reduce((sum, count) => sum + count, 0);
+        const completionsByCourse = new Map<string, number>();
 
-        return {
-          courseId: course.id,
-          courseTitle: course.title,
-          enrollments: course.enrollmentCount || 0,
-          completions: completionCountsByCourse[course.id] || 0,
-          likes: totalLikes,
-          comments: totalComments,
-        };
-      });
+        allUsers.forEach(user => {
+            allCourses.forEach(course => {
+                const isOnsiteCompleted = onsiteCompletionsSnap.docs.some(d => {
+                    const oc = d.data() as OnsiteCompletion;
+                    return oc.userId === user.id && oc.courseId === course.id;
+                });
+                if (isOnsiteCompleted) {
+                    completionsByCourse.set(course.id, (completionsByCourse.get(course.id) || 0) + 1);
+                    return;
+                }
 
-      const courseEngagement = await Promise.all(courseEngagementPromises);
-      setCourseEngagementData(courseEngagement.filter(c => c.enrollments > 0));
+                const progressDoc = progressDocs.find(p => p.userId === user.id && p.courseId === course.id);
+                const videosInCourse = course.videos || [];
+                const completedVideos = progressDoc?.videoProgress?.filter(v => v.completed).length || 0;
+                const allVideosWatched = videosInCourse.length > 0 ? completedVideos >= videosInCourse.length : true;
+                if (!allVideosWatched) return;
 
-      // Process Quiz Performance Summary
-      const quizPerformance = quizzesList.map(quiz => {
+                const requiredQuizzes = course.quizIds || [];
+                const allQuizzesPassed = requiredQuizzes.every(qid => passedQuizzesByCourseAndUser.get(`${user.id}_${course.id}`)?.has(qid));
+                if (!allQuizzesPassed) return;
+                
+                const requiredForm = course.formId;
+                const formSubmitted = requiredForm ? completedFormsByCourseAndUser.get(`${user.id}_${course.id}`)?.has(requiredForm) : true;
+
+                if (allVideosWatched && allQuizzesPassed && formSubmitted) {
+                    completionsByCourse.set(course.id, (completionsByCourse.get(course.id) || 0) + 1);
+                }
+            });
+        });
+
+        const courseEngagementPromises = allCourses.map(async (course) => {
+            const videosInCourse = allVideos.filter(video => course.videos?.includes(video.id));
+            const [likeCounts, commentCounts] = await Promise.all([
+                Promise.all(videosInCourse.map(video => getCountFromServer(query(collection(db, 'Contents', video.id, 'likes'))).then(s => s.data().count))),
+                Promise.all(videosInCourse.map(video => getCountFromServer(query(collection(db, 'Contents', video.id, 'comments'))).then(s => s.data().count))),
+            ]);
+            const totalLikes = likeCounts.reduce((sum, count) => sum + count, 0);
+            const totalComments = commentCounts.reduce((sum, count) => sum + count, 0);
+
+            return {
+              courseId: course.id,
+              courseTitle: course.title,
+              enrollments: course.enrollmentCount || 0,
+              completions: completionsByCourse.get(course.id) || 0,
+              likes: totalLikes,
+              comments: totalComments,
+            };
+        });
+
+        const courseEngagement = await Promise.all(courseEngagementPromises);
+        setCourseEngagementData(courseEngagement.filter(c => c.enrollments > 0 || c.completions > 0));
+
+    } catch(e) {
+      console.error(e)
+    } finally {
+        setLoading(false);
+    }
+  }, [allCourses, allUsers, allVideos, db]);
+  
+  const fetchQuizPerformance = useCallback(async () => {
+    setLoading(true);
+    const quizResultsList = (await getDocs(collection(db, 'userQuizResults'))).docs.map(doc => doc.data() as UserQuizResult);
+    const quizPerformance = allQuizzes.map(quiz => {
         const resultsForQuiz = quizResultsList.filter(r => r.quizId === quiz.id);
         const totalAttempts = resultsForQuiz.length;
         const passCount = resultsForQuiz.filter(r => r.passed).length;
@@ -325,107 +344,57 @@ export default function AnalyticsDashboard() {
             passCount: passCount,
             failCount: totalAttempts - passCount,
         };
-      });
-      setQuizPerformanceSummary(quizPerformance.filter(q => q.totalAttempts > 0));
-
-
-      return {
-        usersList,
-        coursesList,
-        videosList,
-        campusesList
-      };
-    } catch (error) {
-      console.error("Failed to fetch static analytics data:", error);
-      return {
-        usersList: [],
-        coursesList: [],
-        videosList: [],
-        campusesList: []
-      };
-    } finally {
-      setLoading(false);
-    }
-  }, [db]);
+    });
+    setQuizPerformanceSummary(quizPerformance.filter(q => q.totalAttempts > 0));
+    setLoading(false);
+  }, [allQuizzes, db]);
 
   const fetchProgressData = useCallback(async () => {
+    setLoading(true);
     try {
-      let progressQuery = query(collection(db, 'userVideoProgress'));
-      if (selectedUser !== 'all') {
-        progressQuery = query(progressQuery, where('userId', '==', selectedUser));
-      }
-      
-      const courseIdsToFilter = new Set<string>();
-      if (selectedCourse.startsWith('group_')) {
-        const groupId = selectedCourse.replace('group_', '');
-        const group = allCourseGroups.find(g => g.id === groupId);
-        group?.courseIds.forEach(id => courseIdsToFilter.add(id));
-      } else if (selectedCourse !== 'all') {
-        courseIdsToFilter.add(selectedCourse);
-      }
+        const [progressSnapshot, enrollmentSnapshot] = await Promise.all([
+            getDocs(collection(db, 'userVideoProgress')),
+            getDocs(collection(db, 'enrollments')),
+        ]);
+        
+        const enrollmentsMap = new Map(enrollmentSnapshot.docs.map(doc => [`${doc.data().userId}_${doc.data().courseId}`, doc.data() as Enrollment]));
 
-      if (courseIdsToFilter.size > 0) {
-        progressQuery = query(progressQuery, where('courseId', 'in', Array.from(courseIdsToFilter)));
-      }
+        const progressList = progressSnapshot.docs.map(doc => {
+            const data = doc.data() as Omit < UserProgressType, 'totalProgress' > ;
+            const course = allCourses.find(c => c.id === data.courseId);
+            const publishedVideoIdsInCourse = new Set((course?.videos || []).filter(vid => allVideos.some(v => v.id === vid && v.status === 'published')));
+            const totalVideos = publishedVideoIdsInCourse.size;
+            const completedCount = data.videoProgress?.filter(vp => vp.completed && publishedVideoIdsInCourse.has(vp.videoId)).length || 0;
+            const totalProgress = totalVideos > 0 ? Math.round((completedCount / totalVideos) * 100) : 0;
+            const enrollment = enrollmentsMap.get(`${data.userId}_${data.courseId}`);
+            return { ...data, totalProgress, enrollment };
+        });
+        
+        const campusProgData = allCampuses.map(campus => {
+            const campusUsers = allUsers.filter(u => u.campus === campus["Campus Name"]);
+            const campusUserIds = new Set(campusUsers.map(u => u.id));
+            const progressForCampus = progressList.filter(p => campusUserIds.has(p.userId));
 
-      const progressSnapshot = await getDocs(progressQuery);
+            if (progressForCampus.length === 0) return { campus: campus["Campus Name"], averageProgress: 0 };
 
-      const enrollmentQuery = query(collection(db, 'enrollments'));
-      const enrollmentSnapshot = await getDocs(enrollmentQuery);
-      const enrollmentsMap = new Map(enrollmentSnapshot.docs.map(doc => [`${doc.data().userId}_${doc.data().courseId}`, doc.data() as Enrollment]));
-
-      let progressList = progressSnapshot.docs.map(doc => {
-        const data = doc.data() as Omit < UserProgressType, 'totalProgress' > ;
-        const course = allCourses.find(c => c.id === data.courseId);
-
-        const publishedVideoIdsInCourse = new Set((course?.videos || []).filter(vid => allVideos.some(v => v.id === vid && v.status === 'published')));
-        const totalVideos = publishedVideoIdsInCourse.size;
-
-        const completedCount = data.videoProgress?.filter(vp => vp.completed && publishedVideoIdsInCourse.has(vp.videoId)).length || 0;
-        const totalProgress = totalVideos > 0 ? Math.round((completedCount / totalVideos) * 100) : 0;
-
-        const enrollment = enrollmentsMap.get(`${data.userId}_${data.courseId}`);
-
-        return {
-          ...data,
-          totalProgress,
-          enrollment
-        };
-      });
-
-      if (!canViewAllCampuses) {
-          const userCampusName = currentUser?.campus;
-          if (userCampusName) {
-            const userIdsInCampus = new Set(allUsers.filter(u => u.campus === userCampusName).map(u => u.id));
-            progressList = progressList.filter(p => userIdsInCampus.has(p.userId));
-          }
-      } else if (selectedCampus !== 'all') {
-          const campus = allCampuses.find(c => c.id === selectedCampus);
-          if (campus) {
-              const userIdsInCampus = new Set(allUsers.filter(u => u.campus === campus["Campus Name"]).map(u => u.id));
-              progressList = progressList.filter(p => userIdsInCampus.has(p.userId));
-          }
-      }
-
-      setUserProgressData(progressList);
+            const totalProgressSum = progressForCampus.reduce((acc, p) => acc + p.totalProgress, 0);
+            return {
+                campus: campus["Campus Name"],
+                averageProgress: Math.round(totalProgressSum / progressForCampus.length)
+            };
+        }).filter(d => d.averageProgress > 0);
+        
+        setUserProgressData(progressList);
+        setCampusProgressChartData(campusProgData);
     } catch (error) {
-      console.error("Error fetching progress data:", error);
-      setUserProgressData([]);
+        console.error("Error fetching progress data:", error);
+    } finally {
+        setLoading(false);
     }
-  }, [db, selectedUser, selectedCourse, canViewAllCampuses, selectedCampus, allUsers, allCourses, allCampuses, allVideos, allCourseGroups, currentUser]);
-
-  useEffect(() => {
-    fetchAllStaticData();
-  }, [fetchAllStaticData]);
-
-  useEffect(() => {
-    if (!loading) {
-      fetchProgressData();
-    }
-  }, [loading, selectedUser, selectedCourse, selectedCampus, fetchProgressData]);
-
+}, [db, allCourses, allVideos, allUsers, allCampuses]);
 
   const campusesWithProgress = useMemo(() => {
+    if (!userProgressData) return [];
     const userIdsWithProgress = new Set(userProgressData.filter(p => (p.videoProgress || []).some(vp => vp.timeSpent > 0 || vp.completed)).map(p => p.userId));
     const relevantUsers = allUsers.filter(u => userIdsWithProgress.has(u.id));
     const campusNames = new Set(relevantUsers.map(u => u.campus).filter(Boolean));
@@ -433,7 +402,40 @@ export default function AnalyticsDashboard() {
   }, [userProgressData, allUsers, allCampuses]);
 
   const sortedAndFilteredProgress = useMemo(() => {
-    let filtered = [...userProgressData];
+    if (!userProgressData) return [];
+
+    let filtered = userProgressData.filter(p => {
+        let userMatches = true;
+        if (selectedUser !== 'all') {
+            userMatches = p.userId === selectedUser;
+        }
+
+        const courseIdsToFilter = new Set<string>();
+        if (selectedCourse.startsWith('group_')) {
+            const groupId = selectedCourse.replace('group_', '');
+            const group = allCourseGroups.find(g => g.id === groupId);
+            group?.courseIds.forEach(id => courseIdsToFilter.add(id));
+        } else if (selectedCourse !== 'all') {
+            courseIdsToFilter.add(selectedCourse);
+        }
+        const courseMatches = courseIdsToFilter.size === 0 || courseIdsToFilter.has(p.courseId);
+
+        let campusMatches = true;
+        if (!canViewAllCampuses) {
+            const userCampusName = currentUser?.campus;
+            if (userCampusName) {
+                const userIdsInCampus = new Set(allUsers.filter(u => u.campus === userCampusName).map(u => u.id));
+                campusMatches = userIdsInCampus.has(p.userId);
+            }
+        } else if (selectedCampus !== 'all') {
+            const campus = allCampuses.find(c => c.id === selectedCampus);
+            if (campus) {
+                const userIdsInCampus = new Set(allUsers.filter(u => u.campus === campus["Campus Name"]).map(u => u.id));
+                campusMatches = userIdsInCampus.has(p.userId);
+            }
+        }
+        return userMatches && courseMatches && campusMatches;
+    });
 
     if (dateRange?.from) {
       const start = startOfDay(dateRange.from);
@@ -452,29 +454,13 @@ export default function AnalyticsDashboard() {
         const courseA = allCourses.find(c => c.id === a.courseId);
         const courseB = allCourses.find(c => c.id === b.courseId);
 
-        let valA,
-          valB;
-
+        let valA, valB;
         switch (sortConfig.key) {
-          case 'user':
-            valA = userA?.displayName;
-            valB = userB?.displayName;
-            break;
-          case 'course':
-            valA = courseA?.title;
-            valB = courseB?.title;
-            break;
-          case 'startDate':
-            valA = a.enrollment?.enrolledAt?.seconds || 0;
-            valB = b.enrollment?.enrolledAt?.seconds || 0;
-            break;
-          case 'completionDate':
-            valA = a.enrollment?.completedAt?.seconds || 0;
-            valB = b.enrollment?.completedAt?.seconds || 0;
-            break;
-          default:
-            valA = '';
-            valB = '';
+          case 'user': valA = userA?.displayName; valB = userB?.displayName; break;
+          case 'course': valA = courseA?.title; valB = courseB?.title; break;
+          case 'startDate': valA = a.enrollment?.enrolledAt?.seconds || 0; valB = b.enrollment?.enrolledAt?.seconds || 0; break;
+          case 'completionDate': valA = a.enrollment?.completedAt?.seconds || 0; valB = b.enrollment?.completedAt?.seconds || 0; break;
+          default: valA = ''; valB = '';
         }
 
         if (valA === undefined || valA === null) valA = sortConfig.direction === 'asc' ? Infinity : -Infinity;
@@ -486,62 +472,37 @@ export default function AnalyticsDashboard() {
         if (typeof valA === 'number' && typeof valB === 'number') {
           return sortConfig.direction === 'asc' ? valA - valB : valB - valA;
         }
-
         return 0;
       });
     }
 
     return filtered;
-  }, [userProgressData, sortConfig, allUsers, allCourses, dateRange]);
+  }, [userProgressData, sortConfig, allUsers, allCourses, dateRange, selectedUser, selectedCourse, selectedCampus, allCourseGroups, canViewAllCampuses, currentUser]);
 
   const engagementChartData = useMemo(() => {
+    if (!sortedAndFilteredProgress) return [];
     return allCourses.map(course => {
       const timeSpent = sortedAndFilteredProgress
         .filter(p => p.courseId === course.id)
         .reduce((total, p) => total + (p.videoProgress || []).reduce((sum, vp) => sum + vp.timeSpent, 0), 0);
       return {
         course: course.title,
-        timeSpent: Math.round(timeSpent / 60) // in minutes
+        timeSpent: Math.round(timeSpent / 60)
       };
     }).filter(d => d.timeSpent > 0);
   }, [allCourses, sortedAndFilteredProgress]);
-
-  const campusProgressChartData = useMemo(() => {
-    const data = allCampuses.map(campus => {
-      const campusUsers = allUsers.filter(u => u.campus === campus["Campus Name"]);
-      const campusUserIds = new Set(campusUsers.map(u => u.id));
-      const progressForCampus = userProgressData.filter(p => campusUserIds.has(p.userId));
-
-      if (progressForCampus.length === 0) {
-        return {
-          campus: campus["Campus Name"],
-          averageProgress: 0
-        };
-      }
-
-      const totalProgressSum = progressForCampus.reduce((acc, p) => acc + p.totalProgress, 0);
-      const averageProgress = Math.round(totalProgressSum / progressForCampus.length);
-
-      return {
-        campus: campus["Campus Name"],
-        averageProgress
-      };
-    }).filter(d => d.averageProgress > 0);
-    return data;
-  }, [allCampuses, allUsers, userProgressData]);
   
-  const totalHpRequests = useMemo(() => hpRequestData.reduce((sum, item) => sum + item.requests, 0), [hpRequestData]);
+  const totalHpRequests = useMemo(() => hpRequestData?.reduce((sum, item) => sum + item.requests, 0) || 0, [hpRequestData]);
   
  const groupedCourseEngagement = useMemo(() => {
+    if (!courseEngagementData) return [];
     const groups: { [key: string]: CourseEngagementData[] } = {};
     const uncategorizedCourses: CourseEngagementData[] = [];
 
     const courseToGroupMap = new Map<string, string[]>();
     allCourseGroups.forEach(group => {
         group.courseIds.forEach(courseId => {
-            if (!courseToGroupMap.has(courseId)) {
-                courseToGroupMap.set(courseId, []);
-            }
+            if (!courseToGroupMap.has(courseId)) courseToGroupMap.set(courseId, []);
             courseToGroupMap.get(courseId)!.push(group.title);
         });
     });
@@ -550,9 +511,7 @@ export default function AnalyticsDashboard() {
         const groupTitles = courseToGroupMap.get(course.courseId);
         if (groupTitles && groupTitles.length > 0) {
             groupTitles.forEach(title => {
-                if (!groups[title]) {
-                    groups[title] = [];
-                }
+                if (!groups[title]) groups[title] = [];
                 groups[title].push(course);
             });
         } else {
@@ -560,22 +519,17 @@ export default function AnalyticsDashboard() {
         }
     });
 
-    // Function to extract number from session title for sorting
     const extractSessionNumber = (title: string) => {
         const match = title.match(/Session (\d+)/i);
         return match ? parseInt(match[1], 10) : Infinity;
     };
     
-    // Sort courses within each group
     for (const groupTitle in groups) {
         groups[groupTitle].sort((a, b) => extractSessionNumber(a.courseTitle) - extractSessionNumber(b.courseTitle));
     }
     uncategorizedCourses.sort((a, b) => extractSessionNumber(a.courseTitle) - extractSessionNumber(b.courseTitle));
     
-    const groupedArray = Object.entries(groups).map(([title, courses]) => ({
-      title,
-      courses,
-    }));
+    const groupedArray = Object.entries(groups).map(([title, courses]) => ({ title, courses }));
     
     if(uncategorizedCourses.length > 0) {
       groupedArray.push({ title: 'Uncategorized', courses: uncategorizedCourses });
@@ -585,6 +539,7 @@ export default function AnalyticsDashboard() {
 }, [courseEngagementData, allCourseGroups]);
 
   const learningPathSummary = useMemo(() => {
+      if (!groupedCourseEngagement) return { summary: [], grandTotal: { enrollments: 0, completions: 0, likes: 0, comments: 0 } };
       const summary = groupedCourseEngagement.map(group => {
           const totals = group.courses.reduce((acc, course) => {
               acc.enrollments += course.enrollments;
@@ -611,17 +566,12 @@ export default function AnalyticsDashboard() {
 
   const handleSort = (key: SortKey) => {
     let direction: SortDirection = 'asc';
-    if (sortConfig && sortConfig.key === key && sortConfig.direction === 'asc') {
-      direction = 'desc';
-    }
-    setSortConfig({
-      key,
-      direction
-    });
+    if (sortConfig && sortConfig.key === key && sortConfig.direction === 'asc') direction = 'desc';
+    setSortConfig({ key, direction });
   };
 
   const handleExportCSV = () => {
-    if (sortedAndFilteredProgress.length === 0) return;
+    if (!sortedAndFilteredProgress || sortedAndFilteredProgress.length === 0) return;
 
     const headers = ["User", "Campus", "Course", "Video Title", "Status", "Time Spent", "Start Date", "Completion Date"];
     const rows: (string | number)[][] = [headers];
@@ -638,17 +588,11 @@ export default function AnalyticsDashboard() {
           const startDate = progress.enrollment?.enrolledAt?.toDate ? format(progress.enrollment.enrolledAt.toDate(), 'yyyy-MM-dd') : 'N/A';
           const completionDate = progress.enrollment?.completedAt?.toDate ? format(progress.enrollment.completedAt.toDate(), 'yyyy-MM-dd') : 'N/A';
 
-          const row = [
-            `"${user.displayName}"`,
-            `"${user.campus || 'N/A'}"`,
-            `"${course.title}"`,
-            `"${video?.title || 'N/A'}"`,
-            videoProgress.completed ? "Completed" : "In Progress",
-            `"${formatDuration(videoProgress.timeSpent || 0)}"`,
-            `"${startDate}"`,
-            `"${completionDate}"`
-          ];
-          rows.push(row);
+          rows.push([
+            `"${user.displayName}"`, `"${user.campus || 'N/A'}"`, `"${course.title}"`, `"${video?.title || 'N/A'}"`,
+            videoProgress.completed ? "Completed" : "In Progress", `"${formatDuration(videoProgress.timeSpent || 0)}"`,
+            `"${startDate}"`, `"${completionDate}"`
+          ]);
         }
       });
     });
@@ -658,12 +602,7 @@ export default function AnalyticsDashboard() {
       return;
     }
 
-    let csvContent = "data:text/csv;charset=utf-8,";
-    rows.forEach(rowArray => {
-      let row = rowArray.join(",");
-      csvContent += row + "\r\n";
-    });
-
+    let csvContent = "data:text/csv;charset=utf-8," + rows.map(e => e.join(",")).join("\n");
     const encodedUri = encodeURI(csvContent);
     const link = document.createElement("a");
     link.setAttribute("href", encodedUri);
@@ -673,20 +612,12 @@ export default function AnalyticsDashboard() {
     document.body.removeChild(link);
   }
 
-  const handleExportPDF = (ref: React.RefObject < HTMLDivElement > , filename: string) => {
-    // This function is currently not implemented due to complexity with html2canvas.
-    toast({ variant: 'destructive', title: 'Export to PDF is currently unavailable.' });
-  };
-
   const handleExportCourseEngagementCSV = () => {
+    if (!groupedCourseEngagement) return;
     const dataToExport = groupedCourseEngagement.flatMap(group => 
         group.courses.map(item => ({
-            "Learning Path": group.title,
-            "Course": item.courseTitle,
-            "Enrollments": item.enrollments,
-            "Completions": item.completions,
-            "Likes": item.likes,
-            "Comments": item.comments,
+            "Learning Path": group.title, "Course": item.courseTitle, "Enrollments": item.enrollments,
+            "Completions": item.completions, "Likes": item.likes, "Comments": item.comments,
         }))
     );
     if (dataToExport.length === 0) {
@@ -694,9 +625,7 @@ export default function AnalyticsDashboard() {
         return;
     }
     const csv = Papa.unparse(dataToExport);
-    const blob = new Blob([csv], {
-      type: "text/csv;charset=utf-8;"
-    });
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
     const link = document.createElement("a");
     const url = URL.createObjectURL(blob);
     link.setAttribute("href", url);
@@ -706,39 +635,23 @@ export default function AnalyticsDashboard() {
     document.body.removeChild(link);
   };
 
-  const socialDataTotalPages = Math.ceil(socialData.length / socialDataPageSize);
-  const currentSocialData = socialData.slice(
-    (socialDataPage - 1) * socialDataPageSize,
-    socialDataPage * socialDataPageSize
-  );
-
-  const detailedReportTotalPages = Math.ceil(sortedAndFilteredProgress.length / detailedReportPageSize);
-  const currentDetailedReportData = sortedAndFilteredProgress.slice(
+  const detailedReportTotalPages = Math.ceil((sortedAndFilteredProgress || []).length / detailedReportPageSize);
+  const currentDetailedReportData = sortedAndFilteredProgress?.slice(
     (detailedReportPage - 1) * detailedReportPageSize,
     (detailedReportPage * detailedReportPageSize)
-  );
+  ) || [];
 
-  const quizPerformanceTotalPages = Math.ceil(quizPerformanceSummary.length / quizPerformancePageSize);
-  const currentQuizPerformanceData = quizPerformanceSummary.slice(
+  const quizPerformanceTotalPages = Math.ceil((quizPerformanceSummary || []).length / quizPerformancePageSize);
+  const currentQuizPerformanceData = quizPerformanceSummary?.slice(
       (quizPerformancePage - 1) * quizPerformancePageSize,
       quizPerformancePage * quizPerformancePageSize
-  );
+  ) || [];
+  
+  if (!isClient) return null;
 
-
-  if (!isClient) {
-    return (
-      <div className="space-y-8">
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-          <Skeleton className="h-96 w-full" />
-          <Skeleton className="h-96 w-full" />
-        </div>
-        <Skeleton className="h-96 w-full" />
-      </div>
-    );
-  }
 
   return (
-    <div className="space-y-8" ref={dashboardRef}>
+    <div className="space-y-8">
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
         <Card className="lg:col-span-1">
           <CardHeader>
@@ -746,45 +659,29 @@ export default function AnalyticsDashboard() {
             <CardDescription>Total time spent per course in minutes.</CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="space-y-4">
-              <div className="flex flex-col sm:flex-row items-center gap-4">
-                <Select value={selectedUser} onValueChange={setSelectedUser}>
-                  <SelectTrigger className="w-full sm:w-[180px]">
-                    <SelectValue placeholder="Select User" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">All Users</SelectItem>
-                    {allUsers.map((user) => (
-                      <SelectItem key={user.id} value={user.id}>{user.displayName}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                <Select value={selectedCampus} onValueChange={setSelectedCampus} disabled={!canViewAllCampuses}>
-                  <SelectTrigger className="w-full sm:w-[180px]">
-                    <SelectValue placeholder="Select Campus" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">All Campuses</SelectItem>
-                    {campusesWithProgress.map((campus) => (
-                      <SelectItem key={campus.id} value={campus.id}>{campus["Campus Name"]}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              {loading ? (
-                <Skeleton className="h-[300px] w-full" />
-              ) : (
-                <ChartContainer config={engagementChartConfig} className="min-h-[200px] w-full">
-                  <BarChart data={engagementChartData} height={300}>
-                    <CartesianGrid vertical={false} />
-                    <XAxis dataKey="course" tickLine={false} tickMargin={10} axisLine={false} />
-                    <YAxis />
-                    <Tooltip content={<ChartTooltipContent />} />
-                    <Bar dataKey="timeSpent" fill="var(--color-timeSpent)" radius={4} />
-                  </BarChart>
-                </ChartContainer>
-              )}
-            </div>
+            {userProgressData === null ? (
+                <ClickToLoad onFetch={fetchProgressData} title="Engagement Report" />
+            ) : (
+              <>
+                <div className="flex flex-col sm:flex-row items-center gap-4">
+                  <Select value={selectedUser} onValueChange={setSelectedUser}>
+                    <SelectTrigger className="w-full sm:w-[180px]"><SelectValue placeholder="Select User" /></SelectTrigger>
+                    <SelectContent><SelectItem value="all">All Users</SelectItem>{allUsers.map((user) => (<SelectItem key={user.id} value={user.id}>{user.displayName}</SelectItem>))}</SelectContent>
+                  </Select>
+                  <Select value={selectedCampus} onValueChange={setSelectedCampus} disabled={!canViewAllCampuses}>
+                    <SelectTrigger className="w-full sm:w-[180px]"><SelectValue placeholder="Select Campus" /></SelectTrigger>
+                    <SelectContent><SelectItem value="all">All Campuses</SelectItem>{campusesWithProgress.map((campus) => (<SelectItem key={campus.id} value={campus.id}>{campus["Campus Name"]}</SelectItem>))}</SelectContent>
+                  </Select>
+                </div>
+                {loading ? <Skeleton className="h-[300px] w-full mt-4" /> : (
+                  <ChartContainer config={engagementChartConfig} className="min-h-[200px] w-full mt-4">
+                    <BarChart data={engagementChartData} height={300}>
+                      <CartesianGrid vertical={false} /><XAxis dataKey="course" tickLine={false} tickMargin={10} axisLine={false} /><YAxis /><Tooltip content={<ChartTooltipContent />} /><Bar dataKey="timeSpent" fill="var(--color-timeSpent)" radius={4} />
+                    </BarChart>
+                  </ChartContainer>
+                )}
+              </>
+            )}
           </CardContent>
         </Card>
         <Card className="lg:col-span-1">
@@ -793,16 +690,12 @@ export default function AnalyticsDashboard() {
             <CardDescription>Average course completion percentage by campus.</CardDescription>
           </CardHeader>
           <CardContent>
-            {loading ? (
-              <Skeleton className="h-[348px] w-full" />
-            ) : (
+            {campusProgressChartData === null ? (
+                <ClickToLoad onFetch={fetchProgressData} title="Campus Progress" />
+            ) : loading ? <Skeleton className="h-[348px] w-full" /> : (
               <ChartContainer config={progressChartConfig} className="min-h-[200px] w-full">
                 <BarChart data={campusProgressChartData} height={348}>
-                  <CartesianGrid vertical={false} />
-                  <XAxis dataKey="campus" tickLine={false} tickMargin={10} axisLine={false} />
-                  <YAxis domain={[0, 100]} />
-                  <Tooltip content={<ChartTooltipContent />} />
-                  <Bar dataKey="averageProgress" fill="var(--color-averageProgress)" radius={4} />
+                  <CartesianGrid vertical={false} /><XAxis dataKey="campus" tickLine={false} tickMargin={10} axisLine={false} /><YAxis domain={[0, 100]} /><Tooltip content={<ChartTooltipContent />} /><Bar dataKey="averageProgress" fill="var(--color-averageProgress)" radius={4} />
                 </BarChart>
               </ChartContainer>
             )}
@@ -817,16 +710,10 @@ export default function AnalyticsDashboard() {
             <CardDescription>User counts by role.</CardDescription>
           </CardHeader>
           <CardContent>
-            {loading ? (
-              <Skeleton className="h-[348px] w-full" />
-            ) : (
+            {userRoleData === null ? <ClickToLoad onFetch={fetchUserRoles} title="User Overview" /> : loading ? <Skeleton className="h-[348px] w-full" /> : (
               <ChartContainer config={userRoleChartConfig} className="min-h-[200px] w-full">
                 <BarChart data={userRoleData} height={348}>
-                    <CartesianGrid vertical={false} />
-                    <XAxis dataKey="name" tickLine={false} axisLine={false} tickMargin={10} />
-                    <YAxis />
-                    <Tooltip cursor={{fill: 'hsl(var(--muted))'}} content={<ChartTooltipContent />} />
-                    <Bar dataKey="users" fill="var(--color-users)" radius={4} />
+                    <CartesianGrid vertical={false} /><XAxis dataKey="name" tickLine={false} axisLine={false} tickMargin={10} /><YAxis /><Tooltip cursor={{fill: 'hsl(var(--muted))'}} content={<ChartTooltipContent />} /><Bar dataKey="users" fill="var(--color-users)" radius={4} />
                 </BarChart>
               </ChartContainer>
             )}
@@ -835,19 +722,13 @@ export default function AnalyticsDashboard() {
          <Card className="lg:col-span-2">
           <CardHeader>
             <CardTitle>HP Requests by Day</CardTitle>
-            <CardDescription>A total of {totalHpRequests} pending HP placement requests by user availability.</CardDescription>
+            {hpRequestData && <CardDescription>A total of {totalHpRequests} pending HP placement requests by user availability.</CardDescription>}
           </CardHeader>
           <CardContent>
-            {loading ? (
-              <Skeleton className="h-[348px] w-full" />
-            ) : (
+             {hpRequestData === null ? <ClickToLoad onFetch={fetchHpRequests} title="HP Requests" /> : loading ? <Skeleton className="h-[348px] w-full" /> : (
               <ChartContainer config={hpRequestChartConfig} className="min-h-[200px] w-full">
                 <BarChart data={hpRequestData} height={348}>
-                  <CartesianGrid vertical={false} />
-                  <XAxis dataKey="day" tickLine={false} tickMargin={10} axisLine={false} />
-                  <YAxis />
-                  <Tooltip content={<ChartTooltipContent />} />
-                  <Bar dataKey="requests" fill="var(--color-requests)" radius={4} />
+                  <CartesianGrid vertical={false} /><XAxis dataKey="day" tickLine={false} tickMargin={10} axisLine={false} /><YAxis /><Tooltip content={<ChartTooltipContent />} /><Bar dataKey="requests" fill="var(--color-requests)" radius={4} />
                 </BarChart>
               </ChartContainer>
             )}
@@ -861,94 +742,44 @@ export default function AnalyticsDashboard() {
             <CardTitle>Course Engagement Report</CardTitle>
             <CardDescription>Enrollments, completions, likes, and comments for each course.</CardDescription>
           </div>
-          <div className="flex gap-2 mt-4 md:mt-0">
-            <Button onClick={handleExportCourseEngagementCSV} variant="outline" disabled={courseEngagementData.length === 0}>
-              <Download className="mr-2 h-4 w-4" />
-              Export as CSV
-            </Button>
-          </div>
+          {courseEngagementData && <Button onClick={handleExportCourseEngagementCSV} variant="outline" disabled={courseEngagementData.length === 0}><Download className="mr-2 h-4 w-4" /> Export as CSV</Button>}
         </CardHeader>
         <CardContent>
-            {learningPathSummary.summary.length > 0 && (
-                <div className="mb-6">
-                    <h3 className="font-semibold text-lg mb-2">Learning Path Summary</h3>
-                    <div className="border rounded-lg overflow-hidden">
-                        <Table>
-                            <TableHeader>
-                                <TableRow>
-                                    <TableHead>Learning Path</TableHead>
-                                    <TableHead className="text-center">Enrollments</TableHead>
-                                    <TableHead className="text-center">Completions</TableHead>
-                                    <TableHead className="text-center">Likes</TableHead>
-                                    <TableHead className="text-center">Comments</TableHead>
-                                </TableRow>
-                            </TableHeader>
-                            <TableBody>
-                                {learningPathSummary.summary.map(item => (
-                                    <TableRow key={item.title}>
-                                        <TableCell className="font-medium">{item.title}</TableCell>
-                                        <TableCell className="text-center">{item.enrollments}</TableCell>
-                                        <TableCell className="text-center">{item.completions}</TableCell>
-                                        <TableCell className="text-center">{item.likes}</TableCell>
-                                        <TableCell className="text-center">{item.comments}</TableCell>
-                                    </TableRow>
-                                ))}
-                                <TableRow className="font-bold bg-muted/50">
-                                    <TableCell>Grand Total</TableCell>
-                                    <TableCell className="text-center">{learningPathSummary.grandTotal.enrollments}</TableCell>
-                                    <TableCell className="text-center">{learningPathSummary.grandTotal.completions}</TableCell>
-                                    <TableCell className="text-center">{learningPathSummary.grandTotal.likes}</TableCell>
-                                    <TableCell className="text-center">{learningPathSummary.grandTotal.comments}</TableCell>
-                                </TableRow>
-                            </TableBody>
-                        </Table>
-                    </div>
-                </div>
-            )}
-          <div className="space-y-4">
-              {loading ? (
-                  Array.from({ length: 2 }).map((_, i) => (
-                      <div key={i}>
-                          <Skeleton className="h-6 w-1/4 mb-2" />
-                          <Skeleton className="h-24 w-full" />
+          {courseEngagementData === null ? <ClickToLoad onFetch={fetchCourseEngagement} title="Engagement Report" /> : loading ? <Skeleton className="h-48 w-full" /> : (
+            <>
+              {learningPathSummary.summary.length > 0 && (
+                  <div className="mb-6">
+                      <h3 className="font-semibold text-lg mb-2">Learning Path Summary</h3>
+                      <div className="border rounded-lg overflow-hidden">
+                          <Table>
+                              <TableHeader><TableRow><TableHead>Learning Path</TableHead><TableHead className="text-center">Enrollments</TableHead><TableHead className="text-center">Completions</TableHead><TableHead className="text-center">Likes</TableHead><TableHead className="text-center">Comments</TableHead></TableRow></TableHeader>
+                              <TableBody>
+                                  {learningPathSummary.summary.map(item => (<TableRow key={item.title}><TableCell className="font-medium">{item.title}</TableCell><TableCell className="text-center">{item.enrollments}</TableCell><TableCell className="text-center">{item.completions}</TableCell><TableCell className="text-center">{item.likes}</TableCell><TableCell className="text-center">{item.comments}</TableCell></TableRow>))}
+                                  <TableRow className="font-bold bg-muted/50"><TableCell>Grand Total</TableCell><TableCell className="text-center">{learningPathSummary.grandTotal.enrollments}</TableCell><TableCell className="text-center">{learningPathSummary.grandTotal.completions}</TableCell><TableCell className="text-center">{learningPathSummary.grandTotal.likes}</TableCell><TableCell className="text-center">{learningPathSummary.grandTotal.comments}</TableCell></TableRow>
+                              </TableBody>
+                          </Table>
                       </div>
-                  ))
-              ) : groupedCourseEngagement.length > 0 ? (
-                  groupedCourseEngagement.map(group => (
-                      <div key={group.title}>
-                          <h3 className="font-semibold text-lg mb-2 flex items-center gap-2"><BookCopy className="h-5 w-5"/>{group.title}</h3>
-                          <div className="border rounded-lg overflow-hidden">
-                              <Table>
-                                  <TableHeader>
-                                      <TableRow>
-                                          <TableHead>Course</TableHead>
-                                          <TableHead className="text-center">Enrollments</TableHead>
-                                          <TableHead className="text-center">Completions</TableHead>
-                                          <TableHead className="text-center">Likes</TableHead>
-                                          <TableHead className="text-center">Comments</TableHead>
-                                      </TableRow>
-                                  </TableHeader>
-                                  <TableBody>
-                                      {group.courses.map(item => (
-                                          <TableRow key={item.courseId}>
-                                              <TableCell className="font-medium">{item.courseTitle}</TableCell>
-                                              <TableCell className="text-center">{item.enrollments}</TableCell>
-                                              <TableCell className="text-center">{item.completions}</TableCell>
-                                              <TableCell className="text-center">{item.likes}</TableCell>
-                                              <TableCell className="text-center">{item.comments}</TableCell>
-                                          </TableRow>
-                                      ))}
-                                  </TableBody>
-                              </Table>
-                          </div>
-                      </div>
-                  ))
-              ) : (
-                  <div className="text-center p-8 text-muted-foreground">
-                      No course engagement data available.
                   </div>
               )}
-          </div>
+              <div className="space-y-4">
+                  {groupedCourseEngagement.length > 0 ? (
+                      groupedCourseEngagement.map(group => (
+                          <div key={group.title}>
+                              <h3 className="font-semibold text-lg mb-2 flex items-center gap-2"><BookCopy className="h-5 w-5"/>{group.title}</h3>
+                              <div className="border rounded-lg overflow-hidden">
+                                  <Table>
+                                      <TableHeader><TableRow><TableHead>Course</TableHead><TableHead className="text-center">Enrollments</TableHead><TableHead className="text-center">Completions</TableHead><TableHead className="text-center">Likes</TableHead><TableHead className="text-center">Comments</TableHead></TableRow></TableHeader>
+                                      <TableBody>
+                                          {group.courses.map(item => (<TableRow key={item.courseId}><TableCell className="font-medium">{item.courseTitle}</TableCell><TableCell className="text-center">{item.enrollments}</TableCell><TableCell className="text-center">{item.completions}</TableCell><TableCell className="text-center">{item.likes}</TableCell><TableCell className="text-center">{item.comments}</TableCell></TableRow>))}
+                                      </TableBody>
+                                  </Table>
+                              </div>
+                          </div>
+                      ))
+                  ) : <p className="text-center p-8 text-muted-foreground">No course engagement data available.</p>}
+              </div>
+            </>
+          )}
         </CardContent>
       </Card>
       
@@ -958,406 +789,73 @@ export default function AnalyticsDashboard() {
           <CardDescription>A summary of attempts and pass/fail rates for each quiz.</CardDescription>
         </CardHeader>
         <CardContent>
+          {quizPerformanceSummary === null ? <ClickToLoad onFetch={fetchQuizPerformance} title="Quiz Performance" /> : loading ? <Skeleton className="h-48 w-full" /> : (
             <div className="border rounded-lg overflow-hidden">
                 <Table>
-                    <TableHeader>
-                        <TableRow>
-                            <TableHead>Quiz Title</TableHead>
-                            <TableHead className="text-center">Total Attempts</TableHead>
-                            <TableHead className="text-center">Passes</TableHead>
-                            <TableHead className="text-center">Fails</TableHead>
-                        </TableRow>
-                    </TableHeader>
+                    <TableHeader><TableRow><TableHead>Quiz Title</TableHead><TableHead className="text-center">Total Attempts</TableHead><TableHead className="text-center">Passes</TableHead><TableHead className="text-center">Fails</TableHead></TableRow></TableHeader>
                     <TableBody>
-                        {loading ? (
-                            Array.from({ length: 3 }).map((_, i) => (
-                                <TableRow key={i}>
-                                    <TableCell><Skeleton className="h-5 w-48" /></TableCell>
-                                    <TableCell className="text-center"><Skeleton className="h-5 w-12 mx-auto" /></TableCell>
-                                    <TableCell className="text-center"><Skeleton className="h-5 w-12 mx-auto" /></TableCell>
-                                    <TableCell className="text-center"><Skeleton className="h-5 w-12 mx-auto" /></TableCell>
-                                </TableRow>
-                            ))
-                        ) : currentQuizPerformanceData.length > 0 ? (
-                            currentQuizPerformanceData.map(item => (
-                                <TableRow key={item.quizId}>
-                                    <TableCell className="font-medium">{item.quizTitle}</TableCell>
-                                    <TableCell className="text-center">{item.totalAttempts}</TableCell>
-                                    <TableCell className="text-center text-green-600">{item.passCount}</TableCell>
-                                    <TableCell className="text-center text-red-600">{item.failCount}</TableCell>
-                                </TableRow>
-                            ))
-                        ) : (
-                            <TableRow>
-                                <TableCell colSpan={4} className="text-center text-muted-foreground p-8">
-                                    No quiz attempts recorded yet.
-                                </TableCell>
-                            </TableRow>
-                        )}
+                        {currentQuizPerformanceData.length > 0 ? (
+                            currentQuizPerformanceData.map(item => (<TableRow key={item.quizId}><TableCell className="font-medium">{item.quizTitle}</TableCell><TableCell className="text-center">{item.totalAttempts}</TableCell><TableCell className="text-center text-green-600">{item.passCount}</TableCell><TableCell className="text-center text-red-600">{item.failCount}</TableCell></TableRow>))
+                        ) : <TableRow><TableCell colSpan={4} className="text-center text-muted-foreground p-8">No quiz attempts recorded yet.</TableCell></TableRow>}
                     </TableBody>
                 </Table>
             </div>
+          )}
         </CardContent>
-        {quizPerformanceTotalPages > 1 && (
+        {quizPerformanceSummary && quizPerformanceTotalPages > 1 && (
             <CardFooter className="flex justify-end items-center gap-4">
-                <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                    <span>Rows per page</span>
-                    <Select
-                        value={`${quizPerformancePageSize}`}
-                        onValueChange={(value) => {
-                            setQuizPerformancePageSize(Number(value));
-                            setQuizPerformancePage(1);
-                        }}
-                    >
-                        <SelectTrigger className="w-[70px]">
-                            <SelectValue placeholder={`${quizPerformancePageSize}`} />
-                        </SelectTrigger>
-                        <SelectContent>
-                            {[10, 25, 50].map(size => (
-                                <SelectItem key={size} value={`${size}`}>{size}</SelectItem>
-                            ))}
-                        </SelectContent>
-                    </Select>
-                </div>
-                <span className="text-sm text-muted-foreground">
-                    Page {quizPerformancePage} of {quizPerformanceTotalPages}
-                </span>
-                <div className="flex items-center gap-2">
-                    <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => setQuizPerformancePage(prev => Math.max(prev - 1, 1))}
-                        disabled={quizPerformancePage === 1}
-                    >
-                        <ChevronLeft className="h-4 w-4" />
-                        Previous
-                    </Button>
-                    <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => setQuizPerformancePage(prev => Math.min(prev + 1, quizPerformanceTotalPages))}
-                        disabled={quizPerformancePage === quizPerformanceTotalPages}
-                    >
-                        Next
-                        <ChevronRight className="h-4 w-4" />
-                    </Button>
-                </div>
+                <div className="flex items-center gap-2 text-sm text-muted-foreground"><span>Rows per page</span><Select value={`${quizPerformancePageSize}`} onValueChange={(value) => { setQuizPerformancePageSize(Number(value)); setQuizPerformancePage(1); }}><SelectTrigger className="w-[70px]"><SelectValue placeholder={`${quizPerformancePageSize}`} /></SelectTrigger><SelectContent>{[10, 25, 50].map(size => (<SelectItem key={size} value={`${size}`}>{size}</SelectItem>))}</SelectContent></Select></div>
+                <span className="text-sm text-muted-foreground">Page {quizPerformancePage} of {quizPerformanceTotalPages}</span>
+                <div className="flex items-center gap-2"><Button variant="outline" size="sm" onClick={() => setQuizPerformancePage(prev => Math.max(prev - 1, 1))} disabled={quizPerformancePage === 1}><ChevronLeft className="h-4 w-4" />Previous</Button><Button variant="outline" size="sm" onClick={() => setQuizPerformancePage(prev => Math.min(prev + 1, quizPerformanceTotalPages))} disabled={quizPerformancePage === quizPerformanceTotalPages}>Next<ChevronRight className="h-4 w-4" /></Button></div>
             </CardFooter>
         )}
       </Card>
 
       <Card>
         <CardHeader>
-            <CardTitle>Social Engagement Report</CardTitle>
-            <CardDescription>Likes, shares, and comments for each community post.</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="overflow-x-auto">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Author</TableHead>
-                  <TableHead className="text-center">Likes</TableHead>
-                  <TableHead className="text-center">Comments</TableHead>
-                  <TableHead className="text-center">Reposts</TableHead>
-                  <TableHead className="text-center">Shares</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {loading ? (
-                  Array.from({ length: 3 }).map((_, i) => (
-                    <TableRow key={i}>
-                      <TableCell><Skeleton className="h-4 w-24" /></TableCell>
-                      <TableCell className="text-center"><Skeleton className="h-4 w-8 mx-auto" /></TableCell>
-                      <TableCell className="text-center"><Skeleton className="h-4 w-8 mx-auto" /></TableCell>
-                      <TableCell className="text-center"><Skeleton className="h-4 w-8 mx-auto" /></TableCell>
-                      <TableCell className="text-center"><Skeleton className="h-4 w-8 mx-auto" /></TableCell>
-                    </TableRow>
-                  ))
-                ) : (
-                  currentSocialData.map((item) => (
-                    <TableRow key={item.postId}>
-                      <TableCell>{item.authorName}</TableCell>
-                      <TableCell className="text-center">{item.likes}</TableCell>
-                      <TableCell className="text-center">{item.comments}</TableCell>
-                      <TableCell className="text-center">{item.reposts}</TableCell>
-                      <TableCell className="text-center">{item.shares}</TableCell>
-                    </TableRow>
-                  ))
-                )}
-              </TableBody>
-            </Table>
-          </div>
-          {socialData.length === 0 && !loading && (
-            <div className="text-center p-8 text-muted-foreground">
-              No social interaction data available.
-            </div>
-          )}
-        </CardContent>
-        {socialDataTotalPages > 1 && (
-          <CardFooter className="flex justify-end items-center gap-4">
-            <div className="flex items-center gap-2 text-sm text-muted-foreground">
-              <span>Rows per page</span>
-              <Select
-                value={`${socialDataPageSize}`}
-                onValueChange={(value) => {
-                  setSocialDataPageSize(Number(value));
-                  setSocialDataPage(1);
-                }}
-              >
-                <SelectTrigger className="w-[70px]">
-                  <SelectValue placeholder={`${socialDataPageSize}`} />
-                </SelectTrigger>
-                <SelectContent>
-                  {[10, 25, 50, 100].map(size => (
-                    <SelectItem key={size} value={`${size}`}>{size}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <span className="text-sm text-muted-foreground">
-              Page {socialDataPage} of {socialDataTotalPages}
-            </span>
-            <div className="flex items-center gap-2">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setSocialDataPage(prev => Math.max(prev - 1, 1))}
-                disabled={socialDataPage === 1}
-              >
-                <ChevronLeft className="h-4 w-4" />
-                Previous
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setSocialDataPage(prev => Math.min(prev + 1, socialDataTotalPages))}
-                disabled={socialDataPage === socialDataTotalPages}
-              >
-                Next
-                <ChevronRight className="h-4 w-4" />
-              </Button>
-            </div>
-          </CardFooter>
-        )}
-      </Card>
-
-      <Card>
-        <CardHeader>
           <CardTitle>Detailed Report</CardTitle>
-          <CardDescription>
-            User progress and time spent on courses.
-          </CardDescription>
+          <CardDescription>User progress and time spent on courses.</CardDescription>
         </CardHeader>
         <CardContent>
-          <div className="flex flex-col sm:flex-row items-center gap-4 mb-4 flex-wrap">
-            <Select value={selectedUser} onValueChange={setSelectedUser}>
-              <SelectTrigger className="w-full sm:w-auto flex-grow">
-                <SelectValue placeholder="Select User" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Users</SelectItem>
-                {allUsers.map((user) => (
-                  <SelectItem key={user.id} value={user.id}>{user.displayName}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <Select value={selectedCourse} onValueChange={setSelectedCourse}>
-              <SelectTrigger className="w-full sm:w-auto flex-grow">
-                <SelectValue placeholder="Select Course or Learning Path" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Courses &amp; Paths</SelectItem>
-                 <SelectGroup>
-                  <SelectLabel>Learning Paths</SelectLabel>
-                  {allCourseGroups.map((group) => (
-                    <SelectItem key={group.id} value={`group_${group.id}`}>{group.title}</SelectItem>
-                  ))}
-                </SelectGroup>
-                <SelectGroup>
-                  <SelectLabel>Courses</SelectLabel>
-                  {allCourses.map((course) => (
-                    <SelectItem key={course.id} value={course.id}>{course.title}</SelectItem>
-                  ))}
-                </SelectGroup>
-              </SelectContent>
-            </Select>
-            <Select value={selectedCampus} onValueChange={setSelectedCampus} disabled={!canViewAllCampuses}>
-              <SelectTrigger className="w-full sm:w-auto flex-grow">
-                <SelectValue placeholder="Select Campus" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Campuses</SelectItem>
-                {campusesWithProgress.map((campus) => (
-                  <SelectItem key={campus.id} value={campus.id}>{campus["Campus Name"]}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <Popover>
-              <PopoverTrigger asChild>
-                <Button id="date" variant={"outline"} className={cn("w-full sm:w-auto justify-start text-left font-normal", !dateRange && "text-muted-foreground")}>
-                  <CalendarIcon className="mr-2 h-4 w-4" />
-                  {dateRange?.from ? (
-                    dateRange.to ? (
-                      <>
-                        {format(dateRange.from, "LLL dd, y")} -{" "}
-                        {format(dateRange.to, "LLL dd, y")}
-                      </>
-                    ) : (
-                      format(dateRange.from, "LLL dd, y")
-                    )
-                  ) : (
-                    <span>Pick a date range</span>
-                  )}
-                </Button>
-              </PopoverTrigger>
-              <PopoverContent className="w-auto p-0" align="start">
-                <Calendar initialFocus mode="range" defaultMonth={dateRange?.from} selected={dateRange} onSelect={setDateRange} numberOfMonths={2} />
-              </PopoverContent>
-            </Popover>
-            {dateRange && <Button variant="ghost" size="icon" onClick={() => setDateRange(undefined)}><XIcon className="h-4 w-4" /></Button>}
-            <Button onClick={handleExportCSV} variant="outline" disabled={sortedAndFilteredProgress.length === 0} className="w-full sm:w-auto">
-              <Download className="mr-2 h-4 w-4" />
-              Export as CSV
-            </Button>
-          </div>
-          <div className="overflow-x-auto">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>
-                    <Button variant="ghost" onClick={() => handleSort('user')}>
-                      User
-                      <ArrowUpDown className="ml-2 h-4 w-4" />
-                    </Button>
-                  </TableHead>
-                  <TableHead>
-                    <Button variant="ghost" onClick={() => handleSort('course')}>
-                      Course
-                      <ArrowUpDown className="ml-2 h-4 w-4" />
-                    </Button>
-                  </TableHead>
-                  <TableHead>Progress</TableHead>
-                  <TableHead>Videos Watched</TableHead>
-                  <TableHead>
-                    <Button variant="ghost" onClick={() => handleSort('startDate')}>
-                      Start Date
-                      <ArrowUpDown className="ml-2 h-4 w-4" />
-                    </Button>
-                  </TableHead>
-                  <TableHead>
-                    <Button variant="ghost" onClick={() => handleSort('completionDate')}>
-                      Completion Date
-                      <ArrowUpDown className="ml-2 h-4 w-4" />
-                    </Button>
-                  </TableHead>
-                  <TableHead>Time Spent</TableHead>
-                  <TableHead className="text-right">Details</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {loading ? (
-                  Array.from({ length: 3 }).map((_, i) => (
-                    <TableRow key={i}>
-                      <TableCell><Skeleton className="h-4 w-24" /></TableCell>
-                      <TableCell><Skeleton className="h-4 w-32" /></TableCell>
-                      <TableCell><Skeleton className="h-4 w-12" /></TableCell>
-                      <TableCell><Skeleton className="h-4 w-20" /></TableCell>
-                      <TableCell><Skeleton className="h-4 w-20" /></TableCell>
-                      <TableCell><Skeleton className="h-4 w-20" /></TableCell>
-                      <TableCell><Skeleton className="h-4 w-16" /></TableCell>
-                      <TableCell className="text-right"><Skeleton className="h-8 w-8 rounded-md" /></TableCell>
-                    </TableRow>
-                  ))
-                ) : (
-                  currentDetailedReportData.map((progress) => {
-                    const user = allUsers.find(u => u.id === progress.userId);
-                    const course = allCourses.find(c => c.id === progress.courseId);
-                    const totalTimeSpent = (progress.videoProgress || []).reduce((acc, vp) => acc + vp.timeSpent, 0);
-
-                    if (!user || !course) return null;
-                    if (totalTimeSpent === 0 && !progress.videoProgress?.some(vp => vp.completed)) return null;
-
-
-                    const startDate = progress.enrollment?.enrolledAt?.toDate ? format(progress.enrollment.enrolledAt.toDate(), 'yyyy-MM-dd') : 'N/A';
-                    const completionDate = progress.enrollment?.completedAt?.toDate ? format(progress.enrollment.completedAt.toDate(), 'yyyy-MM-dd') : 'N/A';
-
-                    const publishedVideoIdsInCourse = new Set((course?.videos || []).filter(vid => allVideos.some(v => v.id === vid && v.status === 'published')));
-                    const totalVideos = publishedVideoIdsInCourse.size;
-                    const completedVideos = (progress.videoProgress || []).filter(vp => vp.completed && publishedVideoIdsInCourse.has(vp.videoId)).length;
-
-
-                    return (
-                      <TableRow key={`${progress.userId}-${progress.courseId}`}>
-                        <TableCell>({user.campus || 'N/A'}) {user.displayName}</TableCell>
-                        <TableCell>{course.title}</TableCell>
-                        <TableCell>{progress.totalProgress}%</TableCell>
-                        <TableCell>{`${completedVideos} / ${totalVideos}`}</TableCell>
-                        <TableCell>{startDate}</TableCell>
-                        <TableCell>{completionDate}</TableCell>
-                        <TableCell>{formatDuration(totalTimeSpent)}</TableCell>
-                        <TableCell className="text-right">
-                          <Button variant="ghost" size="icon" onClick={() => setSelectedProgressDetail({ progress, user, course })}>
-                            <Eye className="h-4 w-4" />
-                          </Button>
-                        </TableCell>
-                      </TableRow>
-                    );
-                  })
-                )}
-              </TableBody>
-            </Table>
-          </div>
-          {sortedAndFilteredProgress.length === 0 && !loading && (
-            <div className="text-center p-8 text-muted-foreground">
-              No data available for the selected filters.
-            </div>
+          {userProgressData === null ? <ClickToLoad onFetch={fetchProgressData} title="Detailed Report" /> : loading ? <Skeleton className="h-64 w-full" /> : (
+            <>
+              <div className="flex flex-col sm:flex-row items-center gap-4 mb-4 flex-wrap">
+                <Select value={selectedUser} onValueChange={setSelectedUser}><SelectTrigger className="w-full sm:w-auto flex-grow"><SelectValue placeholder="Select User" /></SelectTrigger><SelectContent><SelectItem value="all">All Users</SelectItem>{allUsers.map((user) => (<SelectItem key={user.id} value={user.id}>{user.displayName}</SelectItem>))}</SelectContent></Select>
+                <Select value={selectedCourse} onValueChange={setSelectedCourse}><SelectTrigger className="w-full sm:w-auto flex-grow"><SelectValue placeholder="Select Course or Learning Path" /></SelectTrigger><SelectContent><SelectGroup><SelectLabel>Learning Paths</SelectLabel>{allCourseGroups.map((group) => (<SelectItem key={group.id} value={`group_${group.id}`}>{group.title}</SelectItem>))}</SelectGroup><SelectGroup><SelectLabel>Courses</SelectLabel>{allCourses.map((course) => (<SelectItem key={course.id} value={course.id}>{course.title}</SelectItem>))}</SelectGroup></SelectContent></Select>
+                <Select value={selectedCampus} onValueChange={setSelectedCampus} disabled={!canViewAllCampuses}><SelectTrigger className="w-full sm:w-auto flex-grow"><SelectValue placeholder="Select Campus" /></SelectTrigger><SelectContent><SelectItem value="all">All Campuses</SelectItem>{campusesWithProgress.map((campus) => (<SelectItem key={campus.id} value={campus.id}>{campus["Campus Name"]}</SelectItem>))}</SelectContent></Select>
+                <Popover><PopoverTrigger asChild><Button id="date" variant={"outline"} className={cn("w-full sm:w-auto justify-start text-left font-normal", !dateRange && "text-muted-foreground")}><CalendarIcon className="mr-2 h-4 w-4" />{dateRange?.from ? (dateRange.to ? (<>{format(dateRange.from, "LLL dd, y")} - {format(dateRange.to, "LLL dd, y")}</>) : (format(dateRange.from, "LLL dd, y"))) : (<span>Pick a date range</span>)}</Button></PopoverTrigger><PopoverContent className="w-auto p-0" align="start"><Calendar initialFocus mode="range" defaultMonth={dateRange?.from} selected={dateRange} onSelect={setDateRange} numberOfMonths={2} /></PopoverContent></Popover>
+                {dateRange && <Button variant="ghost" size="icon" onClick={() => setDateRange(undefined)}><XIcon className="h-4 w-4" /></Button>}
+                <Button onClick={handleExportCSV} variant="outline" disabled={!sortedAndFilteredProgress || sortedAndFilteredProgress.length === 0} className="w-full sm:w-auto"><Download className="mr-2 h-4 w-4" />Export as CSV</Button>
+              </div>
+              <div className="overflow-x-auto">
+                <Table>
+                  <TableHeader><TableRow><TableHead><Button variant="ghost" onClick={() => handleSort('user')}>User<ArrowUpDown className="ml-2 h-4 w-4" /></Button></TableHead><TableHead><Button variant="ghost" onClick={() => handleSort('course')}>Course<ArrowUpDown className="ml-2 h-4 w-4" /></Button></TableHead><TableHead>Progress</TableHead><TableHead>Videos Watched</TableHead><TableHead><Button variant="ghost" onClick={() => handleSort('startDate')}>Start Date<ArrowUpDown className="ml-2 h-4 w-4" /></Button></TableHead><TableHead><Button variant="ghost" onClick={() => handleSort('completionDate')}>Completion Date<ArrowUpDown className="ml-2 h-4 w-4" /></Button></TableHead><TableHead>Time Spent</TableHead><TableHead className="text-right">Details</TableHead></TableRow></TableHeader>
+                  <TableBody>
+                      {currentDetailedReportData.map((progress) => {
+                        const user = allUsers.find(u => u.id === progress.userId);
+                        const course = allCourses.find(c => c.id === progress.courseId);
+                        const totalTimeSpent = (progress.videoProgress || []).reduce((acc, vp) => acc + vp.timeSpent, 0);
+                        if (!user || !course) return null;
+                        if (totalTimeSpent === 0 && !progress.videoProgress?.some(vp => vp.completed)) return null;
+                        const startDate = progress.enrollment?.enrolledAt?.toDate ? format(progress.enrollment.enrolledAt.toDate(), 'yyyy-MM-dd') : 'N/A';
+                        const completionDate = progress.enrollment?.completedAt?.toDate ? format(progress.enrollment.completedAt.toDate(), 'yyyy-MM-dd') : 'N/A';
+                        const publishedVideoIdsInCourse = new Set((course?.videos || []).filter(vid => allVideos.some(v => v.id === vid && v.status === 'published')));
+                        const totalVideos = publishedVideoIdsInCourse.size;
+                        const completedVideos = (progress.videoProgress || []).filter(vp => vp.completed && publishedVideoIdsInCourse.has(vp.videoId)).length;
+                        return (<TableRow key={`${progress.userId}-${progress.courseId}`}><TableCell>({user.campus || 'N/A'}) {user.displayName}</TableCell><TableCell>{course.title}</TableCell><TableCell>{progress.totalProgress}%</TableCell><TableCell>{`${completedVideos} / ${totalVideos}`}</TableCell><TableCell>{startDate}</TableCell><TableCell>{completionDate}</TableCell><TableCell>{formatDuration(totalTimeSpent)}</TableCell><TableCell className="text-right"><Button variant="ghost" size="icon" onClick={() => setSelectedProgressDetail({ progress, user, course })}><Eye className="h-4 w-4" /></Button></TableCell></TableRow>);
+                      })}
+                  </TableBody>
+                </Table>
+              </div>
+              {(!sortedAndFilteredProgress || sortedAndFilteredProgress.length === 0) && <p className="text-center p-8 text-muted-foreground">No data available for the selected filters.</p>}
+            </>
           )}
         </CardContent>
-        {detailedReportTotalPages > 1 && (
+        {userProgressData && detailedReportTotalPages > 1 && (
           <CardFooter className="flex justify-end items-center gap-4">
-            <div className="flex items-center gap-2 text-sm text-muted-foreground">
-              <span>Rows per page</span>
-              <Select
-                value={`${detailedReportPageSize}`}
-                onValueChange={(value) => {
-                  setDetailedReportPageSize(Number(value));
-                  setDetailedReportPage(1);
-                }}
-              >
-                <SelectTrigger className="w-[70px]">
-                  <SelectValue placeholder={`${detailedReportPageSize}`} />
-                </SelectTrigger>
-                <SelectContent>
-                  {[10, 25, 50, 100].map(size => (
-                    <SelectItem key={size} value={`${size}`}>{size}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <span className="text-sm text-muted-foreground">
-              Page {detailedReportPage} of {detailedReportTotalPages}
-            </span>
-            <div className="flex items-center gap-2">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setDetailedReportPage(prev => Math.max(prev - 1, 1))}
-                disabled={detailedReportPage === 1}
-              >
-                <ChevronLeft className="h-4 w-4" />
-                Previous
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setDetailedReportPage(prev => Math.min(prev + 1, detailedReportTotalPages))}
-                disabled={detailedReportPage === detailedReportTotalPages}
-              >
-                Next
-                <ChevronRight className="h-4 w-4" />
-              </Button>
-            </div>
+            <div className="flex items-center gap-2 text-sm text-muted-foreground"><span>Rows per page</span><Select value={`${detailedReportPageSize}`} onValueChange={(value) => { setDetailedReportPageSize(Number(value)); setDetailedReportPage(1);}}><SelectTrigger className="w-[70px]"><SelectValue placeholder={`${detailedReportPageSize}`} /></SelectTrigger><SelectContent>{[10, 25, 50, 100].map(size => (<SelectItem key={size} value={`${size}`}>{size}</SelectItem>))}</SelectContent></Select></div>
+            <span className="text-sm text-muted-foreground">Page {detailedReportPage} of {detailedReportTotalPages}</span>
+            <div className="flex items-center gap-2"><Button variant="outline" size="sm" onClick={() => setDetailedReportPage(prev => Math.max(prev - 1, 1))} disabled={detailedReportPage === 1}><ChevronLeft className="h-4 w-4" />Previous</Button><Button variant="outline" size="sm" onClick={() => setDetailedReportPage(prev => Math.min(prev + 1, detailedReportTotalPages))} disabled={detailedReportPage === detailedReportTotalPages}>Next<ChevronRight className="h-4 w-4" /></Button></div>
           </CardFooter>
         )}
       </Card>
@@ -1366,38 +864,21 @@ export default function AnalyticsDashboard() {
         <DialogContent className="max-w-2xl">
           <DialogHeader>
             <DialogTitle>Progress Details</DialogTitle>
-            <DialogDescription>
-              Detailed video progress for {selectedProgressDetail?.user.displayName} in {selectedProgressDetail?.course.title}.
-            </DialogDescription>
+            <DialogDescription>Detailed video progress for {selectedProgressDetail?.user.displayName} in {selectedProgressDetail?.course.title}.</DialogDescription>
           </DialogHeader>
           {selectedProgressDetail && (
-            <>
-              <div className="max-h-[60vh] overflow-y-auto">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Video Title</TableHead>
-                      <TableHead>Status</TableHead>
-                      <TableHead className="text-right">Time Spent</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {selectedProgressDetail.course.videos?.map(videoId => {
-                      const video = allVideos.find(v => v.id === videoId);
-                      const videoProgress = selectedProgressDetail.progress.videoProgress.find(vp => vp.videoId === videoId);
-
-                      return (
-                        <TableRow key={videoId}>
-                          <TableCell>{video?.title || 'Unknown Video'}</TableCell>
-                          <TableCell>{videoProgress?.completed ? 'Completed' : 'In Progress'}</TableCell>
-                          <TableCell className="text-right">{formatDuration(videoProgress?.timeSpent || 0)}</TableCell>
-                        </TableRow>
-                      )
-                    })}
-                  </TableBody>
-                </Table>
-              </div>
-            </>
+            <div className="max-h-[60vh] overflow-y-auto">
+              <Table>
+                <TableHeader><TableRow><TableHead>Video Title</TableHead><TableHead>Status</TableHead><TableHead className="text-right">Time Spent</TableHead></TableRow></TableHeader>
+                <TableBody>
+                  {selectedProgressDetail.course.videos?.map(videoId => {
+                    const video = allVideos.find(v => v.id === videoId);
+                    const videoProgress = selectedProgressDetail.progress.videoProgress.find(vp => vp.videoId === videoId);
+                    return (<TableRow key={videoId}><TableCell>{video?.title || 'Unknown Video'}</TableCell><TableCell>{videoProgress?.completed ? 'Completed' : 'In Progress'}</TableCell><TableCell className="text-right">{formatDuration(videoProgress?.timeSpent || 0)}</TableCell></TableRow>)
+                  })}
+                </TableBody>
+              </Table>
+            </div>
           )}
         </DialogContent>
       </Dialog>

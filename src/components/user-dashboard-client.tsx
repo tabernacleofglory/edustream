@@ -100,22 +100,18 @@ export default function UserDashboardClient() {
 
   const coursesInCurrentLadder = useMemo(() => {
     if (!currentLadderDetails || !user?.language) return [];
-    // Important: Filter courses in the ladder by the user's specific language.
     return processedCourses.filter(c => 
         c.ladderIds?.includes(currentLadderDetails.id) && c.language === user.language
     );
   }, [processedCourses, currentLadderDetails, user?.language]);
 
   const allCoursesInLadderCompleted = useMemo(() => {
-    // If there are no courses in the current ladder for the user's language, they can't have completed it.
     if (coursesInCurrentLadder.length === 0) return false;
-    // Check if every course required for this ladder (in this language) is marked as completed.
     return coursesInCurrentLadder.every(c => c.isCompleted);
   }, [coursesInCurrentLadder]);
 
   const nextLadder = useMemo(() => {
     if (!currentLadderDetails) return null;
-    // Find the next ladder in sequence based on the 'order' property.
     return allLadders.find(l => l.order > currentLadderDetails.order);
   }, [allLadders, currentLadderDetails]);
   

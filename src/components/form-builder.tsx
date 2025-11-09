@@ -28,7 +28,7 @@ const fieldConfigSchema = z.object({
 
 const formBuilderSchema = z.object({
   title: z.string().min(1, 'Form title is required.'),
-  type: z.enum(['userProfile', 'custom']),
+  type: z.enum(['userProfile', 'custom', 'hybrid']),
   fields: z.array(fieldConfigSchema),
   public: z.boolean().default(false),
   submissionCount: z.number().default(0),
@@ -44,6 +44,9 @@ const USER_PROFILE_FIELDS: Omit<z.infer<typeof fieldConfigSchema>, 'visible' | '
     { fieldId: 'phoneNumber', label: 'Phone Number' },
     { fieldId: 'gender', label: 'Gender' },
     { fieldId: 'ageRange', label: 'Age Range' },
+    { fieldId: 'maritalStatus', label: 'Marital Status' },
+    { fieldId: 'isBaptized', label: 'Are you baptized?' },
+    { fieldId: 'denomination', label: 'Denomination' },
     { fieldId: 'campus', label: 'Campus' },
     { fieldId: 'language', label: 'Preferred Language' },
     { fieldId: 'locationPreference', label: 'Location Preference' },
@@ -52,9 +55,12 @@ const USER_PROFILE_FIELDS: Omit<z.infer<typeof fieldConfigSchema>, 'visible' | '
     { fieldId: 'facilitatorName', label: "Facilitator's Name" },
     { fieldId: 'hpAvailabilityDay', label: 'HP Availability Day' },
     { fieldId: 'hpAvailabilityTime', label: 'HP Availability Time' },
+    { fieldId: 'ministry', label: 'Ministry' },
+    { fieldId: 'charge', label: 'Charge' },
+    { fieldId: 'bio', label: 'Bio' },
 ];
 
-const getInitialFields = (formType: 'userProfile' | 'custom') => {
+const getInitialFields = (formType: 'userProfile' | 'custom' | 'hybrid') => {
     if (formType === 'userProfile') {
         return USER_PROFILE_FIELDS.map(field => {
             const isRequired = ['firstName', 'lastName', 'email', 'password'].includes(field.fieldId);
@@ -65,7 +71,7 @@ const getInitialFields = (formType: 'userProfile' | 'custom') => {
 }
 
 interface FormBuilderProps {
-    formType: 'userProfile' | 'custom' | null;
+    formType: 'userProfile' | 'custom' | 'hybrid' | null;
     formId?: string | null;
 }
 
@@ -158,7 +164,7 @@ export default function FormBuilder({ formType, formId }: FormBuilderProps) {
                 <CardContent className="space-y-4">
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         {fields.map((field, index) => {
-                            const isLocked = ['password'].includes(field.fieldId);
+                            const isLocked = false;
                             return (
                                 <div key={field.id} className="flex items-center justify-between rounded-lg border p-4">
                                     <div className="space-y-0.5">

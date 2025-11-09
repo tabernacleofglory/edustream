@@ -37,9 +37,10 @@ import type {
   Speaker,
   Quiz,
   UserQuizResult,
+  CustomForm,
 } from "@/lib/types";
 import { Button } from "@/components/ui/button";
-import { ScrollArea } from "@/components/ui/scroll-area";
+import { ScrollArea } from "./ui/scroll-area";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/hooks/use-auth";
 import { Slider } from "@/components/ui/slider";
@@ -71,6 +72,7 @@ import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
 import { useProcessedCourses } from "@/hooks/useProcessedCourses";
 import { Progress } from "./ui/progress";
 import Image from "next/image";
+import { useAudioPlayer } from "@/hooks/use-audio-player";
 
 const getInitials = (name?: string | null) => {
   if (!name) return "U";
@@ -93,6 +95,8 @@ interface PlaylistAndResourcesProps {
   onRelatedChange: () => void;
   quizzes: Quiz[];
   quizResults: UserQuizResult[];
+  forms: CustomForm[];
+  formSubmissions: any[];
   lastVideoCompleted: boolean;
 }
 
@@ -105,13 +109,15 @@ const PlaylistAndResources = ({
   onRelatedChange,
   quizzes,
   quizResults = [],
+  forms,
+  formSubmissions = [],
   lastVideoCompleted
 }: PlaylistAndResourcesProps) => {
 
   return (
     <Accordion
       type="multiple"
-      defaultValue={["playlist", "resources", "related", "quizzes"]}
+      defaultValue={["playlist", "resources", "related", "quizzes", "forms"]}
       className="w-full"
     >
       <AccordionItem value="playlist">
@@ -204,6 +210,40 @@ const PlaylistAndResources = ({
             </AccordionContent>
         </AccordionItem>
       )}
+
+      {forms.length > 0 && (
+          <AccordionItem value="forms">
+              <AccordionTrigger className="px-4 font-semibold">Forms</AccordionTrigger>
+              <AccordionContent className="px-4 space-y-2">
+                  {forms.map(form => {
+                      const allQuizzesCompleted = (course.quizIds || []).every(qid => quizResults.some(r => r.quizId === qid && r.passed));
+                      const isFormLocked = !lastVideoCompleted || !allQuizzesCompleted;
+                      const isSubmitted = formSubmissions.some(s => s.formId === form.id);
+                      
+                      return (
+                           <Link
+                              key={form.id}
+                              href={!isFormLocked ? `/courses/${course.id}/form/${form.id}?videoId=${currentVideo.id}` : '#'}
+                              onClick={(e) => isFormLocked && e.preventDefault()}
+                              className={cn("block p-3 rounded-md hover:bg-muted", isFormLocked && "opacity-50 cursor-not-allowed")}
+                          >
+                               <div className="flex items-start gap-3">
+                                  {isSubmitted ? (
+                                      <CheckCircle2 className="h-5 w-5 text-green-500 mt-0.5" />
+                                  ) : isFormLocked ? (
+                                      <Lock className="h-5 w-5 text-muted-foreground mt-0.5" />
+                                  ) : (
+                                      <FileText className="h-5 w-5 text-muted-foreground mt-0.5" />
+                                  )}
+                                  <p className="font-semibold">{form.title}</p>
+                              </div>
+                          </Link>
+                      )
+                  })}
+              </AccordionContent>
+          </AccordionItem>
+      )}
+
 
       { (course["Resource Doc"]?.length > 0 || course.attendanceLinks?.length > 0) && (
         <AccordionItem value="resources">
@@ -318,9 +358,12 @@ export default function VideoPlayerClient({
   const [shareCount, setShareCount] = useState(currentVideo?.shareCount || 0);
   const [quizzes, setQuizzes] = useState<Quiz[]>([]);
   const [quizResults, setQuizResults] = useState<UserQuizResult[]>([]);
+  const [forms, setForms] = useState<CustomForm[]>([]);
+  const [formSubmissions, setFormSubmissions] = useState<any[]>([]);
   const [isStillWatchingPromptVisible, setIsStillWatchingPromptVisible] = useState(false);
   const promptCheckpointsRef = useRef(new Set<number>());
   const [showEndOverlay, setShowEndOverlay] = useState(false);
+  const { currentTrack } = useAudioPlayer();
 
   const isYouTube = currentVideo?.type === 'youtube' || (currentVideo?.url && (currentVideo.url.includes('youtube.com') || currentVideo.url.includes('youtu.be')));
   const isGoogleDrive = currentVideo?.type === 'googledrive';
@@ -346,31 +389,32 @@ export default function VideoPlayerClient({
   }, []);
 
     useEffect(() => {
-        if (!course?.quizIds) return;
-        const fetchQuizzesAndResults = async () => {
-            if (!course.quizIds || course.quizIds.length === 0) {
-                setQuizzes([]);
-                return;
-            }
-            const q = query(collection(db, 'quizzes'), where(documentId(), 'in', course.quizIds));
-            const snapshot = await getDocs(q);
-            const fetchedQuizzes = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Quiz));
-            setQuizzes(fetchedQuizzes.sort((a,b) => (a.createdAt?.seconds || 0) - (b.createdAt?.seconds || 0)));
-
-            if(user) {
-                const resultsQuery = query(
-                    collection(db, 'userQuizResults'), 
-                    where('userId', '==', user.uid),
-                    where('courseId', '==', course.id),
-                    where('quizId', 'in', course.quizIds)
-                );
+        const fetchCourseAttachments = async () => {
+            if (!user) return;
+            // Fetch Quizzes
+            if (course.quizIds && course.quizIds.length > 0) {
+                const q = query(collection(db, 'quizzes'), where(documentId(), 'in', course.quizIds));
+                const snapshot = await getDocs(q);
+                const fetchedQuizzes = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Quiz));
+                setQuizzes(fetchedQuizzes.sort((a,b) => (a.createdAt?.seconds || 0) - (b.createdAt?.seconds || 0)));
+                
+                const resultsQuery = query(collection(db, 'userQuizResults'), where('userId', '==', user.uid), where('courseId', '==', course.id), where('quizId', 'in', course.quizIds));
                 const resultsSnapshot = await getDocs(resultsQuery);
-                const fetchedResults = resultsSnapshot.docs.map(doc => ({id: doc.id, ...doc.data()}) as UserQuizResult);
-                setQuizResults(fetchedResults);
+                setQuizResults(resultsSnapshot.docs.map(doc => ({id: doc.id, ...doc.data()}) as UserQuizResult));
             }
-        }
-        fetchQuizzesAndResults();
-    }, [course?.quizIds, course.id, user, db]);
+            // Fetch Forms
+            if (course.formId) {
+                const formSnap = await getDoc(doc(db, 'forms', course.formId));
+                if (formSnap.exists()) {
+                    setForms([{ id: formSnap.id, ...formSnap.data() } as CustomForm]);
+                    const submissionQuery = query(collection(db, 'forms', course.formId, 'submissions'), where('userId', '==', user.uid), where('courseId', '==', course.id));
+                    const submissionSnapshot = await getDocs(submissionQuery);
+                    setFormSubmissions(submissionSnapshot.docs.map(d => d.data()));
+                }
+            }
+        };
+        fetchCourseAttachments();
+    }, [course.quizIds, course.formId, course.id, user, db]);
 
 
   useEffect(() => {
@@ -600,8 +644,11 @@ export default function VideoPlayerClient({
           const allQuizzesCompleted = (course.quizIds || []).every(quizId => 
             quizResults.some(res => res.quizId === quizId && res.passed)
           );
+          const allFormsCompleted = (forms || []).every(form =>
+            formSubmissions.some(sub => sub.formId === form.id && sub.courseId === course.id)
+          );
 
-          if (allVideosCompleted && allQuizzesCompleted) {
+          if (allVideosCompleted && allQuizzesCompleted && allFormsCompleted) {
             batch.set(enrollmentRef, { completedAt: serverTimestamp() as any }, { merge: true });
           }
         }
@@ -617,7 +664,7 @@ export default function VideoPlayerClient({
         });
       }
     },
-    [user, isEnrolled, db, currentVideo.id, course.id, course.videos, course.quizIds, quizResults, isYouTube, isGoogleDrive, toast]
+    [user, isEnrolled, db, currentVideo.id, course.id, course.videos, course.quizIds, quizResults, forms, formSubmissions, isYouTube, isGoogleDrive, toast]
   );
   
   const flushProgress = useCallback(() => {
@@ -663,7 +710,7 @@ export default function VideoPlayerClient({
     return () => {
       v.removeEventListener("pause", onPause);
       v.removeEventListener("seeking", onSeeking);
-      v.removeEventListener("seeked", onSeeked);
+      v.removeEventListener("seeked", onSeeking);
       v.removeEventListener("loadedmetadata", onLoadedMetadata);
     };
   }, [flushProgress, isYouTube, isGoogleDrive, toast]);
@@ -825,7 +872,7 @@ export default function VideoPlayerClient({
       className="flex flex-col lg:flex-row flex-1"
       onContextMenu={!canRightClick ? (e) => e.preventDefault() : undefined}
     >
-      <div className="flex-1 flex flex-col lg:h-screen">
+      <div className={cn("flex-1 flex flex-col lg:h-screen", currentTrack && 'pb-16 lg:pb-0')}>
         <div className="lg:px-8 lg:pt-8 flex-shrink-0">
           <div
             ref={videoContainerRef}
@@ -952,7 +999,7 @@ export default function VideoPlayerClient({
                     <SkipBack />
                     </Link>
                 </Button>
-                <Button variant="ghost" size="icon" className="text-white hover:text-white hover:bg-white/20" disabled={videoIndex === courseVideos.length - 1 || !watchedVideos.has(currentVideo.id)}>
+                <Button variant="ghost" size="icon" className="text-white hover:text-white hover:bg-white/20" disabled={videoIndex >= courseVideos.length - 1 || !watchedVideos.has(currentVideo.id)}>
                     <Link href={videoIndex < courseVideos.length - 1 && watchedVideos.has(currentVideo.id) ? `/courses/${course.id}/video/${courseVideos[videoIndex + 1].id}`: "#"}>
                     <SkipForward />
                     </Link>
@@ -971,7 +1018,7 @@ export default function VideoPlayerClient({
                 <Button variant="ghost" size="icon" onClick={() => setIsLooping(!isLooping)} className={cn("text-white hover:text-white hover:bg-white/20", isLooping && "bg-white/20")}>
                     <Repeat />
                 </Button>
-                <Button variant="ghost" size="icon" onClick={() => setIsAutoNextEnabled(!isAutoNextEnabled)} className="text-white hover:text-white hover:bg-white/20">
+                 <Button variant="ghost" size="icon" onClick={() => setIsAutoNextEnabled(!isAutoNextEnabled)} className="text-white hover:text-white hover:bg-white/20">
                     {isAutoNextEnabled ? <ToggleRight /> : <ToggleLeft />}
                 </Button>
                 <Button variant="ghost" size="icon" onClick={() => (playerRef.current as any)?.requestPictureInPicture?.().catch(() => {})} className="text-white hover:text-white hover:bg-white/20 hidden md:flex">
@@ -1027,7 +1074,7 @@ export default function VideoPlayerClient({
                 </div>
 
                 <div className="lg:hidden mt-6">
-                  <PlaylistAndResources course={course} courseVideos={courseVideos} currentVideo={currentVideo} watchedVideos={watchedVideos} relatedCourses={relatedCourses} onRelatedChange={refresh} quizzes={quizzes} quizResults={quizResults} lastVideoCompleted={lastVideoCompleted} />
+                  <PlaylistAndResources course={course} courseVideos={courseVideos} currentVideo={currentVideo} watchedVideos={watchedVideos} relatedCourses={relatedCourses} onRelatedChange={refresh} quizzes={quizzes} quizResults={quizResults} forms={forms} formSubmissions={formSubmissions} lastVideoCompleted={lastVideoCompleted} />
                 </div>
                 <CommentSection videoId={currentVideo.id} />
              </div>
@@ -1037,7 +1084,7 @@ export default function VideoPlayerClient({
       </div>
       <div className="w-full lg:w-[420px] lg:flex-shrink-0 lg:border-l flex-col lg:h-screen lg:sticky lg:top-0 bg-background hidden lg:flex">
         <ScrollArea className="flex-1">
-          <PlaylistAndResources course={course} courseVideos={courseVideos} currentVideo={currentVideo} watchedVideos={watchedVideos} relatedCourses={relatedCourses} onRelatedChange={refresh} quizzes={quizzes} quizResults={quizResults} lastVideoCompleted={lastVideoCompleted} />
+          <PlaylistAndResources course={course} courseVideos={courseVideos} currentVideo={currentVideo} watchedVideos={watchedVideos} relatedCourses={relatedCourses} onRelatedChange={refresh} quizzes={quizzes} quizResults={quizResults} forms={forms} formSubmissions={formSubmissions} lastVideoCompleted={lastVideoCompleted} />
         </ScrollArea>
       </div>
 

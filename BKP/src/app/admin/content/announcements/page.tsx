@@ -5,7 +5,7 @@ import { useState, useEffect, useCallback, FormEvent, MouseEvent } from "react";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/use-auth";
 import { db, storage } from "@/lib/firebase";
-import { collection, addDoc, serverTimestamp, getDocs, query, doc, updateDoc, deleteDoc, writeBatch, where } from "firebase/firestore";
+import { collection, addDoc, serverTimestamp, getDocs, query, doc, updateDoc, deleteDoc, writeBatch, where, onSnapshot, setDoc } from "firebase/firestore";
 import { ref, uploadBytesResumable, getDownloadURL, deleteObject } from "firebase/storage";
 import { v4 as uuidv4 } from "uuid";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -13,14 +13,15 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Megaphone, Upload, Loader2, Edit, Trash, Eye, Image as ImageIcon, Link2, Plus } from "lucide-react";
+import { Megaphone, Upload, Loader2, Edit, Trash, Eye, Image as ImageIcon, Link2, Plus, Video as VideoIcon } from "lucide-react";
 import Image from 'next/image';
 import { Skeleton } from "@/components/ui/skeleton";
-import type { User } from "@/lib/types";
+import type { User, Video } from "@/lib/types";
 import { Progress } from "@/components/ui/progress";
 import { Textarea } from "@/components/ui/textarea";
 import ImageLibrary from "@/components/image-library";
 import { Switch } from "@/components/ui/switch";
+import VideoLibrary from "@/components/video-library";
 
 interface Announcement {
     id: string;
@@ -30,6 +31,14 @@ interface Announcement {
     buttonUrl: string;
     isActive: boolean;
     createdAt: any;
+}
+
+interface VideoAnnouncement {
+    id: string;
+    videoId: string;
+    videoTitle: string;
+    videoThumbnail: string;
+    isActive: boolean;
 }
 
 const AnnouncementForm = ({ 
@@ -142,6 +151,108 @@ const AnnouncementForm = ({
     );
 }
 
+const VideoAnnouncementManager = () => {
+    const { toast } = useToast();
+    const [videoAnnouncement, setVideoAnnouncement] = useState<VideoAnnouncement | null>(null);
+    const [loading, setLoading] = useState(true);
+    const [isLibraryOpen, setIsLibraryOpen] = useState(false);
+
+    useEffect(() => {
+        const docRef = doc(db, 'siteSettings', 'videoAnnouncement');
+        const unsubscribe = onSnapshot(docRef, (docSnap) => {
+            if (docSnap.exists()) {
+                setVideoAnnouncement({ id: docSnap.id, ...docSnap.data() } as VideoAnnouncement);
+            } else {
+                setVideoAnnouncement(null);
+            }
+            setLoading(false);
+        });
+        return unsubscribe;
+    }, []);
+
+    const handleVideoSelect = async (videos: Video[]) => {
+        const video = videos[0];
+        if (!video) return;
+        
+        try {
+            const docRef = doc(db, 'siteSettings', 'videoAnnouncement');
+            await setDoc(docRef, {
+                videoId: video.id,
+                videoTitle: video.title,
+                videoThumbnail: video.Thumbnail,
+                isActive: videoAnnouncement?.isActive || true, // Keep current status or default to active
+            }, { merge: true });
+            
+            toast({ title: "Video announcement updated." });
+        } catch (error) {
+            console.error("Error updating video announcement: ", error);
+            toast({ variant: 'destructive', title: 'Update failed.' });
+        }
+        setIsLibraryOpen(false);
+    };
+
+    const toggleActive = async (isActive: boolean) => {
+        if (!videoAnnouncement) return;
+        try {
+            const docRef = doc(db, 'siteSettings', 'videoAnnouncement');
+            await updateDoc(docRef, { isActive });
+            toast({ title: `Video announcement ${isActive ? 'activated' : 'deactivated'}.` });
+        } catch (error) {
+            toast({ variant: 'destructive', title: 'Could not update status.' });
+        }
+    };
+    
+    return (
+        <Card>
+            <CardHeader>
+                <CardTitle>Video Announcement</CardTitle>
+                <CardDescription>Select a video to feature on the dashboard.</CardDescription>
+            </CardHeader>
+            <CardContent>
+                {loading ? <Skeleton className="h-24 w-full" /> : 
+                 videoAnnouncement ? (
+                     <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4 rounded-lg border p-4">
+                        <Image src={videoAnnouncement.videoThumbnail} alt={videoAnnouncement.videoTitle} width={128} height={72} className="aspect-video object-cover rounded-md" />
+                        <div className="flex-1">
+                            <p className="font-medium">{videoAnnouncement.videoTitle}</p>
+                            <p className="text-sm text-muted-foreground truncate">Video ID: {videoAnnouncement.videoId}</p>
+                        </div>
+                         <div className="flex items-center gap-4">
+                            <div className="flex items-center space-x-2">
+                                <Switch
+                                    id="video-active-switch"
+                                    checked={videoAnnouncement.isActive}
+                                    onCheckedChange={toggleActive}
+                                />
+                                <Label htmlFor="video-active-switch">Active</Label>
+                            </div>
+                            <Button size="sm" variant="outline" onClick={() => setIsLibraryOpen(true)}>
+                                <Edit className="mr-2 h-4 w-4" /> Change Video
+                            </Button>
+                        </div>
+                    </div>
+                 ) : (
+                    <div className="text-center text-muted-foreground py-8 flex flex-col items-center">
+                        <VideoIcon className="h-12 w-12" />
+                        <p className="mt-4">No video announcement set.</p>
+                        <Button variant="link" onClick={() => setIsLibraryOpen(true)}>Select one now</Button>
+                    </div>
+                 )}
+            </CardContent>
+             <Dialog open={isLibraryOpen} onOpenChange={setIsLibraryOpen}>
+                <DialogContent className="max-w-7xl h-[90vh] flex flex-col p-0">
+                    <DialogHeader className="p-6 pb-0">
+                        <DialogTitle>Select Video Announcement</DialogTitle>
+                        <DialogDescription>Choose a video from the library to feature.</DialogDescription>
+                    </DialogHeader>
+                    <VideoLibrary onSelectVideos={handleVideoSelect} />
+                </DialogContent>
+            </Dialog>
+        </Card>
+    );
+}
+
+
 export default function AnnouncementsPage() {
   const { hasPermission } = useAuth();
   const [announcements, setAnnouncements] = useState<Announcement[]>([]);
@@ -232,9 +343,12 @@ export default function AnnouncementsPage() {
           Manage promotional announcements for the dashboard.
         </p>
       </div>
+
+      <VideoAnnouncementManager />
+
       <Card className="flex-1">
         <CardHeader className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-          <CardTitle>Announcement Management</CardTitle>
+          <CardTitle>Image/Link Announcements</CardTitle>
           {canManage && (
              <Button onClick={() => { setEditingAnnouncement(null); setIsFormOpen(true); }}>
                 <Plus className="mr-2 h-4 w-4" />
@@ -314,5 +428,3 @@ export default function AnnouncementsPage() {
     </div>
   );
 }
-
-    

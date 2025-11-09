@@ -167,7 +167,7 @@ export default function SettingsPage() {
         firstName: "",
         lastName: "",
         bio: "",
-        phoneNumber: "",
+        phoneNumber: undefined,
         isInHpGroup: false,
         hpNumber: "",
         facilitatorName: "",
@@ -223,7 +223,7 @@ export default function SettingsPage() {
             firstName: user.firstName || '',
             lastName: user.lastName || '',
             bio: user.bio || "",
-            phoneNumber: user.phoneNumber || "",
+            phoneNumber: user.phoneNumber || undefined,
             isInHpGroup: user.isInHpGroup || false,
             hpNumber: user.hpNumber || "",
             facilitatorName: user.facilitatorName || "",
@@ -347,7 +347,7 @@ export default function SettingsPage() {
                         <div className="flex items-center space-x-4">
                             <Avatar className="h-20 w-20">
                             <AvatarImage src={user.photoURL || undefined} />
-                            <AvatarFallback>{getInitials(user.displayName)}</AvatarFallback>
+                            <AvatarFallback className="text-3xl">{getInitials(user.displayName)}</AvatarFallback>
                             </Avatar>
                             <div className="space-y-2 flex-1">
                                 <Label htmlFor="photoFile">Update Profile Picture</Label>

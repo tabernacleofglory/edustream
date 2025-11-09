@@ -18,14 +18,16 @@ import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import Link from 'next/link';
 import { db } from '@/lib/firebase';
 import { collection, getDocs } from 'firebase/firestore';
-import type { CourseGroup, Course } from '@/lib/types';
+import type { CourseGroup, Course, SiteSettings } from '@/lib/types';
+import { Badge } from '@/components/ui/badge';
+import { getSiteSettings } from '@/lib/data';
 
 interface GroupedCertificate extends CourseGroup {
     isCompleted: boolean;
     courses: Course[];
 }
 
-const CertificateCard = ({ item }: { item: GroupedCertificate | CourseWithStatus }) => {
+const CertificateCard = ({ item, settings }: { item: GroupedCertificate | CourseWithStatus, settings: SiteSettings | null }) => {
     const { user } = useAuth();
     const { toast } = useToast();
     const isGroup = 'courseIds' in item;
@@ -43,7 +45,10 @@ const CertificateCard = ({ item }: { item: GroupedCertificate | CourseWithStatus
         toast({ title: 'Link Copied!', description: 'The public link to your certificate has been copied.' });
     };
 
-    const certificateCourse = isGroup ? item.courses[0] : item;
+    const certificateCourse = isGroup ? { ...item.courses[0], title: item.title, id: item.id } : item;
+    const certificateTemplateUrl = item.certificateTemplateUrl;
+    const logoUrl = isGroup ? (item as GroupedCertificate).courses[0]?.logoUrl : (item as CourseWithStatus).logoUrl;
+
 
     return (
         <Card className="flex flex-col">
@@ -73,7 +78,13 @@ const CertificateCard = ({ item }: { item: GroupedCertificate | CourseWithStatus
                         <DialogHeader>
                             <DialogTitle>Certificate of Completion</DialogTitle>
                         </DialogHeader>
-                        <CertificatePrint userName={user?.displayName || "Student"} course={certificateCourse} />
+                        <CertificatePrint 
+                            userName={user?.displayName || "Student"} 
+                            course={certificateCourse} 
+                            templateUrl={certificateTemplateUrl}
+                            logoUrl={logoUrl}
+                            settings={settings}
+                        />
                     </DialogContent>
                  </Dialog>
                 <DropdownMenu>
@@ -125,11 +136,14 @@ export default function MyCertificatesPage() {
     const [groupedCertificates, setGroupedCertificates] = useState<GroupedCertificate[]>([]);
     const [individualCertCourses, setIndividualCertCourses] = useState<CourseWithStatus[]>([]);
     const [loadingGroups, setLoadingGroups] = useState(true);
+    const [siteSettings, setSiteSettings] = useState<SiteSettings | null>(null);
+
 
     const canViewPage = hasPermission('viewDashboard'); 
     const loading = authLoading || coursesLoading || loadingGroups;
 
     useEffect(() => {
+        getSiteSettings().then(setSiteSettings);
         const fetchCourseGroups = async () => {
             if (coursesLoading || !user) {
                 setLoadingGroups(false);
@@ -192,7 +206,7 @@ export default function MyCertificatesPage() {
             ) : allCertificates.length > 0 ? (
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
                     {allCertificates.map(item => (
-                        <CertificateCard key={item.id} item={item} />
+                        <CertificateCard key={item.id} item={item} settings={siteSettings} />
                     ))}
                 </div>
             ) : (

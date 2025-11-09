@@ -33,7 +33,7 @@ import {
 } from "@/components/ui/dialog"
 import { useAuth } from '@/hooks/use-auth';
 import VideoLibrary from './video-library';
-import type { Video as VideoType, Course, Ladder, Speaker, QuizQuestion, Quiz } from '@/lib/types';
+import type { Video as VideoType, Course, Ladder, Speaker, Quiz, CustomForm } from '@/lib/types';
 import DocumentLibrary from './document-library';
 import { Switch } from './ui/switch';
 import { Badge } from './ui/badge';
@@ -45,6 +45,7 @@ import { cn } from '@/lib/utils';
 import { RadioGroup, RadioGroupItem } from './ui/radio-group';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from './ui/tabs';
 import QuizLibrary from './quiz-library';
+import FormLibrary from './form-library';
 
 
 const attendanceLinkSchema = z.object({
@@ -81,6 +82,7 @@ const courseSchema = z.object({
   attendanceLinks: z.array(attendanceLinkSchema).optional(),
   resources: z.array(resourceSchema).optional(),
   quizIds: z.array(z.string()).optional(),
+  formId: z.string().optional(),
   certificateTemplateUrl: z.string().url("Please select a valid certificate background.").optional().or(z.literal('')),
   logoUrl: z.string().url("Please select a valid logo.").optional().or(z.literal('')),
   status: z.enum(['published', 'draft']).default('draft'),
@@ -234,7 +236,9 @@ export default function AddCourseForm({ allCourses, onCourseUpdated }: AddCourse
     const [isSpeakerManagerOpen, setIsSpeakerManagerOpen] = useState(false);
     const [libraryVideos, setLibraryVideos] = useState<VideoType[]>([]);
     const [isQuizLibraryOpen, setIsQuizLibraryOpen] = useState(false);
+    const [isFormLibraryOpen, setIsFormLibraryOpen] = useState(false);
     const [libraryQuizzes, setLibraryQuizzes] = useState<Quiz[]>([]);
+    const [libraryForms, setLibraryForms] = useState<CustomForm[]>([]);
     const [isVideoLibraryOpen, setIsVideoLibraryOpen] = useState(false);
     const [isDocLibraryOpen, setIsDocLibraryOpen] = useState(false);
     const [isLogoLibraryOpen, setIsLogoLibraryOpen] = useState(false);
@@ -291,10 +295,22 @@ export default function AddCourseForm({ allCourses, onCourseUpdated }: AddCourse
         }
     }, [db, toast]);
 
+    const fetchLibraryForms = useCallback(async () => {
+        try {
+            const q = query(collection(db, 'forms'), orderBy('createdAt', 'desc'));
+            const querySnapshot = await getDocs(q);
+            const formsList = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as CustomForm));
+            setLibraryForms(formsList);
+        } catch (error) {
+            toast({ variant: 'destructive', title: 'Failed to fetch form library.' });
+        }
+    }, [db, toast]);
+
     useEffect(() => {
         fetchLibraryVideos();
         fetchLibraryQuizzes();
-    }, [fetchLibraryVideos, fetchLibraryQuizzes]);
+        fetchLibraryForms();
+    }, [fetchLibraryVideos, fetchLibraryQuizzes, fetchLibraryForms]);
 
 
     const {
@@ -319,6 +335,7 @@ export default function AddCourseForm({ allCourses, onCourseUpdated }: AddCourse
             attendanceLinks: [],
             resources: [],
             quizIds: [],
+            formId: '',
             certificateTemplateUrl: '',
             logoUrl: '',
             status: 'draft',
@@ -334,6 +351,7 @@ export default function AddCourseForm({ allCourses, onCourseUpdated }: AddCourse
     const watchCertificateUrl = watch('certificateTemplateUrl');
     const watchOrder = watch('order');
     const watchQuizIds = watch('quizIds', []);
+    const watchFormId = watch('formId');
     
     // Auto-calculate order when ladderIds change
     useEffect(() => {
@@ -415,6 +433,7 @@ export default function AddCourseForm({ allCourses, onCourseUpdated }: AddCourse
                   attendanceLinks: courseData.attendanceLinks || [],
                   resources: resourceDetails,
                   quizIds: courseData.quizIds || [],
+                  formId: courseData.formId || '',
                   certificateTemplateUrl: courseData.certificateTemplateUrl || '',
                   logoUrl: courseData.logoUrl,
                   status: courseData.status || 'draft',
@@ -560,6 +579,11 @@ export default function AddCourseForm({ allCourses, onCourseUpdated }: AddCourse
         setIsQuizLibraryOpen(false);
     };
 
+    const handleSelectForm = (form: CustomForm) => {
+        setValue('formId', form.id, { shouldValidate: true });
+        setIsFormLibraryOpen(false);
+    }
+
     const onSubmit: SubmitHandler<CourseFormValues> = async (data) => {
         if (!user) {
             toast({ variant: 'destructive', title: 'You must be logged in to create a course.' });
@@ -629,6 +653,7 @@ export default function AddCourseForm({ allCourses, onCourseUpdated }: AddCourse
                 videos: videoIds,
                 attendanceLinks: data.attendanceLinks,
                 quizIds: data.quizIds,
+                formId: data.formId,
                 "Resource Doc": resourceUrls,
                 tags: [...data.Category, ...ladderNames],
                 status: data.status,
@@ -686,7 +711,7 @@ export default function AddCourseForm({ allCourses, onCourseUpdated }: AddCourse
                  <TabsList className="grid w-full grid-cols-4">
                     <TabsTrigger value="info">Course Info</TabsTrigger>
                     <TabsTrigger value="content">Content</TabsTrigger>
-                    <TabsTrigger value="quiz">Quiz</TabsTrigger>
+                    <TabsTrigger value="quiz">Quiz &amp; Forms</TabsTrigger>
                     <TabsTrigger value="attachments">Attachments</TabsTrigger>
                 </TabsList>
             </div>
@@ -999,46 +1024,75 @@ export default function AddCourseForm({ allCourses, onCourseUpdated }: AddCourse
                         </CardContent>
                     </Card>
                 </TabsContent>
-
+                
                 <TabsContent value="quiz" className="space-y-8">
                      <Card>
                         <CardHeader>
-                            <CardTitle>Course Quizzes</CardTitle>
-                            <CardDescription>Attach quizzes to this course from the library.</CardDescription>
+                            <CardTitle>Course Quizzes & Forms</CardTitle>
+                            <CardDescription>Attach quizzes and forms to this course from the library.</CardDescription>
                         </CardHeader>
-                        <CardContent>
-                            <div className="p-4 border rounded-md mt-2">
-                                {watchQuizIds && watchQuizIds.length > 0 && (
-                                    <div className="space-y-2 mb-4">
-                                        {watchQuizIds.map((quizId) => {
-                                            const quiz = libraryQuizzes.find(q => q.id === quizId);
-                                            return (
-                                                <div key={quizId} className="flex items-center justify-between p-2 bg-muted/50 rounded-md">
-                                                     <p className="font-semibold">{quiz?.title || 'Loading quiz...'}</p>
-                                                     <Button type="button" variant="ghost" size="icon" onClick={() => setValue('quizIds', watchQuizIds.filter(id => id !== quizId))}>
-                                                        <Trash className="h-4 w-4 text-destructive"/>
-                                                     </Button>
-                                                </div>
-                                            )
-                                        })}
-                                    </div>
-                                )}
-                                 <Dialog open={isQuizLibraryOpen} onOpenChange={setIsQuizLibraryOpen}>
-                                    <DialogTrigger asChild>
-                                        <Button type="button" variant="outline" className="w-full">
-                                            <Library className="mr-2 h-4 w-4" />
-                                            Select Quizzes
-                                        </Button>
-                                    </DialogTrigger>
-                                    <DialogContent className="max-w-4xl h-[90vh] flex flex-col p-0">
+                        <CardContent className="space-y-6">
+                            <div>
+                                <Label className="font-semibold">Quizzes</Label>
+                                <div className="p-4 border rounded-md mt-2">
+                                    {watchQuizIds && watchQuizIds.length > 0 && (
+                                        <div className="space-y-2 mb-4">
+                                            {watchQuizIds.map((quizId) => {
+                                                const quiz = libraryQuizzes.find(q => q.id === quizId);
+                                                return (
+                                                    <div key={quizId} className="flex items-center justify-between p-2 bg-muted/50 rounded-md">
+                                                        <p className="font-semibold">{quiz?.title || 'Loading quiz...'}</p>
+                                                        <Button type="button" variant="ghost" size="icon" onClick={() => setValue('quizIds', watchQuizIds.filter(id => id !== quizId))}>
+                                                            <Trash className="h-4 w-4 text-destructive"/>
+                                                        </Button>
+                                                    </div>
+                                                )
+                                            })}
+                                        </div>
+                                    )}
+                                    <Dialog open={isQuizLibraryOpen} onOpenChange={setIsQuizLibraryOpen}>
+                                        <DialogTrigger asChild>
+                                            <Button type="button" variant="outline" className="w-full">
+                                                <Library className="mr-2 h-4 w-4" />
+                                                Select Quizzes
+                                            </Button>
+                                        </DialogTrigger>
                                         <QuizLibrary
                                             quizzes={libraryQuizzes}
                                             onRefreshQuizzes={fetchLibraryQuizzes}
                                             onSelectQuizzes={handleSelectQuizzes}
                                             initialSelectedQuizIds={watchQuizIds}
                                         />
-                                    </DialogContent>
-                                </Dialog>
+                                    </Dialog>
+                                </div>
+                            </div>
+                             <div>
+                                <Label className="font-semibold">Form</Label>
+                                <div className="p-4 border rounded-md mt-2">
+                                    {watchFormId && (
+                                        <div className="space-y-2 mb-4">
+                                            <div className="flex items-center justify-between p-2 bg-muted/50 rounded-md">
+                                                <p className="font-semibold">{libraryForms.find(f => f.id === watchFormId)?.title || 'Loading form...'}</p>
+                                                <Button type="button" variant="ghost" size="icon" onClick={() => setValue('formId', '')}>
+                                                    <Trash className="h-4 w-4 text-destructive"/>
+                                                </Button>
+                                            </div>
+                                        </div>
+                                    )}
+                                     <Dialog open={isFormLibraryOpen} onOpenChange={setIsFormLibraryOpen}>
+                                        <DialogTrigger asChild>
+                                            <Button type="button" variant="outline" className="w-full">
+                                                <Library className="mr-2 h-4 w-4" />
+                                                Select Form
+                                            </Button>
+                                        </DialogTrigger>
+                                        <FormLibrary 
+                                            forms={libraryForms} 
+                                            onSelectForm={handleSelectForm} 
+                                            selectedFormId={watchFormId}
+                                        />
+                                    </Dialog>
+                                </div>
                             </div>
                         </CardContent>
                     </Card>

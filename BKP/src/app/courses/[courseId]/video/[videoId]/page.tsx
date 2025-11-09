@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
@@ -55,9 +56,7 @@ export default function VideoPage() {
           return;
         }
 
-        // Build course object and use enrollmentCount from the course doc
         const courseData = { id: courseSnap.id, ...courseSnap.data() } as Course;
-        courseData.enrollmentCount = courseSnap.data()?.enrollmentCount || 0; // <- IMPORTANT: no illegal query
         setCourse(courseData);
 
         // ----- Speaker (public read) -----
@@ -75,40 +74,38 @@ export default function VideoPage() {
           return;
         }
 
-        // If the URL video isn't part of the course, bounce to the course page
         if (!videoIds.includes(videoId)) {
           router.replace(`/courses/${courseId}`);
           return;
         }
 
-        const chunkSize = 10;
-        const allDocs: Video[] = [];
+        const chunkSize = 30; // Firestore 'in' query limit
+        const allVideoDocs: Video[] = [];
         for (let i = 0; i < videoIds.length; i += chunkSize) {
           const slice = videoIds.slice(i, i + chunkSize);
           const q = query(
             collection(db, "Contents"),
-            where(documentId(), "in", slice),
-            where("status", "==", "published")
+            where(documentId(), "in", slice)
           );
           const snap = await getDocs(q);
-          allDocs.push(
+          allVideoDocs.push(
             ...snap.docs.map((d) => ({ id: d.id, ...d.data() } as Video))
           );
         }
 
-        // keep original order
+        // Filter for published and keep original order
+        const publishedIds = new Set(allVideoDocs.filter(v => v.status === 'published').map(v => v.id));
         const orderedVideos = videoIds
-          .map((id) => allDocs.find((v) => v.id === id))
-          .filter(Boolean) as Video[];
+          .map((id) => allVideoDocs.find((v) => v.id === id))
+          .filter((v): v is Video => !!v && publishedIds.has(v.id));
+
 
         if (orderedVideos.length === 0) {
           router.replace(`/courses/${courseId}`);
           return;
         }
-
         setVideos(orderedVideos);
 
-        // Current video
         const foundVideo = orderedVideos.find((v) => v.id === videoId) || null;
         if (!foundVideo) {
           router.replace(`/courses/${courseId}`);
@@ -117,7 +114,6 @@ export default function VideoPage() {
         setCurrentVideo(foundVideo);
       } catch (error) {
         console.error("Error fetching video page data:", error);
-        // generic bounce; if you prefer, detect specific error codes
         router.replace("/courses");
       } finally {
         setBusy(false);
@@ -140,7 +136,6 @@ export default function VideoPage() {
     );
   }
 
-  // Lazy import keeps your existing player component intact
   const VideoPlayer = require("@/components/video-player").default;
 
   return (

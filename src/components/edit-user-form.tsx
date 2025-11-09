@@ -1,4 +1,5 @@
 
+
 "use client";
 
 import { useState, useEffect, useRef, useCallback } from "react";
@@ -53,6 +54,8 @@ const profileSchema = z.object({
   hpAvailabilityTime: z.string().optional(),
   locationPreference: z.string().optional(),
   language: z.string().optional(),
+  isBaptized: z.enum(['true', 'false']).optional(),
+  denomination: z.string().optional(),
 });
 
 type ProfileFormValues = z.infer<typeof profileSchema>;
@@ -130,6 +133,8 @@ export default function EditUserForm({ userToEdit, onUserUpdated }: EditUserForm
         ministry: userToEdit.ministry || "",
         bio: userToEdit.bio || "",
         isInHpGroup: String(userToEdit.isInHpGroup || 'false') as 'true' | 'false',
+        isBaptized: userToEdit.isBaptized !== undefined ? String(userToEdit.isBaptized) as 'true' | 'false' : undefined,
+        denomination: userToEdit.denomination || "",
         hpAvailabilityDay: userToEdit.hpAvailabilityDay || "",
         hpAvailabilityTime: userToEdit.hpAvailabilityTime || "",
         locationPreference: userToEdit.locationPreference || "",
@@ -138,6 +143,7 @@ export default function EditUserForm({ userToEdit, onUserUpdated }: EditUserForm
   });
   
   const isInHpGroupValue = watch('isInHpGroup');
+  const isBaptizedValue = watch('isBaptized');
 
   const fetchItems = useCallback(async (collectionName: string, setter: React.Dispatch<React.SetStateAction<any[]>>, orderByField = "name") => {
     try {
@@ -226,6 +232,8 @@ export default function EditUserForm({ userToEdit, onUserUpdated }: EditUserForm
         ministry: data.ministry,
         bio: data.bio,
         isInHpGroup: data.isInHpGroup === 'true',
+        isBaptized: data.isBaptized === 'true',
+        denomination: data.isBaptized === 'true' ? data.denomination : undefined,
         hpAvailabilityDay: data.hpAvailabilityDay,
         hpAvailabilityTime: data.hpAvailabilityTime,
         locationPreference: data.locationPreference as 'Onsite' | 'Online',
@@ -444,6 +452,41 @@ export default function EditUserForm({ userToEdit, onUserUpdated }: EditUserForm
                 </>
             )}
             <div className="space-y-2">
+                 <Label>Are you baptized?</Label>
+                <Controller
+                    name="isBaptized"
+                    control={control}
+                    render={({ field }) => (
+                        <Select onValueChange={field.onChange} value={field.value} disabled={isSubmitting}>
+                            <SelectTrigger><SelectValue placeholder="Select an option" /></SelectTrigger>
+                            <SelectContent>
+                                <SelectItem value="true">Yes</SelectItem>
+                                <SelectItem value="false">No</SelectItem>
+                            </SelectContent>
+                        </Select>
+                    )}
+                />
+            </div>
+            {isBaptizedValue === 'true' && (
+                <div className="space-y-2">
+                    <Label>Denomination</Label>
+                    <Controller
+                        name="denomination"
+                        control={control}
+                        render={({ field }) => (
+                            <Select onValueChange={field.onChange} value={field.value} disabled={isSubmitting}>
+                                <SelectTrigger><SelectValue placeholder="Select denomination" /></SelectTrigger>
+                                <SelectContent>
+                                    {[ "Apostolic", "Baptist", "Pentecostal", "Protestant", "Catholic", "Evangelical",
+                                       "Methodist", "Lutheran", "Presbyterian", "Anglican", "Other"
+                                    ].map(d => <SelectItem key={d} value={d}>{d}</SelectItem>)}
+                                </SelectContent>
+                            </Select>
+                        )}
+                    />
+                </div>
+            )}
+            <div className="space-y-2">
                 <Label>Campus</Label>
                 <Controller
                     name="campus"
@@ -612,7 +655,6 @@ export default function EditUserForm({ userToEdit, onUserUpdated }: EditUserForm
         </div>
         
         <div className="flex justify-end gap-2">
-            <Button type="button" variant="ghost" onClick={onUserUpdated}>Cancel</Button>
             <Button type="submit" disabled={isSubmitting || !isDirty}>
             {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
             Save Changes

@@ -235,12 +235,20 @@ export default function Home() {
                     {settings?.homepageSubtitle || "Join Glory Training Hub for world-class training and resources to help you grow in your faith and leadership."}
                     </p>
                     <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
-                    <Button size="lg" asChild className="w-full sm:w-auto text-base sm:text-sm">
-                        <ConditionalLink href={settings?.enrollButtonLink || "/signup"}>
-                        {settings?.enrollButtonText || "Start Your Journey"} <ArrowRight className="ml-2 h-5 w-5" />
-                        </ConditionalLink>
-                    </Button>
-                    <Button size="lg" variant="outline" asChild className="w-full sm:w-auto text-base sm:text-sm">
+                    {user ? (
+                        <Button size="lg" asChild className="w-full sm:w-auto">
+                            <Link href="/dashboard">
+                                Go to Dashboard <ArrowRight className="ml-2 h-5 w-5" />
+                            </Link>
+                        </Button>
+                    ) : (
+                        <Button size="lg" asChild className="w-full sm:w-auto">
+                            <ConditionalLink href={settings?.enrollButtonLink || "/signup"}>
+                                {settings?.enrollButtonText || "Start Your Journey"} <ArrowRight className="ml-2 h-5 w-5" />
+                            </ConditionalLink>
+                        </Button>
+                    )}
+                    <Button size="lg" variant="outline" asChild className="w-full sm:w-auto">
                         <ConditionalLink href={settings?.exploreButtonLink || "/courses"}>
                         {settings?.exploreButtonText || "Explore Courses"}
                         </ConditionalLink>

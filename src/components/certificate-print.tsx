@@ -3,11 +3,11 @@
 
 import { useRef, useState } from "react";
 import Certificate from "@/components/certificate";
-import type { Course } from "@/lib/types";
+import type { Course, SiteSettings } from "@/lib/types";
 import { Button } from "./ui/button";
 import { Printer, Download, Mail, Loader2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import { toPng } from 'html-to-image';
+import html2canvas from 'html2canvas';
 import { useAuth } from "@/hooks/use-auth";
 import { getFunctions, httpsCallable } from "firebase/functions";
 import {
@@ -26,9 +26,13 @@ import { Label } from "./ui/label";
 interface CertificatePrintProps {
     userName: string;
     course: Course;
+    completionDate: string | null;
+    templateUrl?: string;
+    logoUrl?: string;
+    settings: SiteSettings | null;
 }
 
-export default function CertificatePrint({ userName, course }: CertificatePrintProps) {
+export default function CertificatePrint({ userName, course, completionDate, templateUrl, logoUrl, settings }: CertificatePrintProps) {
     const { toast } = useToast();
     const { user } = useAuth();
     const [isEmailing, setIsEmailing] = useState(false);
@@ -44,13 +48,12 @@ export default function CertificatePrint({ userName, course }: CertificatePrintP
         if (!certificateElement) return;
 
         try {
-            const dataUrl = await toPng(certificateElement, { 
-                cacheBust: true,
-                fetchRequestInit: {
-                    mode: 'cors',
-                    credentials: 'omit',
-                },
+            const canvas = await html2canvas(certificateElement, { 
+                allowTaint: true,
+                useCORS: true,
+                scale: 2, // Higher scale for better quality
             });
+            const dataUrl = canvas.toDataURL('image/png');
             const link = document.createElement('a');
             link.download = `${userName}-${course.title}-certificate.png`;
             link.href = dataUrl;
@@ -99,9 +102,11 @@ export default function CertificatePrint({ userName, course }: CertificatePrintP
             <div className="w-full bg-white shadow-lg max-w-4xl certificate-print-area">
                 <Certificate
                     userName={userName}
-                    completionDate={course.completedAt}
-                    templateUrl={course.certificateTemplateUrl}
-                    logoUrl={course.logoUrl}
+                    courseName={course.title}
+                    completionDate={completionDate}
+                    templateUrl={templateUrl}
+                    logoUrl={logoUrl}
+                    settings={settings}
                 />
             </div>
             <div className="mt-4 flex flex-wrap items-center justify-center gap-2">

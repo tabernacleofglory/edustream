@@ -30,10 +30,11 @@ import {
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { collection, getDocs, query, where, orderBy, writeBatch, doc } from "firebase/firestore";
-import { getFirebaseFirestore } from "@/lib/firebase";
+import { getFirebaseFirestore, getFirebaseFunctions } from "@/lib/firebase";
+import { httpsCallable } from "firebase/functions";
 import type { User, Course, Quiz, UserQuizResult, QuizQuestion, CourseGroup } from "@/lib/types";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Eye, Download, Calendar as CalendarIcon, X as XIcon, CheckCircle, XCircle, Trash2, Search, ChevronLeft, ChevronRight } from "lucide-react";
+import { Eye, Download, Calendar as CalendarIcon, X as XIcon, CheckCircle, XCircle, Trash2, Search, ChevronLeft, ChevronRight, Lock, RefreshCw, Loader2 } from "lucide-react";
 import Papa from 'papaparse';
 import { format, startOfDay, endOfDay } from "date-fns";
 import { DateRange } from "react-day-picker";
@@ -81,6 +82,7 @@ export default function QuizReportsPage() {
   const [selectedUser, setSelectedUser] = useState<string | "all">("all");
   const [selectedCourse, setSelectedCourse] = useState<string | "all">("all");
   const [selectedCampus, setSelectedCampus] = useState<string | "all">("all");
+  const [percentageFilter, setPercentageFilter] = useState<string>('all');
   const [dateRange, setDateRange] = useState<DateRange | undefined>();
   const [viewingQuizResult, setViewingQuizResult] = useState<QuizReportData | null>(null);
   const [searchTerm, setSearchTerm] = useState("");
@@ -180,6 +182,11 @@ export default function QuizReportsPage() {
         filtered = filtered.filter(r => userIdsInCampus.has(r.userId));
       }
     }
+    
+    if (percentageFilter !== 'all') {
+        const [min, max] = percentageFilter.split('-').map(Number);
+        filtered = filtered.filter(r => r.score >= min && r.score <= max);
+    }
 
     if (dateRange?.from) {
       filtered = filtered.filter(r => r.attemptedAt >= startOfDay(dateRange.from!));
@@ -196,11 +203,11 @@ export default function QuizReportsPage() {
     }
 
     return filtered;
-  }, [quizReportData, selectedUser, selectedCourse, allCourseGroups, selectedCampus, dateRange, allUsers, allCampuses, searchTerm]);
+  }, [quizReportData, selectedUser, selectedCourse, allCourseGroups, selectedCampus, dateRange, allUsers, allCampuses, searchTerm, percentageFilter]);
   
   useEffect(() => {
     setQuizReportPage(1); // Reset to first page on filter change
-  }, [selectedUser, selectedCourse, selectedCampus, dateRange, searchTerm, quizReportPageSize])
+  }, [selectedUser, selectedCourse, selectedCampus, dateRange, searchTerm, quizReportPageSize, percentageFilter])
 
   const quizReportTotalPages = Math.ceil(filteredQuizReportData.length / quizReportPageSize);
   const currentQuizReportData = filteredQuizReportData.slice(
@@ -317,10 +324,10 @@ export default function QuizReportsPage() {
             </div>
             <div className="flex flex-wrap gap-2">
               {selectedQuizResults.length > 0 && (
-                <Button variant="destructive" onClick={handleDeleteSelectedQuizResults}>
-                  <Trash2 className="mr-2 h-4 w-4" />
-                  Delete Selected ({selectedQuizResults.length})
-                </Button>
+                  <Button variant="destructive" onClick={handleDeleteSelectedQuizResults}>
+                    <Trash2 className="mr-2 h-4 w-4" />
+                    Delete Selected ({selectedQuizResults.length})
+                  </Button>
               )}
               <Button onClick={handleExportQuizReportCSV} variant="outline" disabled={filteredQuizReportData.length === 0}>
                 <Download className="mr-2 h-4 w-4" />
@@ -374,6 +381,19 @@ export default function QuizReportsPage() {
                   <SelectItem key={campus.id} value={campus.id}>{campus["Campus Name"]}</SelectItem>
                 ))}
               </SelectContent>
+            </Select>
+            <Select value={percentageFilter} onValueChange={setPercentageFilter}>
+                <SelectTrigger className="w-full sm:w-auto flex-grow">
+                    <SelectValue placeholder="Filter by Percentage" />
+                </SelectTrigger>
+                <SelectContent>
+                    <SelectItem value="all">Any Percentage</SelectItem>
+                    <SelectItem value="0-25">0 - 25%</SelectItem>
+                    <SelectItem value="26-50">26 - 50%</SelectItem>
+                    <SelectItem value="51-75">51 - 75%</SelectItem>
+                    <SelectItem value="76-99">76 - 99%</SelectItem>
+                    <SelectItem value="100-100">100%</SelectItem>
+                </SelectContent>
             </Select>
             <Popover>
               <PopoverTrigger asChild>

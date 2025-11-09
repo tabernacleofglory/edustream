@@ -1,4 +1,5 @@
 
+
 "use client";
 
 import { useState, useEffect } from 'react';
@@ -27,8 +28,10 @@ const fieldConfigSchema = z.object({
 
 const formBuilderSchema = z.object({
   title: z.string().min(1, 'Form title is required.'),
-  type: z.enum(['userProfile', 'blank']),
+  type: z.enum(['userProfile', 'custom']),
   fields: z.array(fieldConfigSchema),
+  public: z.boolean().default(false),
+  submissionCount: z.number().default(0),
 });
 
 type FormBuilderValues = z.infer<typeof formBuilderSchema>;
@@ -51,7 +54,7 @@ const USER_PROFILE_FIELDS: Omit<z.infer<typeof fieldConfigSchema>, 'visible' | '
     { fieldId: 'hpAvailabilityTime', label: 'HP Availability Time' },
 ];
 
-const getInitialFields = (formType: 'userProfile' | 'blank') => {
+const getInitialFields = (formType: 'userProfile' | 'custom') => {
     if (formType === 'userProfile') {
         return USER_PROFILE_FIELDS.map(field => {
             const isRequired = ['firstName', 'lastName', 'email', 'password'].includes(field.fieldId);
@@ -62,7 +65,7 @@ const getInitialFields = (formType: 'userProfile' | 'blank') => {
 }
 
 interface FormBuilderProps {
-    formType: 'userProfile' | 'blank' | null;
+    formType: 'userProfile' | 'custom' | null;
     formId?: string | null;
 }
 
@@ -86,8 +89,10 @@ export default function FormBuilder({ formType, formId }: FormBuilderProps) {
             setLoadingForm(false);
             return {
                 title: formType === 'userProfile' ? 'New User Registration' : 'New Form',
-                type: formType || 'blank',
+                type: formType || 'custom',
                 fields: formType ? getInitialFields(formType) : [],
+                public: false,
+                submissionCount: 0,
             }
         }
     });
@@ -103,12 +108,16 @@ export default function FormBuilder({ formType, formId }: FormBuilderProps) {
         setIsSubmitting(true);
         try {
             if (formId) {
-                 await updateDoc(doc(db, "forms", formId), data);
+                 await updateDoc(doc(db, "forms", formId), {
+                     ...data,
+                     updatedAt: serverTimestamp(),
+                 });
                  toast({ title: 'Form Updated', description: `Your "${data.title}" form has been saved.` });
             } else {
                 await addDoc(collection(db, 'forms'), {
                     ...data,
                     submissionCount: 0,
+                    public: false, // Forms are private by default
                     createdAt: serverTimestamp(),
                 });
                 toast({ title: 'Form Created', description: `Your "${data.title}" form has been saved.` });
@@ -125,6 +134,12 @@ export default function FormBuilder({ formType, formId }: FormBuilderProps) {
     if (loadingForm) {
         return <Skeleton className="h-96 w-full" />
     }
+    
+    if (form.getValues('type') === 'custom' && !formId) {
+         router.replace('/admin/forms/builder/blank-form?type=custom');
+         return null;
+    }
+
 
     return (
         <form onSubmit={handleSubmit(onSubmit)}>
@@ -175,11 +190,6 @@ export default function FormBuilder({ formType, formId }: FormBuilderProps) {
                             )
                         })}
                     </div>
-                    {form.getValues('type') === 'blank' && (
-                        <div className="text-center p-8 text-muted-foreground border-2 border-dashed rounded-lg">
-                            <p>Blank form builder coming soon.</p>
-                        </div>
-                    )}
                 </CardContent>
                 <CardFooter>
                     <Button type="submit" disabled={isSubmitting}>

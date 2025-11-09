@@ -11,9 +11,8 @@ import { Label } from "./ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./ui/select";
 import { useToast } from "@/hooks/use-toast";
 import { Loader2, Plus, Trash } from "lucide-react";
-import { getApps, initializeApp, getApp } from "firebase/app";
 import { getAuth, updateProfile } from "firebase/auth";
-import { doc, updateDoc, collection, addDoc, serverTimestamp, deleteDoc, getDocs, query, orderBy, getDoc } from "firebase/firestore";
+import { doc, updateDoc, collection, addDoc, serverTimestamp, deleteDoc, getDocs, query, orderBy, where } from "firebase/firestore";
 import { getFirebaseFirestore, getFirebaseStorage } from "@/lib/firebase";
 import type { User, Ladder } from "@/lib/types";
 import {
@@ -29,11 +28,14 @@ import { useAuth } from "@/hooks/use-auth";
 import { Avatar, AvatarFallback, AvatarImage } from "./ui/avatar";
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { Textarea } from "./ui/textarea";
+import PhoneInput from 'react-phone-number-input';
+import 'react-phone-number-input/style.css';
 
 const profileSchema = z.object({
-  displayName: z.string().min(1, "Full name is required"),
+  firstName: z.string().min(1, "First name is required"),
+  lastName: z.string().min(1, "Last name is required"),
   email: z.string().email(),
-  phoneNumber: z.string().optional(),
+  phoneNumber: z.string().optional().or(z.literal("")).or(z.undefined()),
   hpNumber: z.string().optional(),
   facilitatorName: z.string().optional(),
   campus: z.string().optional(),
@@ -46,6 +48,11 @@ const profileSchema = z.object({
   maritalStatus: z.string().optional(),
   ministry: z.string().optional(),
   bio: z.string().optional(),
+  isInHpGroup: z.enum(['true', 'false']),
+  hpAvailabilityDay: z.string().optional(),
+  hpAvailabilityTime: z.string().optional(),
+  locationPreference: z.string().optional(),
+  language: z.string().optional(),
 });
 
 type ProfileFormValues = z.infer<typeof profileSchema>;
@@ -66,7 +73,7 @@ interface EditUserFormProps {
 }
 
 export default function EditUserForm({ userToEdit, onUserUpdated }: EditUserFormProps) {
-  const { user: currentUser, refreshUser, isCurrentUserAdmin } = useAuth();
+  const { user: currentUser, refreshUser } = useAuth();
   const { toast } = useToast();
   const auth = getAuth();
   const storage = getFirebaseStorage();
@@ -82,11 +89,18 @@ export default function EditUserForm({ userToEdit, onUserUpdated }: EditUserForm
   const [statuses, setStatuses] = useState<StoredItem[]>([]);
   const [charges, setCharges] = useState<StoredItem[]>([]);
   const [ministries, setMinistries] = useState<StoredItem[]>([]);
+  const [availableLanguages, setAvailableLanguages] = useState<StoredItem[]>([]);
   
   const [isCampusDialogOpen, setIsCampusDialogOpen] = useState(false);
   const [newCampusName, setNewCampusName] = useState("");
   const [isChargeDialogOpen, setIsChargeDialogOpen] = useState(false);
   const [newChargeName, setNewChargeName] = useState("");
+  
+  const formatPhoneNumber = (phone?: string) => {
+    if (!phone) return undefined;
+    if (phone.startsWith('+')) return phone;
+    return `+${phone}`;
+  }
 
   const {
     register,
@@ -99,9 +113,10 @@ export default function EditUserForm({ userToEdit, onUserUpdated }: EditUserForm
   } = useForm<ProfileFormValues>({
     resolver: zodResolver(profileSchema),
     defaultValues: {
-        displayName: userToEdit.displayName || "",
+        firstName: userToEdit.firstName || "",
+        lastName: userToEdit.lastName || "",
         email: userToEdit.email || "",
-        phoneNumber: userToEdit.phoneNumber || "",
+        phoneNumber: formatPhoneNumber(userToEdit.phoneNumber),
         hpNumber: userToEdit.hpNumber || "",
         facilitatorName: userToEdit.facilitatorName || "",
         campus: userToEdit.campus || "",
@@ -114,8 +129,15 @@ export default function EditUserForm({ userToEdit, onUserUpdated }: EditUserForm
         maritalStatus: userToEdit.maritalStatus || "",
         ministry: userToEdit.ministry || "",
         bio: userToEdit.bio || "",
+        isInHpGroup: String(userToEdit.isInHpGroup || 'false') as 'true' | 'false',
+        hpAvailabilityDay: userToEdit.hpAvailabilityDay || "",
+        hpAvailabilityTime: userToEdit.hpAvailabilityTime || "",
+        locationPreference: userToEdit.locationPreference || "",
+        language: userToEdit.language || "",
     }
   });
+  
+  const isInHpGroupValue = watch('isInHpGroup');
 
   const fetchItems = useCallback(async (collectionName: string, setter: React.Dispatch<React.SetStateAction<any[]>>, orderByField = "name") => {
     try {
@@ -141,19 +163,40 @@ export default function EditUserForm({ userToEdit, onUserUpdated }: EditUserForm
     }
   }, [toast, db]);
   
-  useEffect(() => {
-    fetchCampuses();
-    fetchItems('courseLevels', setLadders, 'order');
-    fetchItems('membershipStatuses', setStatuses);
-    fetchItems('charges', setCharges);
-    fetchItems('ministries', setMinistries);
-    setRoles([
-        { id: 'admin', name: 'Admin' },
-        { id: 'moderator', name: 'Moderator' },
-        { id: 'developer', name: 'Developer' },
-        { id: 'user', name: 'User' },
-    ]);
-  }, [fetchCampuses, fetchItems]);
+    useEffect(() => {
+        fetchCampuses();
+        fetchItems('courseLevels', setLadders, 'order');
+        fetchItems('membershipStatuses', setStatuses);
+        fetchItems('charges', setCharges);
+        fetchItems('ministries', setMinistries);
+        
+        const langQuery = query(collection(db, 'languages'), where('status', '==', 'published'));
+        getDocs(langQuery).then(snapshot => {
+            setAvailableLanguages(snapshot.docs.map(d => ({id: d.id, name: d.data().name} as StoredItem)));
+        });
+
+        const roleHierarchy: Record<string, string[]> = {
+            developer: ['developer', 'admin', 'moderator', 'team', 'user'],
+            admin: ['admin', 'moderator', 'team', 'user'],
+            moderator: ['moderator', 'team', 'user'],
+            team: ['team', 'user'],
+            user: ['user']
+        };
+
+        const currentUserRole = currentUser?.role || 'user';
+        const visibleRoles = roleHierarchy[currentUserRole] || ['user'];
+        
+        const allRoles = [
+            { id: 'developer', name: 'Developer' },
+            { id: 'admin', name: 'Admin' },
+            { id: 'moderator', name: 'Moderator' },
+            { id: 'team', name: 'Team' },
+            { id: 'user', name: 'User' },
+        ];
+
+        setRoles(allRoles.filter(role => visibleRoles.includes(role.id)));
+
+    }, [fetchCampuses, fetchItems, db, currentUser?.role]);
 
   const onSubmit: SubmitHandler<ProfileFormValues> = async (data) => {
     setIsSubmitting(true);
@@ -163,8 +206,10 @@ export default function EditUserForm({ userToEdit, onUserUpdated }: EditUserForm
       const selectedLadder = ladders.find(l => l.id === data.classLadderId);
       
       const firestoreData: Partial<User> = {
-        displayName: data.displayName,
-        fullName: data.displayName,
+        displayName: `${data.firstName} ${data.lastName}`.trim(),
+        fullName: `${data.firstName} ${data.lastName}`.trim(),
+        firstName: data.firstName,
+        lastName: data.lastName,
         email: data.email,
         phoneNumber: data.phoneNumber,
         hpNumber: data.hpNumber,
@@ -180,16 +225,21 @@ export default function EditUserForm({ userToEdit, onUserUpdated }: EditUserForm
         maritalStatus: data.maritalStatus,
         ministry: data.ministry,
         bio: data.bio,
+        isInHpGroup: data.isInHpGroup === 'true',
+        hpAvailabilityDay: data.hpAvailabilityDay,
+        hpAvailabilityTime: data.hpAvailabilityTime,
+        locationPreference: data.locationPreference as 'Onsite' | 'Online',
+        language: data.language,
       };
 
       await updateDoc(userDocRef, firestoreData);
 
       if (userToEdit.uid === currentUser?.uid && auth.currentUser) {
         await updateProfile(auth.currentUser, {
-          displayName: data.displayName,
+          displayName: `${data.firstName} ${data.lastName}`.trim(),
         });
         await refreshUser();
-      }
+      } 
       
       onUserUpdated();
       toast({
@@ -250,6 +300,8 @@ export default function EditUserForm({ userToEdit, onUserUpdated }: EditUserForm
     return initials.toUpperCase();
   }
 
+  const isCurrentUserAdmin = currentUser?.role === 'admin' || currentUser?.role === 'developer';
+
   return (
     <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
         <div className="flex items-center space-x-4">
@@ -265,16 +317,21 @@ export default function EditUserForm({ userToEdit, onUserUpdated }: EditUserForm
         </div>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div className="space-y-2">
-                <Label htmlFor="displayName">Full Name</Label>
-                <Input id="displayName" {...register("displayName")} />
-                {errors.displayName && <p className="text-sm text-destructive">{errors.displayName.message}</p>}
+                <Label htmlFor="firstName">First Name</Label>
+                <Input id="firstName" {...register("firstName")} />
+                {errors.firstName && <p className="text-sm text-destructive">{errors.firstName.message}</p>}
+            </div>
+             <div className="space-y-2">
+                <Label htmlFor="lastName">Last Name</Label>
+                <Input id="lastName" {...register("lastName")} />
+                {errors.lastName && <p className="text-sm text-destructive">{errors.lastName.message}</p>}
             </div>
             <div className="space-y-2">
                 <Label htmlFor="email">Email</Label>
                 <Input id="email" type="email" {...register("email")} disabled={true} />
                 {errors.email && <p className="text-sm text-destructive">{errors.email.message}</p>}
             </div>
-            <div className="space-y-2">
+             <div className="space-y-2">
                 <Label>Gender</Label>
                 <Controller
                     name="gender"
@@ -299,12 +356,14 @@ export default function EditUserForm({ userToEdit, onUserUpdated }: EditUserForm
                         <Select onValueChange={field.onChange} value={field.value} disabled={isSubmitting}>
                             <SelectTrigger><SelectValue placeholder="Select age range" /></SelectTrigger>
                             <SelectContent>
+                                <SelectItem value="13-17">13-17</SelectItem>
                                 <SelectItem value="18-24">18-24</SelectItem>
                                 <SelectItem value="25-34">25-34</SelectItem>
                                 <SelectItem value="35-44">35-44</SelectItem>
                                 <SelectItem value="45-54">45-54</SelectItem>
                                 <SelectItem value="55-64">55-64</SelectItem>
                                 <SelectItem value="65+">65+</SelectItem>
+                                <SelectItem value="Prefer not to say">Prefer not to say</SelectItem>
                             </SelectContent>
                         </Select>
                     )}
@@ -312,16 +371,78 @@ export default function EditUserForm({ userToEdit, onUserUpdated }: EditUserForm
             </div>
             <div className="space-y-2">
                 <Label htmlFor="phoneNumber">Phone Number</Label>
-                <Input id="phoneNumber" type="tel" {...register("phoneNumber")} />
+                 <Controller
+                    name="phoneNumber"
+                    control={control}
+                    render={({ field }) => (
+                        <PhoneInput
+                            id="phoneNumber"
+                            international
+                            defaultCountry="US"
+                            {...field}
+                            value={field.value || undefined}
+                            disabled={isSubmitting}
+                            className="PhoneInputInput"
+                        />
+                    )}
+                />
             </div>
-            <div className="space-y-2">
-                <Label htmlFor="hpNumber">HP Number</Label>
-                <Input id="hpNumber" {...register("hpNumber")} />
+             <div className="space-y-2">
+                <Label>Are you in a Prayer Group (HP)?</Label>
+                <Controller
+                    name="isInHpGroup"
+                    control={control}
+                    render={({ field }) => (
+                        <Select onValueChange={field.onChange} value={field.value} disabled={isSubmitting}>
+                            <SelectTrigger><SelectValue placeholder="Select an option" /></SelectTrigger>
+                            <SelectContent>
+                            <SelectItem value="true">Yes</SelectItem>
+                            <SelectItem value="false">No</SelectItem>
+                            </SelectContent>
+                        </Select>
+                    )}
+                />
             </div>
-            <div className="space-y-2">
-                <Label htmlFor="facilitatorName">Facilitator's Full Name</Label>
-                <Input id="facilitatorName" {...register("facilitatorName")} />
-            </div>
+             {isInHpGroupValue === 'true' ? (
+                <>
+                    <div className="space-y-2">
+                        <Label htmlFor="hpNumber">HP Number</Label>
+                        <Input id="hpNumber" {...register("hpNumber")} />
+                    </div>
+                    <div className="space-y-2">
+                        <Label htmlFor="facilitatorName">Facilitator's Full Name</Label>
+                        <Input id="facilitatorName" {...register("facilitatorName")} />
+                    </div>
+                </>
+            ) : (
+                <>
+                    <div className="space-y-2">
+                        <Label>HP Availability Day</Label>
+                        <Controller
+                            name="hpAvailabilityDay"
+                            control={control}
+                            render={({ field }) => (
+                                <Select onValueChange={field.onChange} value={field.value} disabled={isSubmitting}>
+                                    <SelectTrigger><SelectValue placeholder="Select a day" /></SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="Monday">Monday</SelectItem>
+                                        <SelectItem value="Tuesday">Tuesday</SelectItem>
+                                        <SelectItem value="Wednesday">Wednesday</SelectItem>
+                                        <SelectItem value="Thursday">Thursday</SelectItem>
+                                        <SelectItem value="Friday">Friday</SelectItem>
+                                        <SelectItem value="Saturday">Saturday</SelectItem>
+                                        <SelectItem value="Sunday">Sunday</SelectItem>
+                                    </SelectContent>
+                                </Select>
+                            )}
+                        />
+                    </div>
+                     <div className="space-y-2">
+                        <Label>HP Availability Time</Label>
+                        <Input type="time" {...register("hpAvailabilityTime")} disabled={isSubmitting} />
+                    </div>
+                </>
+            )}
             <div className="space-y-2">
                 <Label>Campus</Label>
                 <Controller
@@ -333,8 +454,42 @@ export default function EditUserForm({ userToEdit, onUserUpdated }: EditUserForm
                                 <SelectValue placeholder="Select a campus" />
                             </SelectTrigger>
                             <SelectContent>
-                                {campuses.map((c) => (
+                                {currentUser?.campus === 'All Campuses' && <SelectItem value="All Campuses">All Campuses</SelectItem>}
+                                {campuses.filter(c => c["Campus Name"] !== 'All Campuses').map((c) => (
                                     <SelectItem key={c.id} value={c["Campus Name"]}>{c["Campus Name"]}</SelectItem>
+                                ))}
+                            </SelectContent>
+                        </Select>
+                    )}
+                />
+            </div>
+             <div className="space-y-2">
+                <Label>Location Preference</Label>
+                <Controller
+                    name="locationPreference"
+                    control={control}
+                    render={({ field }) => (
+                        <Select onValueChange={field.onChange} value={field.value}>
+                            <SelectTrigger><SelectValue placeholder="Select location preference" /></SelectTrigger>
+                            <SelectContent>
+                                <SelectItem value="Onsite">Onsite</SelectItem>
+                                <SelectItem value="Online">Online</SelectItem>
+                            </SelectContent>
+                        </Select>
+                    )}
+                />
+            </div>
+            <div className="space-y-2">
+                <Label>Language</Label>
+                <Controller
+                    name="language"
+                    control={control}
+                    render={({ field }) => (
+                        <Select onValueChange={field.onChange} value={field.value}>
+                            <SelectTrigger><SelectValue placeholder="Select language" /></SelectTrigger>
+                            <SelectContent>
+                                {availableLanguages.map((lang) => (
+                                    <SelectItem key={lang.id} value={lang.name}>{lang.name}</SelectItem>
                                 ))}
                             </SelectContent>
                         </Select>
@@ -424,7 +579,7 @@ export default function EditUserForm({ userToEdit, onUserUpdated }: EditUserForm
                                     <SelectTrigger><SelectValue /></SelectTrigger>
                                     <SelectContent>
                                         {roles.map((role) => (
-                                            <SelectItem key={role.id} value={role.id} disabled={role.id === 'developer' && currentUser?.role !== 'developer'}>{role.name}</SelectItem>
+                                            <SelectItem key={role.id} value={role.id}>{role.name}</SelectItem>
                                         ))}
                                     </SelectContent>
                                 </Select>

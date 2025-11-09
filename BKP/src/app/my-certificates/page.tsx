@@ -1,15 +1,14 @@
 
 "use client";
 
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { useAuth } from '@/hooks/use-auth';
 import { useProcessedCourses } from '@/hooks/useProcessedCourses';
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Award, Download, Eye, Linkedin, Share2, Link as LinkIcon, Lock, ArrowRight } from 'lucide-react';
+import { Award, Eye, Linkedin, Share2, Link as LinkIcon, Lock, ArrowRight } from 'lucide-react';
 import Image from 'next/image';
-import { format } from 'date-fns';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import CertificatePrint from '@/components/certificate-print';
 import { CourseWithStatus } from '@/hooks/useProcessedCourses';
@@ -17,33 +16,41 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { useToast } from '@/hooks/use-toast';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import Link from 'next/link';
+import { db } from '@/lib/firebase';
+import { collection, getDocs } from 'firebase/firestore';
+import type { CourseGroup, Course } from '@/lib/types';
 
-const CertificateCard = ({ course }: { course: CourseWithStatus }) => {
+interface GroupedCertificate extends CourseGroup {
+    isCompleted: boolean;
+    courses: Course[];
+}
+
+const CertificateCard = ({ item }: { item: GroupedCertificate | CourseWithStatus }) => {
     const { user } = useAuth();
     const { toast } = useToast();
-    
+    const isGroup = 'courseIds' in item;
+
     const handleShareLinkedIn = () => {
-        const certUrl = `${window.location.origin}/certificate/${course.id}`;
-        const issueDate = course.completedAt ? new Date(course.completedAt) : new Date();
-        const issueYear = issueDate.getFullYear();
-        const issueMonth = issueDate.getMonth() + 1;
+        const certUrl = `${window.location.origin}/certificate/${item.id}`; // Needs adjustment for groups
         
-        const linkedInUrl = `https://www.linkedin.com/profile/add?startTask=CERTIFICATION_NAME&name=${encodeURIComponent(course.title)}&organizationName=${encodeURIComponent("Glory Training Hub")}&issueYear=${issueYear}&issueMonth=${issueMonth}&certUrl=${encodeURIComponent(certUrl)}`;
+        const linkedInUrl = `https://www.linkedin.com/profile/add?startTask=CERTIFICATION_NAME&name=${encodeURIComponent(item.title)}&organizationName=${encodeURIComponent("Glory Training Hub")}&certUrl=${encodeURIComponent(certUrl)}`;
         window.open(linkedInUrl, '_blank');
     };
     
     const handleCopyLink = () => {
-        const certUrl = `${window.location.origin}/certificate/${course.id}`;
+        const certUrl = `${window.location.origin}/certificate/${item.id}`; // Needs adjustment for groups
         navigator.clipboard.writeText(certUrl);
         toast({ title: 'Link Copied!', description: 'The public link to your certificate has been copied.' });
     };
+
+    const certificateCourse = isGroup ? item.courses[0] : item;
 
     return (
         <Card className="flex flex-col">
             <CardHeader>
                 <div className="relative aspect-[11/8.5] w-full bg-muted rounded-md overflow-hidden">
-                    {course.certificateTemplateUrl ? (
-                         <Image src={course.certificateTemplateUrl} alt={`Certificate for ${course.title}`} fill style={{objectFit:"cover"}} />
+                    {item.certificateTemplateUrl ? (
+                         <Image src={item.certificateTemplateUrl} alt={`Certificate for ${item.title}`} fill style={{objectFit:"cover"}} />
                     ) : (
                         <div className="flex items-center justify-center h-full">
                             <Award className="h-16 w-16 text-muted-foreground" />
@@ -52,10 +59,8 @@ const CertificateCard = ({ course }: { course: CourseWithStatus }) => {
                 </div>
             </CardHeader>
             <CardContent className="flex-grow">
-                <CardTitle className="text-lg">{course.title}</CardTitle>
-                <p className="text-sm text-muted-foreground mt-1">
-                    Earned on {course.completedAt ? format(new Date(course.completedAt), 'PPP') : 'N/A'}
-                </p>
+                <CardTitle className="text-lg">{item.title}</CardTitle>
+                <Badge variant="secondary" className="mt-1">{isGroup ? 'Learning Path' : 'Course'}</Badge>
             </CardContent>
             <CardFooter className="flex flex-col sm:flex-row gap-2">
                  <Dialog>
@@ -68,7 +73,7 @@ const CertificateCard = ({ course }: { course: CourseWithStatus }) => {
                         <DialogHeader>
                             <DialogTitle>Certificate of Completion</DialogTitle>
                         </DialogHeader>
-                        <CertificatePrint userName={user?.displayName || "Student"} course={course} />
+                        <CertificatePrint userName={user?.displayName || "Student"} course={certificateCourse} />
                     </DialogContent>
                  </Dialog>
                 <DropdownMenu>
@@ -117,14 +122,50 @@ const LoadingSkeleton = () => (
 export default function MyCertificatesPage() {
     const { user, loading: authLoading, hasPermission } = useAuth();
     const { processedCourses, loading: coursesLoading } = useProcessedCourses(true);
+    const [groupedCertificates, setGroupedCertificates] = useState<GroupedCertificate[]>([]);
+    const [individualCertCourses, setIndividualCertCourses] = useState<CourseWithStatus[]>([]);
+    const [loadingGroups, setLoadingGroups] = useState(true);
 
-    const canViewPage = hasPermission('viewDashboard'); // Assuming same permission as dashboard
-    const loading = authLoading || coursesLoading;
+    const canViewPage = hasPermission('viewDashboard'); 
+    const loading = authLoading || coursesLoading || loadingGroups;
 
-    const completedCourses = useMemo(() => {
-        return processedCourses.filter(course => course.isCompleted);
-    }, [processedCourses]);
+    useEffect(() => {
+        const fetchCourseGroups = async () => {
+            if (coursesLoading || !user) {
+                setLoadingGroups(false);
+                return;
+            };
+
+            const courseGroupsSnapshot = await getDocs(collection(db, 'courseGroups'));
+            const courseGroups = courseGroupsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as CourseGroup));
+
+            const completedCourseIds = new Set(processedCourses.filter(c => c.isCompleted).map(c => c.id));
+
+            const groupedCerts = courseGroups.map(group => {
+                const coursesInGroup = group.courseIds.map(id => processedCourses.find(c => c.id === id)).filter(Boolean) as Course[];
+                const allInGroupCompleted = group.courseIds.every(id => completedCourseIds.has(id));
+                return {
+                    ...group,
+                    isCompleted: allInGroupCompleted,
+                    courses: coursesInGroup
+                };
+            }).filter(group => group.isCompleted);
+            
+            setGroupedCertificates(groupedCerts);
+            
+            const individualCerts = processedCourses.filter(c => c.isCompleted && c.certificateEnabled);
+            setIndividualCertCourses(individualCerts);
+
+            setLoadingGroups(false);
+        }
+        fetchCourseGroups();
+    }, [coursesLoading, processedCourses, user]);
     
+    const allCertificates = useMemo(() => {
+        return [...groupedCertificates, ...individualCertCourses];
+    }, [groupedCertificates, individualCertCourses]);
+
+
     if (authLoading) {
         return <LoadingSkeleton />;
     }
@@ -148,17 +189,17 @@ export default function MyCertificatesPage() {
 
             {loading ? (
                 <LoadingSkeleton />
-            ) : completedCourses.length > 0 ? (
+            ) : allCertificates.length > 0 ? (
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-                    {completedCourses.map(course => (
-                        <CertificateCard key={course.id} course={course} />
+                    {allCertificates.map(item => (
+                        <CertificateCard key={item.id} item={item} />
                     ))}
                 </div>
             ) : (
                 <div className="text-center py-20 bg-muted rounded-lg">
                     <Award className="mx-auto h-16 w-16 text-muted-foreground" />
                     <h3 className="mt-4 text-xl font-semibold">No Certificates Yet</h3>
-                    <p className="mt-1 text-muted-foreground">Complete a course to earn your first certificate.</p>
+                    <p className="mt-1 text-muted-foreground">Complete a course or learning path to earn your first certificate.</p>
                     <Button asChild className="mt-6">
                         <Link href="/courses">
                             Explore Courses <ArrowRight className="ml-2 h-4 w-4" />

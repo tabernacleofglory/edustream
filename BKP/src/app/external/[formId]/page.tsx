@@ -1,7 +1,7 @@
 
 "use client";
 
-import { useParams, useRouter } from "next/navigation";
+import { useParams } from "next/navigation";
 import { useEffect, useState, useMemo } from "react";
 import { useForm, Controller } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -40,7 +40,7 @@ import {
   CardFooter,
 } from "@/components/ui/card";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { FileWarning, Lock, Loader2, PartyPopper, LogIn, UserPlus } from "lucide-react";
+import { FileWarning, Loader2, PartyPopper, LogIn, UserPlus } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
@@ -56,6 +56,10 @@ import type { CustomForm, FormFieldConfig, User } from "@/lib/types";
 import { useToast } from "@/hooks/use-toast";
 import Link from "next/link";
 
+// NEW: phone input (same lib as your Add User form)
+import PhoneInput from "react-phone-number-input";
+import "react-phone-number-input/style.css";
+
 interface StoredItem {
   id: string;
   name: string;
@@ -68,7 +72,6 @@ interface Campus {
 
 const DynamicForm = ({ formConfig }: { formConfig: CustomForm }) => {
   const { toast } = useToast();
-  const router = useRouter();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submissionSuccess, setSubmissionSuccess] = useState(false);
   const [db] = useState(() => getFirebaseFirestore());
@@ -89,24 +92,23 @@ const DynamicForm = ({ formConfig }: { formConfig: CustomForm }) => {
     return getAuth(secondaryApp);
   }, []);
 
+  // Validation schema: keep your string-based model
   const validationSchema = useMemo(() => {
     const shape = formConfig.fields.reduce((acc, field) => {
       if (field.visible) {
         let schema: z.ZodType<any>;
-        
+
         const isEmailRequired = formConfig.fields.find(f => f.fieldId === 'email')?.required;
 
         if (field.fieldId === "email") {
           schema = z.string().email("Please enter a valid email address.").optional().or(z.literal(""));
-          if(isEmailRequired) {
-            schema = z.string().min(1, 'Email is required.').email("Please enter a valid email address.");
+          if (isEmailRequired) {
+            schema = z.string().min(1, "Email is required.").email("Please enter a valid email address.");
           }
         } else if (field.fieldId === "password") {
-          if (field.required) {
-            schema = z.string().min(6, "Password must be at least 6 characters.");
-          } else {
-            schema = z.string().optional();
-          }
+          schema = field.required
+            ? z.string().min(6, "Password must be at least 6 characters.")
+            : z.string().optional();
         } else if (!field.required) {
           schema = z.string().optional().or(z.literal(""));
         } else {
@@ -118,33 +120,25 @@ const DynamicForm = ({ formConfig }: { formConfig: CustomForm }) => {
       return acc;
     }, {} as Record<string, z.ZodType<any>>);
 
-    const isInHpGroupField = formConfig.fields.find(
-      (f) => f.fieldId === "isInHpGroup"
-    );
-
+    // Keep your “in HP” dependency
+    const isInHpGroupField = formConfig.fields.find((f) => f.fieldId === "isInHpGroup");
     if (isInHpGroupField?.visible) {
       return z.object(shape).refine(
         (data) => {
           if (data.isInHpGroup === "true") {
-            const hpNumberRequired = formConfig.fields.find(
-              (f) => f.fieldId === "hpNumber"
-            )?.required;
-            const facilitatorNameRequired = formConfig.fields.find(
-              (f) => f.fieldId === "facilitatorName"
-            )?.required;
+            const hpNumberRequired = formConfig.fields.find((f) => f.fieldId === "hpNumber")?.required;
+            const facilitatorNameRequired = formConfig.fields.find((f) => f.fieldId === "facilitatorName")?.required;
 
             let isValid = true;
             if (hpNumberRequired && !data.hpNumber) isValid = false;
-            if (facilitatorNameRequired && !data.facilitatorName)
-              isValid = false;
+            if (facilitatorNameRequired && !data.facilitatorName) isValid = false;
 
             return isValid;
           }
           return true;
         },
         {
-          message:
-            "HP Number and Facilitator's Name are required if you are in a prayer group.",
+          message: "HP Number and Facilitator's Name are required if you are in a prayer group.",
           path: ["hpNumber"],
         }
       );
@@ -161,15 +155,20 @@ const DynamicForm = ({ formConfig }: { formConfig: CustomForm }) => {
     const fetchOptions = async () => {
       const options: { [key: string]: any[] } = {};
 
+      // Campus list — filter out "App Campus"
       if (formConfig.fields.find((f) => f.fieldId === "campus" && f.visible)) {
         const campusSnap = await getDocs(
           query(collection(db, "Campus"), orderBy("Campus Name"))
         );
-        options["campus"] = campusSnap.docs.map((d) => ({
-          value: d.data()["Campus Name"],
-          label: d.data()["Campus Name"],
-        }));
+        const campusOptions = campusSnap.docs
+          .map((d) => ({
+            value: d.data()["Campus Name"],
+            label: d.data()["Campus Name"],
+          }))
+          .filter((c) => c.label !== "App Campus"); // HIDE App Campus
+        options["campus"] = campusOptions;
       }
+
       if (formConfig.fields.find((f) => f.fieldId === "language" && f.visible)) {
         const langSnap = await getDocs(
           query(collection(db, "languages"), where("status", "==", "published"))
@@ -179,6 +178,7 @@ const DynamicForm = ({ formConfig }: { formConfig: CustomForm }) => {
           label: d.data().name,
         }));
       }
+
       options["gender"] = [
         { value: "Male", label: "Male" },
         { value: "Female", label: "Female" },
@@ -216,17 +216,14 @@ const DynamicForm = ({ formConfig }: { formConfig: CustomForm }) => {
   const onSubmit = async (data: any) => {
     setIsSubmitting(true);
     try {
-      const passwordField = formConfig.fields.find((f) => f.fieldId === "password");
       const password = data.password || `${uuidv4()}A!`;
-      const providedRealEmail = data.email && !data.email.endsWith('@tg.admin');
+      const providedRealEmail = data.email && !String(data.email).endsWith("@tg.admin");
 
       let finalEmail = data.email;
-      if (!finalEmail) {
-        const campusName = data.campus ? data.campus.toLowerCase().replace(/\s+/g, '') : 'user';
-        finalEmail = `${campusName}${Date.now()}@tg.admin`;
+      if (!finalEmail || finalEmail.trim() === '') {
+        finalEmail = `user${Date.now()}@tg.admin`;
       }
-
-
+      
       const userCredential = await createUserWithEmailAndPassword(
         secondaryAuth,
         finalEmail,
@@ -252,8 +249,6 @@ const DynamicForm = ({ formConfig }: { formConfig: CustomForm }) => {
         id: user.uid,
         email: finalEmail,
         displayName: fullName,
-        firstName: data.firstName,
-        lastName: data.lastName,
         role: "user",
         createdAt: serverTimestamp(),
         classLadderId: defaultLadder?.id || null,
@@ -262,6 +257,7 @@ const DynamicForm = ({ formConfig }: { formConfig: CustomForm }) => {
         createdFromFormId: formConfig.id,
       };
 
+      // copy visible fields into user doc
       formConfig.fields.forEach((field) => {
         if (field.visible && data[field.fieldId] !== undefined) {
           (newUser as any)[field.fieldId] = data[field.fieldId];
@@ -278,11 +274,9 @@ const DynamicForm = ({ formConfig }: { formConfig: CustomForm }) => {
           await sendPasswordResetEmail(secondaryAuth, data.email);
           toast({
             title: "Registration Successful!",
-            description:
-              "Your account has been created. A password setup email has been sent to you.",
+            description: "Your account has been created. A password setup email has been sent to you.",
           });
-        } catch (emailError) {
-          console.error("Failed to send password reset email:", emailError);
+        } catch {
           toast({
             title: "Registration Successful!",
             description:
@@ -317,15 +311,15 @@ const DynamicForm = ({ formConfig }: { formConfig: CustomForm }) => {
     const { fieldId, label, required } = field;
     const formError = form.formState.errors[fieldId];
 
+    // Conditional HP visibility
     const isHpField = ["hpNumber", "facilitatorName"].includes(fieldId);
-    const isAvailabilityField = ["hpAvailabilityDay", "hpAvailabilityTime"].includes(
-      fieldId
-    );
+    const isAvailabilityField = ["hpAvailabilityDay", "hpAvailabilityTime"].includes(fieldId);
     const isInHpGroupValue = form.watch("isInHpGroup");
 
     if (isHpField && isInHpGroupValue !== "true") return null;
     if (isAvailabilityField && isInHpGroupValue !== "false") return null;
 
+    // Dropdown-backed fields (incl. campus filtered)
     if (
       [
         "gender",
@@ -347,7 +341,7 @@ const DynamicForm = ({ formConfig }: { formConfig: CustomForm }) => {
             render={({ field }) => (
               <Select
                 onValueChange={field.onChange}
-                defaultValue={field.value}
+                value={field.value}
                 disabled={loadingOptions}
               >
                 <SelectTrigger id={fieldId}>
@@ -363,15 +357,12 @@ const DynamicForm = ({ formConfig }: { formConfig: CustomForm }) => {
               </Select>
             )}
           />
-          {formError && (
-            <p className="text-sm text-destructive">
-              {formError.message as string}
-            </p>
-          )}
+          {formError && <p className="text-sm text-destructive">{formError.message as string}</p>}
         </div>
       );
     }
 
+    // EXACT format for the “Are you in HP?” field
     if (fieldId === "isInHpGroup") {
       return (
         <div key={fieldId} className="space-y-2">
@@ -379,10 +370,10 @@ const DynamicForm = ({ formConfig }: { formConfig: CustomForm }) => {
             {label} {required && <span className="text-destructive">*</span>}
           </Label>
           <Controller
-            name={fieldId as any}
+            name="isInHpGroup"
             control={form.control}
             render={({ field }) => (
-              <Select onValueChange={field.onChange} value={String(field.value)}>
+              <Select onValueChange={field.onChange} value={field.value}>
                 <SelectTrigger>
                   <SelectValue placeholder="Select an option" />
                 </SelectTrigger>
@@ -393,15 +384,56 @@ const DynamicForm = ({ formConfig }: { formConfig: CustomForm }) => {
               </Select>
             )}
           />
-          {formError && (
-            <p className="text-sm text-destructive">
-              {formError.message as string}
-            </p>
-          )}
+          {formError && <p className="text-sm text-destructive">{formError.message as string}</p>}
         </div>
       );
     }
 
+    // NEW: Phone number field with international code
+    if (fieldId === "phoneNumber") {
+      return (
+        <div key={fieldId} className="space-y-2">
+          <Label htmlFor={fieldId}>
+            {label} {required && <span className="text-destructive">*</span>}
+          </Label>
+          <Controller
+            name="phoneNumber"
+            control={form.control}
+            render={({ field }) => (
+              <PhoneInput
+                id="phoneNumber"
+                international
+                defaultCountry="US"
+                {...field}
+                value={field.value || undefined}
+                className="PhoneInputInput"
+              />
+            )}
+          />
+          {formError && <p className="text-sm text-destructive">{formError.message as string}</p>}
+        </div>
+      );
+    }
+
+    // NEW: Time picker for hpAvailabilityTime (15-min increments)
+    if (fieldId === "hpAvailabilityTime") {
+      return (
+        <div key={fieldId} className="space-y-2">
+          <Label htmlFor={fieldId}>
+            {label} {required && <span className="text-destructive">*</span>}
+          </Label>
+          <Input
+            id={fieldId}
+            type="time"
+            step={900} // 15-minute steps
+            {...form.register(fieldId as any)}
+          />
+          {formError && <p className="text-sm text-destructive">{formError.message as string}</p>}
+        </div>
+      );
+    }
+
+    // Default input (text/email/password)
     return (
       <div key={fieldId} className="space-y-2">
         <Label htmlFor={fieldId}>
@@ -414,9 +446,7 @@ const DynamicForm = ({ formConfig }: { formConfig: CustomForm }) => {
           }
           {...form.register(fieldId as any)}
         />
-        {formError && (
-          <p className="text-sm text-destructive">{formError.message as string}</p>
-        )}
+        {formError && <p className="text-sm text-destructive">{formError.message as string}</p>}
       </div>
     );
   };
@@ -507,7 +537,6 @@ export default function PublicFormPage() {
           setError("This form does not exist.");
         }
       } catch (e: any) {
-        // If rules block access, surface a clear message
         setError("You don't have permission to view this form.");
       } finally {
         setLoading(false);

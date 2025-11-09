@@ -1,3 +1,4 @@
+
 "use client";
 
 import React, { createContext, useContext, useEffect, useState, useCallback } from 'react';
@@ -11,6 +12,7 @@ interface AuthContextType {
   user: AppUser | null;
   loading: boolean;
   isCurrentUserAdmin: boolean;
+  canViewAllCampuses: boolean;
   refreshUser: () => void;
   hasPermission: (permission: string) => boolean;
   isProfileComplete: boolean;
@@ -21,6 +23,7 @@ const AuthContext = createContext<AuthContextType>({
   user: null,
   loading: true,
   isCurrentUserAdmin: false,
+  canViewAllCampuses: false,
   refreshUser: () => {},
   hasPermission: () => false,
   isProfileComplete: false,
@@ -54,7 +57,9 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   const db = getFirebaseFirestore();
   const router = useRouter(); 
   const pathname = usePathname();
+
   const isCurrentUserAdmin = user?.role === 'admin' || user?.role === 'developer';
+  const canViewAllCampuses = isCurrentUserAdmin || user?.campus === 'All Campuses';
   
   const isProfileComplete = !!user?.isInHpGroup && !!user?.language && validLanguages.includes(user.language) && !!user?.locationPreference;
 
@@ -216,7 +221,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
 
 
   return (
-    <AuthContext.Provider value={{ user, loading, refreshUser, isCurrentUserAdmin, hasPermission, isProfileComplete, checkAndCreateUserDoc }}>
+    <AuthContext.Provider value={{ user, loading, refreshUser, isCurrentUserAdmin, canViewAllCampuses, hasPermission, isProfileComplete, checkAndCreateUserDoc }}>
       {children}
     </AuthContext.Provider>
   );

@@ -15,7 +15,7 @@ import { db } from "@/lib/firebase";
 function FormBuilderPageContent() {
     const searchParams = useSearchParams();
     const router = useRouter();
-    const formType = searchParams.get('type') as 'userProfile' | 'custom' | null;
+    const formType = searchParams.get('type') as 'userProfile' | 'custom' | 'hybrid' | null;
     const formId = searchParams.get('formId');
     
     useEffect(() => {
@@ -23,7 +23,7 @@ function FormBuilderPageContent() {
         const docRef = doc(db, 'forms', formId);
         getDoc(docRef).then(docSnap => {
             if (docSnap.exists() && (docSnap.data().type === 'custom' || docSnap.data().type === 'hybrid')) {
-                router.replace(`/admin/forms/builder/blank-form?formId=${formId}`);
+                router.replace(`/admin/forms/builder/blank-form?formId=${formId}&type=${docSnap.data().type}`);
             }
         })
     }, [formId, router]);

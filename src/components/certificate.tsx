@@ -1,26 +1,18 @@
-
 "use client";
 
 import { format } from "date-fns";
 import { cn } from "@/lib/utils";
-import { SiteSettings, getSiteSettings } from "@/lib/data";
-import { useEffect, useState } from "react";
-import { Skeleton } from "./ui/skeleton";
+import type { SiteSettings } from "@/lib/data";
 import Image from "next/image";
-
-// ======= TWEAK THESE 4 PERCENTAGES IF YOU NEED MICRO-ADJUSTMENTS =======
-const NAME_TOP = 47;   // % from top where the NAME baseline should sit
-const NAME_LEFT = 48;  // % from left (50 = exact center)
-const DATE_TOP = 80;   // % from top for the DATE line
-const DATE_LEFT = 74;  // % from left for the DATE line (right side area)
-// =======================================================================
+import DynamicIcon from "./dynamic-icon";
 
 interface CertificateProps {
   userName: string;
-  courseName?: string;       // optional; not shown on this layout
-  completionDate?: string | Date;   // ISO string or Date object (fallbacks to today)
-  templateUrl?: string;      // background image (2000x1545)
-  settingsOverride?: Partial<SiteSettings>;
+  courseName?: string;
+  completionDate?: string | Date;
+  templateUrl?: string;
+  logoUrl?: string;
+  settings?: Partial<SiteSettings> | null;
 }
 
 export default function Certificate({
@@ -28,89 +20,171 @@ export default function Certificate({
   courseName,
   completionDate,
   templateUrl,
-  settingsOverride,
+  logoUrl,
+  settings,
 }: CertificateProps) {
-  const [settings, setSettings] = useState<Partial<SiteSettings> | null>(settingsOverride || null);
-  const [loading, setLoading] = useState(!settingsOverride);
-
-  // Use your new artwork by default if not provided
   const finalTemplateUrl =
     templateUrl ||
     settings?.cert_defaultBackgroundUrl ||
     "https://placehold.co/2000x1545.png?text=Background";
 
-  useEffect(() => {
-    if (settingsOverride) {
-      setSettings(settingsOverride);
-      setLoading(false);
-      return;
-    }
-    const run = async () => {
-      setLoading(true);
-      const siteSettings = await getSiteSettings();
-      setSettings(siteSettings);
-      setLoading(false);
-    };
-    run();
-  }, [settingsOverride]);
+  const finalLogoUrl = logoUrl || settings?.cert_defaultLogoUrl;
 
-  // Date formatting (fallback to today if missing/invalid)
   const rawDate = completionDate ? new Date(completionDate) : new Date();
   const validDate = !isNaN(rawDate.getTime()) ? rawDate : new Date();
   const formattedDate = format(validDate, "MMMM d, yyyy");
 
-  if (loading) {
-    return <Skeleton className="w-full aspect-[2000/1545]" />;
-  }
+  const getValue = (key: keyof SiteSettings, defaultValue: any) => {
+    return settings?.[key] ?? defaultValue;
+  };
 
   return (
     <div
       className={cn(
-        "relative w-full overflow-hidden bg-white bg-cover bg-center",
-        "shadow-sm"
+        "relative w-full overflow-hidden bg-white bg-cover bg-center text-center",
+        "shadow-sm font-serif"
       )}
       style={{
-        aspectRatio: "2000 / 1545",          // lock to your art board ratio
-        containerType: "inline-size",        // enable cqi units for typography
+        aspectRatio: "2000 / 1545",
+        containerType: "inline-size",
         backgroundImage: `url(${finalTemplateUrl})`,
+        color: "black",
       }}
     >
-      {/* NAME — centered under 'décerné à' */}
       <div
-        className="absolute text-center text-gray-800"
+        className="absolute w-full"
         style={{
-          top: `${NAME_TOP}%`,
-          left: `${NAME_LEFT}%`,
+          top: "50%",
+          left: "50%",
           transform: "translate(-50%, -50%)",
-          fontSize: "clamp(1.5rem, 6cqi, 5rem)",
-          lineHeight: 1,
-          fontFamily: "var(--font-dancing-script, 'Dancing Script', cursive)",
-          fontWeight: 600,
-          letterSpacing: "0.02em",
-          whiteSpace: "nowrap",
-          maxWidth: "85%",
         }}
       >
-        {userName}
+        {getValue("cert_show_title", true) && (
+          <h1
+            className="font-extrabold"
+            style={{
+              fontSize: `${getValue("cert_title_size", 4)}cqi`,
+              lineHeight: 1.1,
+            }}
+          >
+            {getValue("cert_title", "Certificate")}
+          </h1>
+        )}
+        {getValue("cert_show_subtitle", true) && (
+          <h2
+            className="font-medium"
+            style={{
+              fontSize: `${getValue("cert_subtitle_size", 1.5)}cqi`,
+              marginTop: `${getValue("cert_spacing_title_subtitle", 0.5)}cqi`,
+              lineHeight: 1.2,
+            }}
+          >
+            {getValue("cert_subtitle", "of Completion")}
+          </h2>
+        )}
+        {getValue("cert_show_decoration", true) && (
+          <div
+            style={{
+              marginTop: `${getValue("cert_spacing_subtitle_decoration", 2)}cqi`,
+            }}
+          >
+            <DynamicIcon
+              name={getValue("cert_decoration_icon", "Award")}
+              style={{
+                fontSize: `${getValue("cert_decoration_icon_size", 2.5)}cqi`,
+              }}
+              className="mx-auto"
+            />
+          </div>
+        )}
+        {getValue("cert_show_presentedToText", true) && (
+          <p
+            className="mt-8"
+            style={{
+              fontSize: `${getValue("cert_presentedToText_size", 1)}cqi`,
+              marginTop: `${getValue(
+                "cert_spacing_decoration_presentedTo",
+                2
+              )}cqi`,
+            }}
+          >
+            {getValue(
+              "cert_presentedToText",
+              "This certificate is proudly presented to"
+            )}
+          </p>
+        )}
       </div>
 
-      {/* DATE — right side box above the 'Date' label */}
-      <div
-        className="absolute text-gray-700"
-        style={{
-          top: `${DATE_TOP}%`,
-          left: `${DATE_LEFT}%`,
-          transform: "translate(-50%, -50%)",
-          fontSize: "clamp(0.55rem, 2.2cqi, 1.15rem)",
-          lineHeight: 1.1,
-          textAlign: "center",
-          minWidth: "14cqi",
-        }}
-      >
-        <div>
-          {formattedDate}
-        </div>
+      {/* Username */}
+      <div className="absolute bottom-[41%] w-full">
+        <p
+          className="font-dancing-script"
+          style={{
+            fontSize: `${getValue("cert_userName_size", 4.5)}cqi`,
+            transform: "translateX(5%)", // Move username slightly to the right
+          }}
+        >
+          {userName}
+        </p>
       </div>
+
+      {/* Completion date (standalone line) */}
+      {getValue("cert_show_completionDate", true) && (
+        <div className="absolute w-full bottom-[19.5%]">
+          <p
+            style={{
+              fontSize: `${getValue("cert_completionDate_size", 1.6)}cqi`,
+              marginTop: `${getValue("cert_spacing_userName_completionDate", 0.8)}cqi`,
+              transform: "translateX(20.8%)", // Move date slightly to the right
+            }}
+          >
+            {getValue("cert_completionDate_prefix", "")} {formattedDate}
+          </p>
+        </div>
+      )}
+
+      {/* Signatures & date */}
+      {getValue("cert_show_signatures", true) && (
+        <div
+          className="absolute bottom-[20%] w-full"
+          style={{
+            marginTop: `${getValue(
+              "cert_spacing_courseName_signatures",
+              2
+            )}cqi`,
+          }}
+        >
+          <div className="grid grid-cols-2 gap-4 items-end text-center mx-auto max-w-sm">
+            <div className="border-b border-black/80 pb-1">
+              {getValue("cert_show_date", true) && (
+                <p style={{ fontSize: `${getValue("cert_date_size", 0.9)}cqi` }}>
+                  {formattedDate}
+                </p>
+              )}
+              <p className="text-xs">Date</p>
+            </div>
+            <div className="border-b border-black/80 pb-1">
+              <p
+                className="font-dancing-script"
+                style={{
+                  fontSize: `${getValue("cert_signatureName_size", 1.8)}cqi`,
+                }}
+              >
+                {getValue("cert_signatureName", "Gregory Toussaint")}
+              </p>
+              <p
+                className="text-xs"
+                style={{
+                  fontSize: `${getValue("cert_signatureTitle_size", 0.9)}cqi`,
+                }}
+              >
+                {getValue("cert_signatureTitle", "Senior Pastor")}
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

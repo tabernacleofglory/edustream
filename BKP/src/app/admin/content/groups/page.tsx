@@ -20,6 +20,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import CertificateBackgroundLibrary from "@/components/certificate-background-library";
 import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
+import Image from "next/image";
 
 const GroupForm = ({ group, onSave, closeDialog }: { group?: CourseGroup | null; onSave: (groupData: any) => void; closeDialog: () => void; }) => {
     const [title, setTitle] = useState(group?.title || '');
@@ -101,13 +102,22 @@ const GroupForm = ({ group, onSave, closeDialog }: { group?: CourseGroup | null;
                     <Label>Group Certificate Background</Label>
                     <div className='flex items-center gap-2 mt-2'>
                         <div className="w-32 h-20 border rounded-md flex items-center justify-center bg-muted overflow-hidden">
-                            {certificateTemplateUrl && <img src={certificateTemplateUrl} alt="Cert BG" className='object-cover' />}
+                            {certificateTemplateUrl && <Image src={certificateTemplateUrl} alt="Cert BG" width={128} height={80} className='object-cover' />}
                         </div>
                         <Dialog open={isCertLibraryOpen} onOpenChange={setIsCertLibraryOpen}>
                             <DialogTrigger asChild>
                                 <Button type="button" variant="outline">Select Background</Button>
                             </DialogTrigger>
-                            <CertificateBackgroundLibrary onSelectCertificate={handleSelectCertificate} selectedCertificateUrl={certificateTemplateUrl} />
+                             <DialogContent className="max-w-4xl h-[90vh] flex flex-col p-0">
+                                <DialogHeader className="p-6 pb-2">
+                                    <DialogTitle>Certificate Background Library</DialogTitle>
+                                    <DialogDescription>Select a background for the course certificate.</DialogDescription>
+                                </DialogHeader>
+                                <CertificateBackgroundLibrary 
+                                    onSelectCertificate={handleSelectCertificate} 
+                                    selectedCertificateUrl={certificateTemplateUrl}
+                                />
+                            </DialogContent>
                         </Dialog>
                     </div>
                 </div>

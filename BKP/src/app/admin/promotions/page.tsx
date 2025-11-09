@@ -1,4 +1,5 @@
 
+
 "use client";
 
 import { useState, useEffect, useCallback, useMemo } from "react";
@@ -24,7 +25,7 @@ export default function PromotionRequestsPage() {
     const [users, setUsers] = useState<User[]>([]);
     const [loading, setLoading] = useState(true);
     const [isProcessing, setIsProcessing] = useState<string | null>(null);
-    const { user, hasPermission, isCurrentUserAdmin } = useAuth();
+    const { user: currentUser, hasPermission, canViewAllCampuses } = useAuth();
     const { toast } = useToast();
     const db = getFirebaseFirestore();
 
@@ -34,7 +35,6 @@ export default function PromotionRequestsPage() {
     const [usersPerPage, setUsersPerPage] = useState(10);
 
     const canManagePromotions = hasPermission('managePromotions');
-    const isModerator = user?.role === 'moderator';
 
     const fetchUsers = useCallback(async () => {
         try {
@@ -79,10 +79,10 @@ export default function PromotionRequestsPage() {
 
     // If moderator, automatically set their campus and disable the filter
     useEffect(() => {
-        if (isModerator && user?.campus) {
-            setSelectedCampus(user.campus);
+        if (!canViewAllCampuses && currentUser?.campus) {
+            setSelectedCampus(currentUser.campus);
         }
-    }, [isModerator, user]);
+    }, [canViewAllCampuses, currentUser]);
     
     const usersMap = useMemo(() => {
         return new Map(users.map(u => [u.id, u]));
@@ -96,7 +96,13 @@ export default function PromotionRequestsPage() {
     const filteredRequests = useMemo(() => {
         return requests.filter(request => {
             const userForRequest = usersMap.get(request.userId);
-            const matchesCampus = selectedCampus === 'all' || (userForRequest && userForRequest.campus === selectedCampus);
+            
+            let matchesCampus = true;
+            if (!canViewAllCampuses) {
+                matchesCampus = userForRequest?.campus === currentUser?.campus;
+            } else if (selectedCampus !== 'all') {
+                matchesCampus = userForRequest?.campus === selectedCampus;
+            }
             
             const lowercasedSearch = searchTerm.toLowerCase();
             const matchesSearch = searchTerm === '' ||
@@ -105,7 +111,7 @@ export default function PromotionRequestsPage() {
 
             return matchesCampus && matchesSearch;
         });
-    }, [requests, usersMap, selectedCampus, searchTerm]);
+    }, [requests, usersMap, selectedCampus, searchTerm, canViewAllCampuses, currentUser]);
 
     const totalPages = Math.ceil(filteredRequests.length / usersPerPage);
     const paginatedRequests = filteredRequests.slice((currentPage - 1) * usersPerPage, currentPage * usersPerPage);
@@ -116,7 +122,7 @@ export default function PromotionRequestsPage() {
 
 
     const handlePromotionDecision = async (request: PromotionRequest, decision: 'approved' | 'rejected') => {
-        if (!user) return;
+        if (!currentUser) return;
         setIsProcessing(request.id);
         try {
             const batch = writeBatch(db);
@@ -125,7 +131,7 @@ export default function PromotionRequestsPage() {
             batch.update(requestRef, {
                 status: decision,
                 resolvedAt: serverTimestamp(),
-                resolverId: user.uid,
+                resolverId: currentUser.uid,
             });
 
             if (decision === 'approved') {
@@ -215,7 +221,7 @@ export default function PromotionRequestsPage() {
                                     onChange={(e) => setSearchTerm(e.target.value)}
                                 />
                             </div>
-                            <Select value={selectedCampus} onValueChange={setSelectedCampus} disabled={isModerator}>
+                            <Select value={selectedCampus} onValueChange={setSelectedCampus} disabled={!canViewAllCampuses}>
                                 <SelectTrigger className="w-full sm:w-[200px]">
                                     <SelectValue placeholder="Filter by campus" />
                                 </SelectTrigger>
@@ -328,3 +334,5 @@ export default function PromotionRequestsPage() {
         </div>
     );
 }
+
+    
