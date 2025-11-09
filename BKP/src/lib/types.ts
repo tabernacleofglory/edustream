@@ -32,6 +32,8 @@ export interface User {
   ageRange?: string;
   locationPreference?: 'Onsite' | 'Online';
   campus?: string;
+  isBaptized?: boolean;
+  denomination?: string;
 }
 
 export interface Speaker {
@@ -283,7 +285,7 @@ export interface PromotionRequest {
 export interface CustomForm {
     id: string;
     title: string;
-    type: 'userProfile' | 'custom';
+    type: 'userProfile' | 'custom' | 'hybrid';
     public?: boolean;
     fields: FormFieldConfig[];
     submissionCount: number;

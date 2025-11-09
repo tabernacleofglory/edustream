@@ -7,7 +7,7 @@ import { getFirebaseFirestore, getFirebaseApp, getFirebaseFunctions } from "@/li
 import { collection, getDocs, doc, updateDoc, query, orderBy, deleteDoc, setDoc, addDoc, serverTimestamp, where, documentId, writeBatch, getDoc, collectionGroup } from "firebase/firestore";
 import { getAuth, deleteUser as deleteFirebaseAuthUser } from "firebase/auth";
 import { httpsCallable } from 'firebase/functions';
-import type { User, Course, Enrollment, UserProgress as UserProgressType, Ladder, UserLadderProgress } from "@/lib/types";
+import type { User, Course, Enrollment, UserProgress as UserProgressType, Ladder, UserLadderProgress, EmailTemplate } from "@/lib/types";
 import {
   Card,
   CardContent,
@@ -354,6 +354,83 @@ const MergeUsersDialog = ({ userIds, onClose, onMergeComplete }: { userIds: stri
     );
 };
 
+const SendEmailDialog = ({ user, onClose }: { user: User, onClose: () => void }) => {
+    const [templates, setTemplates] = useState<EmailTemplate[]>([]);
+    const [selectedTemplateId, setSelectedTemplateId] = useState<string>('');
+    const [loadingTemplates, setLoadingTemplates] = useState(true);
+    const [isSending, setIsSending] = useState(false);
+    const db = getFirebaseFirestore();
+    const { toast } = useToast();
+
+    useEffect(() => {
+        const fetchTemplates = async () => {
+            setLoadingTemplates(true);
+            try {
+                const q = query(collection(db, 'emailTemplates'), orderBy('name', 'asc'));
+                const snapshot = await getDocs(q);
+                setTemplates(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as EmailTemplate)));
+            } catch (error) {
+                toast({ variant: 'destructive', title: 'Failed to load templates' });
+            } finally {
+                setLoadingTemplates(false);
+            }
+        };
+        fetchTemplates();
+    }, [db, toast]);
+
+    const handleSendEmail = async () => {
+        if (!selectedTemplateId) {
+            toast({ variant: 'destructive', title: 'Please select a template' });
+            return;
+        }
+        setIsSending(true);
+        try {
+            const functions = getFirebaseFunctions();
+            const sendEmail = httpsCallable(functions, 'sendEmailViaAppsheet');
+            await sendEmail({ userId: user.id, templateId: selectedTemplateId });
+            toast({ title: 'Email Sent', description: `Email queued for ${user.displayName}.` });
+            onClose();
+        } catch (error: any) {
+            console.error("Error sending email:", error);
+            toast({ variant: 'destructive', title: 'Send Failed', description: error.message });
+        } finally {
+            setIsSending(false);
+        }
+    };
+
+    return (
+        <DialogContent>
+            <DialogHeader>
+                <DialogTitle>Send Email to {user.displayName}</DialogTitle>
+                <DialogDescription>Select an email template to send.</DialogDescription>
+            </DialogHeader>
+            <div className="py-4">
+                {loadingTemplates ? (
+                    <Skeleton className="h-10 w-full" />
+                ) : (
+                    <Select value={selectedTemplateId} onValueChange={setSelectedTemplateId}>
+                        <SelectTrigger>
+                            <SelectValue placeholder="Select an email template..." />
+                        </SelectTrigger>
+                        <SelectContent>
+                            {templates.map(template => (
+                                <SelectItem key={template.id} value={template.id}>{template.name}</SelectItem>
+                            ))}
+                        </SelectContent>
+                    </Select>
+                )}
+            </div>
+            <DialogFooter>
+                <Button variant="secondary" onClick={onClose}>Cancel</Button>
+                <Button onClick={handleSendEmail} disabled={isSending || loadingTemplates || !selectedTemplateId}>
+                    {isSending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                    Send Email
+                </Button>
+            </DialogFooter>
+        </DialogContent>
+    );
+};
+
 export default function UserManagement() {
   const [users, setUsers] = useState<User[]>([]);
   const [ladders, setLadders] = useState<Ladder[]>([]);
@@ -364,6 +441,7 @@ export default function UserManagement() {
   const [isImportUserOpen, setIsImportUserOpen] = useState(false);
   const [editingUser, setEditingUser] = useState<User | null>(null);
   const [viewingUser, setViewingUser] = useState<User | null>(null);
+  const [sendingEmailToUser, setSendingEmailToUser] = useState<User | null>(null);
   const [viewingUserProgress, setViewingUserProgress] = useState<UserCourseProgress[]>([]);
   const [viewingUserLadderProgress, setViewingUserLadderProgress] = useState<UserLadderProgress[]>([]);
   const [viewingUserCompletions, setViewingUserCompletions] = useState<Set<string>>(new Set());
@@ -1073,6 +1151,10 @@ export default function UserManagement() {
                         </TableCell>
                         <TableCell className="text-right">
                            <div className="flex justify-end gap-1">
+                             <Button variant="ghost" size="icon" onClick={(e) => handleActionClick(e, () => setSendingEmailToUser(user))}>
+                                <Mail className="h-4 w-4" />
+                                <span className="sr-only">Send Email</span>
+                            </Button>
                              <Button variant="ghost" size="icon" onClick={(e) => handleActionClick(e, () => setViewingUser(user))}>
                                 <Eye className="h-4 w-4" />
                                 <span className="sr-only">View Details</span>
@@ -1284,6 +1366,9 @@ export default function UserManagement() {
           </ScrollArea>
         </SheetContent>
       </Sheet>
+      <Dialog open={!!sendingEmailToUser} onOpenChange={(isOpen) => !isOpen && setSendingEmailToUser(null)}>
+        {sendingEmailToUser && <SendEmailDialog user={sendingEmailToUser} onClose={() => setSendingEmailToUser(null)} />}
+      </Dialog>
     </>
   );
 }

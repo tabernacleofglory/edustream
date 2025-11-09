@@ -1,4 +1,5 @@
 
+
 "use client";
 
 import { useState, useEffect, useMemo, useCallback } from "react";
@@ -30,7 +31,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { collection, getDocs, query, where, orderBy } from "firebase/firestore";
 import { getFirebaseFirestore } from "@/lib/firebase";
-import type { User, Course, UserProgress, Enrollment, CourseGroup, OnsiteCompletion, Ladder } from "@/lib/types";
+import type { User, Course, UserProgress, Enrollment, CourseGroup, OnsiteCompletion, Ladder, UserQuizResult } from "@/lib/types";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Download, Calendar as CalendarIcon, X as XIcon, Search, ChevronLeft, ChevronRight, Lock } from "lucide-react";
 import Papa from 'papaparse';
@@ -79,6 +80,7 @@ export default function CourseReportsPage() {
   const [selectedCampus, setSelectedCampus] = useState<string | "all">("all");
   const [selectedCompletionType, setSelectedCompletionType] = useState<'all' | 'Online' | 'On-site'>('all');
   const [completionStatusFilter, setCompletionStatusFilter] = useState<'all' | 'completed' | 'in-progress'>('all');
+  const [percentageFilter, setPercentageFilter] = useState<string>('all');
   const [dateRange, setDateRange] = useState<DateRange | undefined>();
   const [searchTerm, setSearchTerm] = useState("");
 
@@ -96,7 +98,7 @@ export default function CourseReportsPage() {
     }
     setLoading(true);
     try {
-      const [usersSnap, coursesSnap, groupsSnap, laddersSnap, campusesSnap, enrollmentsSnap, progressSnap, onsiteCompletionsSnap] = await Promise.all([
+      const [usersSnap, coursesSnap, groupsSnap, laddersSnap, campusesSnap, enrollmentsSnap, progressSnap, onsiteCompletionsSnap, quizResultsSnap] = await Promise.all([
         getDocs(collection(db, 'users')),
         getDocs(query(collection(db, 'courses'), where('status', '==', 'published'))),
         getDocs(collection(db, 'courseGroups')),
@@ -104,7 +106,8 @@ export default function CourseReportsPage() {
         getDocs(query(collection(db, 'Campus'), orderBy("Campus Name"))),
         getDocs(query(collection(db, 'enrollments'), orderBy('enrolledAt', 'desc'))),
         getDocs(collection(db, 'userVideoProgress')),
-        getDocs(query(collection(db, 'onsiteCompletions'), orderBy('completedAt', 'desc')))
+        getDocs(query(collection(db, 'onsiteCompletions'), orderBy('completedAt', 'desc'))),
+        getDocs(collection(db, 'userQuizResults')),
       ]);
 
       const usersList = usersSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as User));
@@ -115,6 +118,7 @@ export default function CourseReportsPage() {
       const enrollmentsList = enrollmentsSnap.docs.map(doc => ({ id: `${doc.data().userId}_${doc.data().courseId}`, ...doc.data() } as Enrollment & { id: string }));
       const progressList = progressSnap.docs.map(doc => doc.data() as UserProgress);
       const onsiteCompletionsList = onsiteCompletionsSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as OnsiteCompletion & { id: string }));
+      const quizResultsList = quizResultsSnap.docs.map(doc => doc.data() as UserQuizResult);
 
       setAllUsers(usersList);
       setAllCourses(coursesList);
@@ -122,11 +126,32 @@ export default function CourseReportsPage() {
       setAllLadders(laddersList);
       setAllCampuses(campusesList);
 
-      const progressMap = new Map(progressList.map(p => [`${p.userId}_${p.courseId}`, p.totalProgress]));
+      const progressMap = new Map<string, UserProgress>();
+      progressList.forEach(p => progressMap.set(`${p.userId}_${p.courseId}`, p));
 
+      const passedQuizzesMap = new Map<string, Set<string>>(); // key: userId_courseId, value: Set<quizId>
+      quizResultsList.forEach(qr => {
+        if(qr.passed) {
+          const key = `${qr.userId}_${qr.courseId}`;
+          if (!passedQuizzesMap.has(key)) passedQuizzesMap.set(key, new Set());
+          passedQuizzesMap.get(key)!.add(qr.quizId);
+        }
+      });
+      
       const onlineEnrollments: EnrollmentReportData[] = enrollmentsList.map(enrollment => {
         const user = usersList.find(u => u.id === enrollment.userId);
         const course = coursesList.find(c => c.id === enrollment.courseId);
+        const progress = progressMap.get(`${enrollment.userId}_${enrollment.courseId}`);
+        const totalVideos = course?.videos?.length || 0;
+        const completedVideos = progress?.videoProgress?.filter(v => v.completed).length || 0;
+        const allVideosCompleted = totalVideos > 0 ? completedVideos >= totalVideos : true;
+        
+        const requiredQuizzes = course?.quizIds || [];
+        const passedQuizzes = passedQuizzesMap.get(`${enrollment.userId}_${enrollment.courseId}`) || new Set();
+        const allQuizzesCompleted = requiredQuizzes.every(qid => passedQuizzes.has(qid));
+
+        const isCompleted = allVideosCompleted && allQuizzesCompleted;
+
         return {
           id: enrollment.id,
           userId: enrollment.userId,
@@ -135,8 +160,8 @@ export default function CourseReportsPage() {
           courseId: enrollment.courseId,
           courseTitle: course?.title || 'Unknown Course',
           enrolledAt: enrollment.enrolledAt.toDate(),
-          completedAt: enrollment.completedAt?.toDate(),
-          totalProgress: progressMap.get(`${enrollment.userId}_${enrollment.courseId}`) || 0,
+          completedAt: isCompleted ? (enrollment.completedAt?.toDate() || new Date()) : null,
+          totalProgress: totalVideos > 0 ? Math.round((completedVideos / totalVideos) * 100) : (isCompleted ? 100 : 0),
           completionType: 'Online',
         };
       });
@@ -197,6 +222,12 @@ export default function CourseReportsPage() {
         const matchesStatus = completionStatusFilter === 'all' ||
             (completionStatusFilter === 'completed' && !!item.completedAt) ||
             (completionStatusFilter === 'in-progress' && !item.completedAt);
+        
+        let matchesPercentage = true;
+        if (percentageFilter !== 'all') {
+            const [min, max] = percentageFilter.split('-').map(Number);
+            matchesPercentage = item.totalProgress >= min && item.totalProgress <= max;
+        }
 
         const referenceDate = item.completedAt || item.enrolledAt;
         const matchesDate = !referenceDate || (
@@ -208,84 +239,83 @@ export default function CourseReportsPage() {
             item.userName.toLowerCase().includes(searchTerm.toLowerCase()) ||
             item.courseTitle.toLowerCase().includes(searchTerm.toLowerCase());
 
-        return matchesCourse && matchesCampus && matchesCompletionType && matchesDate && matchesSearch && matchesStatus;
+        return matchesCourse && matchesCampus && matchesCompletionType && matchesDate && matchesSearch && matchesStatus && matchesPercentage;
     });
-  }, [enrollmentReportData, selectedCourse, selectedCampus, selectedCompletionType, dateRange, searchTerm, allCourseGroups, allCampuses, completionStatusFilter, allUsers, canViewAllCampuses, currentUser]);
+  }, [enrollmentReportData, selectedCourse, selectedCampus, selectedCompletionType, dateRange, searchTerm, allCourseGroups, allCampuses, completionStatusFilter, allUsers, canViewAllCampuses, currentUser, percentageFilter]);
   
   const completionCount = useMemo(() => {
     return filteredEnrollmentData.filter(item => item.completedAt).length;
   }, [filteredEnrollmentData]);
   
- const learningPathSummary = useMemo(() => {
-    const allUsersWhoCompletedAPath = new Set<string>();
+  const ladderCompletionSummary = useMemo(() => {
+    const allUsersWhoCompletedALadder = new Set<string>();
 
-    const summary = allCourseGroups.map(group => {
-        const courseIdsInGroup = new Set(group.courseIds);
-        const usersInPath = new Set<string>();
-        enrollmentReportData.forEach(e => {
-            if (courseIdsInGroup.has(e.courseId)) {
-                usersInPath.add(e.userId);
-            }
-        });
+    const summary = allLadders.map(ladder => {
+        const usersWhoCompletedThisLadder = new Set<string>();
+        const onsiteCompletionsForLadder = new Set<string>();
+        const onlineCompletionsForLadder = new Set<string>();
 
-        let fullyCompletedUsers = 0;
-        let onSiteCompletions = 0;
-        let onlineCompletions = 0;
+        const coursesInLadder = allCourses.filter(c => c.ladderIds?.includes(ladder.id));
+        if (coursesInLadder.length === 0) {
+            return { title: ladder.name, onsiteCompletions: 0, onlineCompletions: 0, fullyCompletedUsers: 0 };
+        }
 
-        usersInPath.forEach(userId => {
+        const userIdsInvolvedInLadder = new Set<string>(
+            enrollmentReportData
+                .filter(e => coursesInLadder.some(c => c.id === e.courseId))
+                .map(e => e.userId)
+        );
+
+        userIdsInvolvedInLadder.forEach(userId => {
             const user = allUsers.find(u => u.id === userId);
             if (!user) return;
 
-            const coursesRequiredForUser = allCourses.filter(c => 
-                courseIdsInGroup.has(c.id) && c.language === user.language
-            );
+            const coursesRequiredForUser = coursesInLadder.filter(c => c.language === user.language);
+            if (coursesRequiredForUser.length === 0) return;
             
-            if (coursesRequiredForUser.length > 0) {
-                const userCompletedCourses = new Map<string, 'Online' | 'On-site'>();
-                enrollmentReportData
-                    .filter(e => e.userId === userId && e.completedAt)
-                    .forEach(e => {
-                        userCompletedCourses.set(e.courseId, e.completionType);
-                    });
+            const userCompletions = enrollmentReportData.filter(e => e.userId === userId && e.completedAt);
+            const userCompletedCourseIds = new Set(userCompletions.map(e => e.courseId));
+            
+            const hasCompletedAllRequired = coursesRequiredForUser.every(c => userCompletedCourseIds.has(c.id));
+            
+            if (hasCompletedAllRequired) {
+                usersWhoCompletedThisLadder.add(userId);
+                allUsersWhoCompletedALadder.add(userId);
 
-                if (coursesRequiredForUser.every(c => userCompletedCourses.has(c.id))) {
-                    fullyCompletedUsers++;
-                    allUsersWhoCompletedAPath.add(userId);
-                    
-                    const completionTypesInPath = coursesRequiredForUser.map(c => userCompletedCourses.get(c.id));
-                    if (completionTypesInPath.some(type => type === 'On-site')) {
-                        onSiteCompletions++;
-                    } else {
-                        onlineCompletions++;
-                    }
+                // Determine if this user's completion of the ladder counts as 'onsite' or 'online'
+                const completionMethodsForLadder = coursesRequiredForUser.map(c => 
+                    userCompletions.find(uc => uc.courseId === c.id)?.completionType
+                );
+
+                if (completionMethodsForLadder.every(type => type === 'On-site')) {
+                    onsiteCompletionsForLadder.add(userId);
+                } else {
+                    onlineCompletionsForLadder.add(userId);
                 }
             }
         });
 
         return {
-            title: group.title,
-            fullyCompletedUsers,
-            onSiteCompletions,
-            onlineCompletions,
+            title: ladder.name,
+            onsiteCompletions: onsiteCompletionsForLadder.size,
+            onlineCompletions: onlineCompletionsForLadder.size,
+            fullyCompletedUsers: usersWhoCompletedThisLadder.size,
         };
     });
 
-    const grandTotal = summary.reduce((acc, group) => {
-        acc.fullyCompletedUsers += group.fullyCompletedUsers;
-        acc.onSiteCompletions += group.onSiteCompletions;
-        acc.onlineCompletions += group.onlineCompletions;
-        return acc;
-    }, { fullyCompletedUsers: 0, onSiteCompletions: 0, onlineCompletions: 0 });
-
-    grandTotal.fullyCompletedUsers = allUsersWhoCompletedAPath.size;
+    const grandTotal = {
+      onsiteCompletions: summary.reduce((sum, s) => sum + s.onsiteCompletions, 0),
+      onlineCompletions: summary.reduce((sum, s) => sum + s.onlineCompletions, 0),
+      fullyCompletedUsers: allUsersWhoCompletedALadder.size,
+    };
 
     return { summary, grandTotal };
-}, [allCourseGroups, enrollmentReportData, allCourses, allUsers]);
+  }, [allLadders, allCourses, enrollmentReportData, allUsers]);
 
 
   useEffect(() => {
     setCurrentPage(1);
-  }, [selectedCourse, selectedCampus, dateRange, searchTerm, rowsPerPage, selectedCompletionType, completionStatusFilter]);
+  }, [selectedCourse, selectedCampus, dateRange, searchTerm, rowsPerPage, selectedCompletionType, percentageFilter]);
 
   const totalPages = Math.ceil(filteredEnrollmentData.length / rowsPerPage);
   const paginatedData = filteredEnrollmentData.slice((currentPage - 1) * rowsPerPage, currentPage * rowsPerPage);
@@ -336,8 +366,8 @@ export default function CourseReportsPage() {
     <div className="space-y-8">
       <Card>
         <CardHeader>
-          <CardTitle>Summary Report</CardTitle>
-          <CardDescription>A brief overview of your learning paths.</CardDescription>
+          <CardTitle>Ladder Completion Report</CardTitle>
+          <CardDescription>A summary of unique users who have completed all required courses in each ladder.</CardDescription>
         </CardHeader>
         <CardContent>
             {loading ? <Skeleton className="h-40 w-full" /> : (
@@ -345,26 +375,26 @@ export default function CourseReportsPage() {
                     <Table>
                         <TableHeader>
                             <TableRow>
-                                <TableHead>Learning Path</TableHead>
+                                <TableHead>Ladder</TableHead>
                                 <TableHead className="text-center">On-site Completions</TableHead>
                                 <TableHead className="text-center">Online Completions</TableHead>
                                 <TableHead className="text-center">Total Completed Users</TableHead>
                             </TableRow>
                         </TableHeader>
                         <TableBody>
-                            {learningPathSummary.summary.map(item => (
+                            {ladderCompletionSummary.summary.filter(s => s.fullyCompletedUsers > 0).map(item => (
                                 <TableRow key={item.title}>
                                     <TableCell className="font-medium">{item.title}</TableCell>
-                                    <TableCell className="text-center">{item.onSiteCompletions}</TableCell>
+                                    <TableCell className="text-center">{item.onsiteCompletions}</TableCell>
                                     <TableCell className="text-center">{item.onlineCompletions}</TableCell>
                                     <TableCell className="text-center">{item.fullyCompletedUsers}</TableCell>
                                 </TableRow>
                             ))}
                             <TableRow className="font-bold bg-muted/50">
-                                <TableCell>Grand Total (Unique Users)</TableCell>
-                                <TableCell className="text-center">{learningPathSummary.grandTotal.onSiteCompletions}</TableCell>
-                                <TableCell className="text-center">{learningPathSummary.grandTotal.onlineCompletions}</TableCell>
-                                <TableCell className="text-center">{learningPathSummary.grandTotal.fullyCompletedUsers}</TableCell>
+                                <TableCell>Grand Total</TableCell>
+                                <TableCell className="text-center">{ladderCompletionSummary.grandTotal.onsiteCompletions}</TableCell>
+                                <TableCell className="text-center">{ladderCompletionSummary.grandTotal.onlineCompletions}</TableCell>
+                                <TableCell className="text-center">{ladderCompletionSummary.grandTotal.fullyCompletedUsers}</TableCell>
                             </TableRow>
                         </TableBody>
                     </Table>
@@ -442,6 +472,19 @@ export default function CourseReportsPage() {
                     <SelectItem value="in-progress">In Progress</SelectItem>
                 </SelectContent>
             </Select>
+             <Select value={percentageFilter} onValueChange={setPercentageFilter}>
+                <SelectTrigger className="w-full sm:w-auto flex-grow">
+                    <SelectValue placeholder="Filter by Percentage" />
+                </SelectTrigger>
+                <SelectContent>
+                    <SelectItem value="all">Any Percentage</SelectItem>
+                    <SelectItem value="0-25">0 - 25%</SelectItem>
+                    <SelectItem value="26-50">26 - 50%</SelectItem>
+                    <SelectItem value="51-75">51 - 75%</SelectItem>
+                    <SelectItem value="76-99">76 - 99%</SelectItem>
+                    <SelectItem value="100-100">100% (Completed)</SelectItem>
+                </SelectContent>
+            </Select>
             <Popover>
               <PopoverTrigger asChild>
                 <Button id="date-enrollment" variant={"outline"} className={cn("w-full sm:w-auto justify-start text-left font-normal", !dateRange && "text-muted-foreground")}>
@@ -498,9 +541,14 @@ export default function CourseReportsPage() {
                       <TableCell>{item.enrolledAt && isValid(item.enrolledAt) ? format(item.enrolledAt, 'MMM d, yyyy') : 'N/A'}</TableCell>
                       <TableCell>{item.completedAt && isValid(item.completedAt) ? format(item.completedAt, 'MMM d, yyyy') : 'In Progress'}</TableCell>
                       <TableCell>
-                        <Badge variant={item.completedAt ? "default" : "outline"}>
-                            {item.completedAt ? `Completed (${item.completionType})` : 'In Progress'}
-                        </Badge>
+                        {item.completedAt ? (
+                            <Badge variant="default">Completed ({item.completionType})</Badge>
+                        ) : (
+                            <div className="flex items-center gap-2">
+                                <Progress value={item.totalProgress} className="w-24 h-2" />
+                                <span className="text-xs font-semibold">{item.totalProgress}%</span>
+                            </div>
+                        )}
                       </TableCell>
                     </TableRow>
                   ))

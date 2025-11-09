@@ -1,4 +1,5 @@
 
+
 import * as functions from "firebase-functions";
 import * as admin from "firebase-admin";
 import * as sgMail from "@sendgrid/mail";
@@ -59,6 +60,240 @@ export const deleteUserAccount = functions
       throw new functions.https.HttpsError("internal", err.message || "An unknown error occurred during deletion.");
     }
   });
+
+// ---- Manual Quiz Re-evaluation ----
+
+export const reevaluateQuizSubmissions = functions.https.onCall(async (data, context) => {
+    if (!context.auth) {
+        throw new functions.https.HttpsError("unauthenticated", "You must be logged in.");
+    }
+    await assertAdminOrDeveloper(context.auth.uid);
+
+    const resultIds: string[] = data.resultIds;
+    if (!Array.isArray(resultIds) || resultIds.length === 0) {
+        throw new functions.https.HttpsError("invalid-argument", "An array of resultIds must be provided.");
+    }
+
+    const batch = db.batch();
+    const quizCache = new Map<string, any>();
+    let updatedCount = 0;
+    const usersAndCoursesToRecheck = new Map<string, Set<string>>();
+
+    for (const resultId of resultIds) {
+        const resultRef = db.doc(`userQuizResults/${resultId}`);
+        const resultDoc = await resultRef.get();
+        if (!resultDoc.exists) continue;
+
+        const submission = resultDoc.data()!;
+        let quizData = quizCache.get(submission.quizId);
+
+        if (!quizData) {
+            const quizDoc = await db.doc(`quizzes/${submission.quizId}`).get();
+            if (quizDoc.exists) {
+                quizData = quizDoc.data();
+                quizCache.set(submission.quizId, quizData);
+            } else {
+                continue; // Skip if quiz doesn't exist
+            }
+        }
+
+        const newPassThreshold = quizData.passThreshold ?? 70;
+        const newStatus = submission.score >= newPassThreshold;
+
+        if (newStatus !== submission.passed) {
+            batch.update(resultRef, { passed: newStatus });
+            updatedCount++;
+            if (newStatus === true) {
+                if (!usersAndCoursesToRecheck.has(submission.userId)) {
+                    usersAndCoursesToRecheck.set(submission.userId, new Set());
+                }
+                usersAndCoursesToRecheck.get(submission.userId)!.add(submission.courseId);
+            }
+        }
+    }
+
+    if (updatedCount > 0) {
+        await batch.commit();
+        functions.logger.log(`Manually re-evaluated and updated ${updatedCount} submissions.`);
+    }
+
+    // Now, re-check course completions if any statuses were changed to 'passed'.
+    if (usersAndCoursesToRecheck.size > 0) {
+        const courseCompletionBatch = db.batch();
+        for (const [userId, courseIds] of usersAndCoursesToRecheck.entries()) {
+            for (const courseId of courseIds) {
+                 const courseDoc = await db.doc(`courses/${courseId}`).get();
+                if (!courseDoc.exists) continue;
+                
+                const courseData = courseDoc.data() as any;
+                const requiredVideos = courseData.videos || [];
+                const requiredQuizzes = courseData.quizIds || [];
+
+                // Check video progress
+                let allVideosWatched = false;
+                if (requiredVideos.length > 0) {
+                    const progressDoc = await db.doc(`userVideoProgress/${userId}_${courseId}`).get();
+                    if (progressDoc.exists) {
+                        const videoProgress = progressDoc.data()?.videoProgress || [];
+                        const completedVideos = videoProgress.filter((v: any) => v.completed).map((v: any) => v.videoId);
+                        allVideosWatched = requiredVideos.every((vid: string) => completedVideos.includes(vid));
+                    }
+                } else {
+                    allVideosWatched = true;
+                }
+
+                if (!allVideosWatched) continue;
+
+                // Check quiz progress
+                let allQuizzesPassed = false;
+                if (requiredQuizzes.length > 0) {
+                    const quizResultsSnap = await db.collection('userQuizResults')
+                        .where('userId', '==', userId)
+                        .where('courseId', '==', courseId)
+                        .where('passed', '==', true)
+                        .get();
+                    const passedQuizIds = new Set(quizResultsSnap.docs.map(d => d.data().quizId));
+                    allQuizzesPassed = requiredQuizzes.every((qid: string) => passedQuizIds.has(qid));
+                } else {
+                    allQuizzesPassed = true;
+                }
+
+                if (allVideosWatched && allQuizzesPassed) {
+                    const enrollmentRef = db.doc(`enrollments/${userId}_${courseId}`);
+                    courseCompletionBatch.set(enrollmentRef, { completedAt: admin.firestore.FieldValue.serverTimestamp() }, { merge: true });
+                }
+            }
+        }
+        await courseCompletionBatch.commit();
+    }
+
+    return { success: true, updatedCount };
+});
+
+  
+// ---- Quiz Pass/Fail Re-evaluation ----
+
+export const onQuizUpdate = functions.firestore
+  .document('quizzes/{quizId}')
+  .onUpdate(async (change, context) => {
+    const beforeData = change.before.data();
+    const afterData = change.after.data();
+    const { quizId } = context.params;
+
+    // Check if passThreshold has changed
+    if (beforeData.passThreshold === afterData.passThreshold) {
+      functions.logger.log(`Quiz ${quizId} updated, but passThreshold did not change. Skipping re-evaluation.`);
+      return null;
+    }
+
+    const newPassThreshold = afterData.passThreshold ?? 70;
+    functions.logger.log(`Re-evaluating submissions for quiz ${quizId} with new pass threshold: ${newPassThreshold}%`);
+
+    const submissionsQuery = db.collection('userQuizResults').where('quizId', '==', quizId);
+    
+    try {
+      const snapshot = await submissionsQuery.get();
+      if (snapshot.empty) {
+        functions.logger.log(`No submissions found for quiz ${quizId}.`);
+        return null;
+      }
+      
+      const batch = db.batch();
+      let updatedCount = 0;
+      const usersAndCoursesToRecheck = new Map<string, Set<string>>();
+
+
+      snapshot.forEach(doc => {
+        const submission = doc.data();
+        const currentScore = submission.score;
+        const currentStatus = submission.passed;
+
+        const newStatus = currentScore >= newPassThreshold;
+
+        if (newStatus !== currentStatus) {
+          batch.update(doc.ref, { passed: newStatus });
+          updatedCount++;
+           if (newStatus === true) { // Only re-check course completion if they now pass
+              if (!usersAndCoursesToRecheck.has(submission.userId)) {
+                usersAndCoursesToRecheck.set(submission.userId, new Set());
+              }
+              usersAndCoursesToRecheck.get(submission.userId)!.add(submission.courseId);
+          }
+        }
+      });
+
+      if (updatedCount > 0) {
+        await batch.commit();
+        functions.logger.log(`Successfully re-evaluated and updated ${updatedCount} submissions for quiz ${quizId}.`);
+      } else {
+        functions.logger.log(`No submission statuses needed to be changed for quiz ${quizId}.`);
+      }
+
+      if (usersAndCoursesToRecheck.size === 0) {
+        return null; // No need to check course completions
+      }
+
+      // --- Re-check overall course completion for affected users ---
+      functions.logger.log(`Found ${usersAndCoursesToRecheck.size} users whose course completion status may have changed.`);
+      const courseCompletionBatch = db.batch();
+      
+      for (const [userId, courseIds] of usersAndCoursesToRecheck.entries()) {
+          for (const courseId of courseIds) {
+              const courseDoc = await db.doc(`courses/${courseId}`).get();
+              if (!courseDoc.exists) continue;
+
+              const courseData = courseDoc.data() as any;
+              const requiredVideos = courseData.videos || [];
+              const requiredQuizzes = courseData.quizIds || [];
+
+              // 1. Check video progress
+              let allVideosWatched = false;
+              if (requiredVideos.length > 0) {
+                  const progressDoc = await db.doc(`userVideoProgress/${userId}_${courseId}`).get();
+                  if (progressDoc.exists) {
+                      const videoProgress = progressDoc.data()?.videoProgress || [];
+                      const completedVideos = videoProgress.filter((v: any) => v.completed).map((v: any) => v.videoId);
+                      allVideosWatched = requiredVideos.every((vid: string) => completedVideos.includes(vid));
+                  }
+              } else {
+                  allVideosWatched = true; // No videos required
+              }
+              
+              if (!allVideosWatched) continue; // If videos aren't done, no need to check quizzes
+
+              // 2. Check quiz progress
+              let allQuizzesPassed = false;
+              if (requiredQuizzes.length > 0) {
+                  const quizResultsSnap = await db.collection('userQuizResults')
+                      .where('userId', '==', userId)
+                      .where('courseId', '==', courseId)
+                      .where('passed', '==', true)
+                      .get();
+                  const passedQuizIds = new Set(quizResultsSnap.docs.map(d => d.data().quizId));
+                  allQuizzesPassed = requiredQuizzes.every((qid: string) => passedQuizIds.has(qid));
+              } else {
+                  allQuizzesPassed = true; // No quizzes required
+              }
+
+              // 3. If all conditions met, update enrollment
+              if (allVideosWatched && allQuizzesPassed) {
+                  const enrollmentRef = db.doc(`enrollments/${userId}_${courseId}`);
+                  courseCompletionBatch.set(enrollmentRef, { completedAt: admin.firestore.FieldValue.serverTimestamp() }, { merge: true });
+                  functions.logger.log(`Marking course ${courseId} as complete for user ${userId}.`);
+              }
+          }
+      }
+
+      await courseCompletionBatch.commit();
+
+
+    } catch (error) {
+      functions.logger.error(`Error re-evaluating quiz submissions for ${quizId}:`, error);
+    }
+    
+    return null;
+  });
+
 
 // ---- enroll in course -------------------------------------------
 
@@ -352,3 +587,6 @@ export const syncVideos = functions
   });
 
 export { onVideoDeleted, onVideoUpdate, transcodeVideo, updateVideoOnTranscodeComplete };
+
+    
+    

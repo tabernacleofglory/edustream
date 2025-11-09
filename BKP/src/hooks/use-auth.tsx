@@ -182,18 +182,24 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   useEffect(() => {
     if (loading || validLanguages.length === 0) return;
 
-    const publicPaths = ['/login', '/signup'];
-    const isPublicPage = publicPaths.some(path => pathname.startsWith(path)) || pathname === '/';
+    const authPages = ['/login', '/signup'];
+    const isAuthPage = authPages.some(path => pathname.startsWith(path));
+    const isHomePage = pathname === '/';
     const isSettingsPage = pathname === '/settings';
+    const isAppPage = !isAuthPage && !isHomePage;
 
     if (user) {
+      // If profile is incomplete, force them to the settings page, unless they are already there.
       if (!isProfileComplete && !isSettingsPage) {
         router.push('/settings');
-      } else if (isPublicPage) {
+      } 
+      // If user is on an auth page (login/signup), redirect to dashboard.
+      else if (isAuthPage) {
         router.push('/dashboard');
       }
     } else {
-      if (!isPublicPage) {
+      // If not logged in and trying to access an internal app page, redirect to login.
+      if (isAppPage) {
         router.push('/login');
       }
     }

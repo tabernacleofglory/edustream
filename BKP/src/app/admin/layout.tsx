@@ -43,6 +43,7 @@ import {
   Play,
   Library,
   Theater,
+  List,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
@@ -204,6 +205,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
       group: t('admin.nav.group.platform', "Platform"),
       items: [
         { href: "/admin/campus", label: t('admin.nav.platform.campus', "Campus"), icon: Building, permission: 'viewCampusManagement' },
+        { href: "/admin/custom-fields", label: "Custom Fields", icon: List, permission: 'manageForms' },
         { href: "/admin/courses/teaching", label: "Teaching", icon: Play },
         { href: "/admin/live", label: t('admin.nav.platform.live', "Live"), icon: Tv, permission: 'viewLiveManagement' },
         { href: "/my-certificates", label: t('admin.nav.platform.my_certificates', "My Certificates"), icon: Award, permission: 'viewDashboard' },

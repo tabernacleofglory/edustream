@@ -30,6 +30,7 @@ import {
   sendPasswordResetEmail,
 } from "firebase/auth";
 import { v4 as uuidv4 } from "uuid";
+import { useDebounce } from 'use-debounce';
 
 import {
   Card,
@@ -56,7 +57,6 @@ import type { CustomForm, FormFieldConfig, User } from "@/lib/types";
 import { useToast } from "@/hooks/use-toast";
 import Link from "next/link";
 
-// NEW: phone input (same lib as your Add User form)
 import PhoneInput from "react-phone-number-input";
 import "react-phone-number-input/style.css";
 
@@ -81,7 +81,6 @@ const DynamicForm = ({ formConfig }: { formConfig: CustomForm }) => {
   );
   const [loadingOptions, setLoadingOptions] = useState(true);
 
-  // Secondary app/auth for account creation without affecting primary auth state.
   const secondaryAuth = useMemo(() => {
     const secondaryAppName = "secondaryFormApp";
     let secondaryApp = getApps().find((app) => app.name === secondaryAppName);
@@ -92,7 +91,6 @@ const DynamicForm = ({ formConfig }: { formConfig: CustomForm }) => {
     return getAuth(secondaryApp);
   }, []);
 
-  // Validation schema: keep your string-based model
   const validationSchema = useMemo(() => {
     const shape = formConfig.fields.reduce((acc, field) => {
       if (field.visible) {
@@ -120,42 +118,55 @@ const DynamicForm = ({ formConfig }: { formConfig: CustomForm }) => {
       return acc;
     }, {} as Record<string, z.ZodType<any>>);
 
-    // Keep your “in HP” dependency
-    const isInHpGroupField = formConfig.fields.find((f) => f.fieldId === "isInHpGroup");
-    if (isInHpGroupField?.visible) {
-      return z.object(shape).refine(
-        (data) => {
-          if (data.isInHpGroup === "true") {
+    return z.object(shape).superRefine((data, ctx) => {
+        const isInHpGroupField = formConfig.fields.find((f) => f.fieldId === "isInHpGroup");
+        if (isInHpGroupField?.visible && data.isInHpGroup === "true") {
             const hpNumberRequired = formConfig.fields.find((f) => f.fieldId === "hpNumber")?.required;
+            if (hpNumberRequired && !data.hpNumber) {
+                 ctx.addIssue({ code: z.ZodIssueCode.custom, message: "HP Number is required if you are in a prayer group.", path: ["hpNumber"] });
+            }
             const facilitatorNameRequired = formConfig.fields.find((f) => f.fieldId === "facilitatorName")?.required;
-
-            let isValid = true;
-            if (hpNumberRequired && !data.hpNumber) isValid = false;
-            if (facilitatorNameRequired && !data.facilitatorName) isValid = false;
-
-            return isValid;
-          }
-          return true;
-        },
-        {
-          message: "HP Number and Facilitator's Name are required if you are in a prayer group.",
-          path: ["hpNumber"],
+            if (facilitatorNameRequired && !data.facilitatorName) {
+                ctx.addIssue({ code: z.ZodIssueCode.custom, message: "Facilitator's Name is required if you are in a prayer group.", path: ["facilitatorName"] });
+            }
         }
-      );
-    }
 
-    return z.object(shape);
+        const isBaptizedField = formConfig.fields.find((f) => f.fieldId === "isBaptized");
+        if (isBaptizedField?.visible && data.isBaptized === "true") {
+            const denominationRequired = formConfig.fields.find((f) => f.fieldId === "denomination")?.required;
+            if (denominationRequired && !data.denomination) {
+                ctx.addIssue({ code: z.ZodIssueCode.custom, message: "Denomination is required if you are baptized.", path: ["denomination"] });
+            }
+        }
+    });
   }, [formConfig.fields]);
 
   const form = useForm({
     resolver: zodResolver(validationSchema),
   });
 
+  const watchedData = form.watch();
+  const [debouncedData] = useDebounce(watchedData, 1000);
+
+  useEffect(() => {
+    const savedDraft = localStorage.getItem(`form-draft-${formConfig.id}`);
+    if (savedDraft) {
+        try {
+            form.reset(JSON.parse(savedDraft));
+        } catch(e) {
+            console.error("Failed to parse form draft", e);
+        }
+    }
+  }, [formConfig.id, form]);
+
+  useEffect(() => {
+    localStorage.setItem(`form-draft-${formConfig.id}`, JSON.stringify(debouncedData));
+  }, [debouncedData, formConfig.id]);
+
   useEffect(() => {
     const fetchOptions = async () => {
       const options: { [key: string]: any[] } = {};
 
-      // Campus list — filter out "App Campus"
       if (formConfig.fields.find((f) => f.fieldId === "campus" && f.visible)) {
         const campusSnap = await getDocs(
           query(collection(db, "Campus"), orderBy("Campus Name"))
@@ -165,7 +176,7 @@ const DynamicForm = ({ formConfig }: { formConfig: CustomForm }) => {
             value: d.data()["Campus Name"],
             label: d.data()["Campus Name"],
           }))
-          .filter((c) => c.label !== "App Campus"); // HIDE App Campus
+          .filter((c) => c.label !== "App Campus");
         options["campus"] = campusOptions;
       }
 
@@ -206,6 +217,11 @@ const DynamicForm = ({ formConfig }: { formConfig: CustomForm }) => {
         "Saturday",
         "Sunday",
       ].map((d) => ({ value: d, label: d }));
+
+      options["denomination"] = [
+        "Apostolic", "Baptist", "Pentecostal", "Protestant", "Catholic", "Evangelical",
+        "Methodist", "Lutheran", "Presbyterian", "Anglican", "Other"
+      ].map(d => ({ value: d, label: d }));
 
       setSelectOptions(options);
       setLoadingOptions(false);
@@ -254,10 +270,10 @@ const DynamicForm = ({ formConfig }: { formConfig: CustomForm }) => {
         classLadderId: defaultLadder?.id || null,
         classLadder: defaultLadder?.name || null,
         isInHpGroup: data.isInHpGroup === "true",
+        isBaptized: data.isBaptized === "true",
         createdFromFormId: formConfig.id,
       };
 
-      // copy visible fields into user doc
       formConfig.fields.forEach((field) => {
         if (field.visible && data[field.fieldId] !== undefined) {
           (newUser as any)[field.fieldId] = data[field.fieldId];
@@ -268,6 +284,8 @@ const DynamicForm = ({ formConfig }: { formConfig: CustomForm }) => {
       await updateDoc(doc(db, "forms", formConfig.id), {
         submissionCount: increment(1),
       });
+
+      localStorage.removeItem(`form-draft-${formConfig.id}`);
 
       if (providedRealEmail) {
         try {
@@ -311,23 +329,21 @@ const DynamicForm = ({ formConfig }: { formConfig: CustomForm }) => {
     const { fieldId, label, required } = field;
     const formError = form.formState.errors[fieldId];
 
-    // Conditional HP visibility
     const isHpField = ["hpNumber", "facilitatorName"].includes(fieldId);
     const isAvailabilityField = ["hpAvailabilityDay", "hpAvailabilityTime"].includes(fieldId);
     const isInHpGroupValue = form.watch("isInHpGroup");
+    
+    const isDenominationField = fieldId === "denomination";
+    const isBaptizedValue = form.watch("isBaptized");
 
     if (isHpField && isInHpGroupValue !== "true") return null;
     if (isAvailabilityField && isInHpGroupValue !== "false") return null;
+    if (isDenominationField && isBaptizedValue !== "true") return null;
 
-    // Dropdown-backed fields (incl. campus filtered)
     if (
       [
-        "gender",
-        "ageRange",
-        "campus",
-        "language",
-        "locationPreference",
-        "hpAvailabilityDay",
+        "gender", "ageRange", "campus", "language", "locationPreference",
+        "hpAvailabilityDay", "denomination"
       ].includes(fieldId)
     ) {
       return (
@@ -362,34 +378,28 @@ const DynamicForm = ({ formConfig }: { formConfig: CustomForm }) => {
       );
     }
 
-    // EXACT format for the “Are you in HP?” field
-    if (fieldId === "isInHpGroup") {
-      return (
-        <div key={fieldId} className="space-y-2">
-          <Label>
-            {label} {required && <span className="text-destructive">*</span>}
-          </Label>
-          <Controller
-            name="isInHpGroup"
-            control={form.control}
-            render={({ field }) => (
-              <Select onValueChange={field.onChange} value={field.value}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Select an option" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="true">Yes</SelectItem>
-                  <SelectItem value="false">No</SelectItem>
-                </SelectContent>
-              </Select>
-            )}
-          />
-          {formError && <p className="text-sm text-destructive">{formError.message as string}</p>}
-        </div>
-      );
+    if (["isInHpGroup", "isBaptized"].includes(fieldId)) {
+        return (
+            <div key={fieldId} className="space-y-2">
+                <Label>{label} {required && <span className="text-destructive">*</span>}</Label>
+                <Controller
+                    name={fieldId as any}
+                    control={form.control}
+                    render={({ field }) => (
+                        <Select onValueChange={field.onChange} value={field.value}>
+                            <SelectTrigger><SelectValue placeholder="Select an option" /></SelectTrigger>
+                            <SelectContent>
+                                <SelectItem value="true">Yes</SelectItem>
+                                <SelectItem value="false">No</SelectItem>
+                            </SelectContent>
+                        </Select>
+                    )}
+                />
+                 {formError && <p className="text-sm text-destructive">{formError.message as string}</p>}
+            </div>
+        )
     }
 
-    // NEW: Phone number field with international code
     if (fieldId === "phoneNumber") {
       return (
         <div key={fieldId} className="space-y-2">
@@ -415,7 +425,6 @@ const DynamicForm = ({ formConfig }: { formConfig: CustomForm }) => {
       );
     }
 
-    // NEW: Time picker for hpAvailabilityTime (15-min increments)
     if (fieldId === "hpAvailabilityTime") {
       return (
         <div key={fieldId} className="space-y-2">
@@ -425,7 +434,7 @@ const DynamicForm = ({ formConfig }: { formConfig: CustomForm }) => {
           <Input
             id={fieldId}
             type="time"
-            step={900} // 15-minute steps
+            step={900}
             {...form.register(fieldId as any)}
           />
           {formError && <p className="text-sm text-destructive">{formError.message as string}</p>}
@@ -433,7 +442,6 @@ const DynamicForm = ({ formConfig }: { formConfig: CustomForm }) => {
       );
     }
 
-    // Default input (text/email/password)
     return (
       <div key={fieldId} className="space-y-2">
         <Label htmlFor={fieldId}>

@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useState, useEffect, useCallback, useMemo } from 'react';
@@ -424,11 +425,16 @@ export default function UserProfilePage() {
                     { label: 'Campus', value: user.campus },
                     { label: 'Language', value: user.language },
                     { label: 'Location Preference', value: user.locationPreference },
-                    { label: 'HP Number', value: user.hpNumber },
-                    { label: 'HP Facilitator', value: user.facilitatorName },
-                    { label: 'HP Availability', value: user.hpAvailabilityDay ? `${user.hpAvailabilityDay} at ${user.hpAvailabilityTime}` : ''},
                     { label: 'In HP Group', value: user.isInHpGroup ? 'Yes' : 'No' },
+                    ...(user.isInHpGroup ? [
+                        { label: 'HP Number', value: user.hpNumber },
+                        { label: 'HP Facilitator', value: user.facilitatorName },
+                    ] : [
+                        { label: 'HP Availability', value: user.hpAvailabilityDay ? `${user.hpAvailabilityDay} at ${user.hpAvailabilityTime}` : ''},
+                    ]),
                     { label: 'Marital Status', value: user.maritalStatus },
+                    { label: 'Baptized', value: user.isBaptized ? 'Yes' : 'No' },
+                    ...(user.isBaptized ? [{ label: 'Denomination', value: user.denomination }] : []),
                     { label: 'Ministry', value: user.ministry },
                     { label: 'Charge', value: user.charge },
                 ].map(field => (
@@ -471,45 +477,44 @@ export default function UserProfilePage() {
             </Card>
 
             <Card>
-              <CardHeader>
-                <CardTitle>Enrolled Courses</CardTitle>
-                <CardDescription>Courses the user is currently taking.</CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                {groupedEnrolledCourses.length > 0 ? (
-                  groupedEnrolledCourses.map(group => (
-                    <div key={group.ladderId}>
-                      <h4 className="font-semibold mb-2">{group.ladderName}</h4>
-                      <div className="space-y-4 pl-4 border-l">
-                        {group.courses.map((p: any) => (
-                          <div key={p.courseId} className="flex items-center justify-between">
-                            <div>
-                              <p className="font-medium">{p.courseTitle}</p>
-                              <div className="flex items-center gap-2">
-                                <Progress value={p.totalProgress} className="h-2 w-40" />
-                                <span className="text-xs font-bold">{p.totalProgress}%</span>
-                              </div>
+                <CardHeader>
+                    <CardTitle>Enrolled Courses</CardTitle>
+                    <CardDescription>Courses the user is currently taking.</CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                    {groupedEnrolledCourses.length > 0 ? (
+                        groupedEnrolledCourses.map(group => (
+                            <div key={group.ladderId}>
+                                <h4 className="font-semibold mb-2">{group.ladderName}</h4>
+                                <div className="space-y-4 pl-4 border-l">
+                                    {group.courses.map((p: any) => (
+                                        <div key={p.courseId} className="flex items-center justify-between">
+                                            <div>
+                                                <p className="font-medium">{p.courseTitle}</p>
+                                                <div className="flex items-center gap-2">
+                                                    <Progress value={p.totalProgress} className="h-2 w-40" />
+                                                    <span className="text-xs font-bold">{p.totalProgress}%</span>
+                                                </div>
+                                            </div>
+                                            <div className='flex gap-2'>
+                                                <Button variant="ghost" size="icon" onClick={() => handleViewCourseProgress(p)}>
+                                                    <Eye className="mr-2 h-4 w-4" />
+                                                </Button>
+                                                <Button size="sm" variant="outline" onClick={() => handleUnenroll(user.id, p.courseId)}>
+                                                    <UserMinus className="mr-2 h-4 w-4" /> Un-enroll
+                                                </Button>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
                             </div>
-                            <div className='flex gap-2'>
-                                <Button variant="ghost" size="icon" onClick={() => handleViewCourseProgress(p)}>
-                                  <Eye className="mr-2 h-4 w-4" />
-                                </Button>
-                                <Button size="sm" variant="outline" onClick={() => handleUnenroll(user.id, p.courseId)}>
-                                  <UserMinus className="mr-2 h-4 w-4" /> Un-enroll
-                                </Button>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  ))
-                ) : (
-                  <p className="text-sm text-muted-foreground">No active enrollments.</p>
-                )}
-              </CardContent>
+                        ))
+                    ) : (
+                        <p className="text-sm text-muted-foreground">No active enrollments.</p>
+                    )}
+                </CardContent>
             </Card>
-
-            {/* NEW: Completed Courses */}
+            
             <Card>
               <CardHeader>
                 <CardTitle>Completed Courses</CardTitle>

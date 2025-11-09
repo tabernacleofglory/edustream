@@ -171,51 +171,58 @@ const ResponsesDialog = ({ form, onOpenChange }: { form: CustomForm, onOpenChang
                         onChange={(e) => setSearchTerm(e.target.value)}
                     />
                 </div>
-                <Button onClick={handleExportCSV} variant="outline" disabled={loading || sortedSubs.length === 0}>
-                    <Download className="mr-2 h-4 w-4" /> Export as CSV
-                </Button>
+                 <div className="flex items-center gap-2">
+                    <Button onClick={handleExportCSV} variant="outline" disabled={loading || sortedSubs.length === 0}>
+                        <Download className="mr-2 h-4 w-4" /> Export as CSV
+                    </Button>
+                    <Button asChild variant="outline">
+                        <Link href={`/admin/forms/responses/${form.id}`}>Go to Response page</Link>
+                    </Button>
+                </div>
             </div>
-            <ScrollArea className="flex-grow border rounded-lg">
-                <Table>
-                    <TableHeader>
-                        <TableRow>
-                            <TableHead>Submission Date</TableHead>
-                            {visibleFields.map((f: any) => <TableHead key={`h_${f._renderKey}`}>{f.label}</TableHead>)}
-                        </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                        {loading ? (
-                            Array.from({ length: 3 }).map((_, i) => (
-                                <TableRow key={`sk_${i}`}>
-                                    {Array.from({ length: visibleFields.length + 1 }).map((_, j) => (
-                                        <TableCell key={`sk_${i}_${j}`}><Skeleton className="h-5 w-full" /></TableCell>
-                                    ))}
-                                </TableRow>
-                            ))
-                        ) : sortedSubs.length ? (
-                            sortedSubs.map((sub) => {
-                                const submissionData = sub.data?.data || sub.data;
-                                return (
-                                <TableRow key={`${sub._src}_${sub.id}`}>
-                                    <TableCell className="text-xs">{formatWhen(sub.submittedAt, sub.createdAt)}</TableCell>
-                                    {visibleFields.map((f: any) => {
-                                        const val = submissionData?.[f.fieldId];
-                                        const display = val == null ? "N/A" : Array.isArray(val) ? val.join(", ") : typeof val === "object" ? JSON.stringify(val) : String(val);
-                                        return <TableCell key={`${sub._src}_${sub.id}_${f._renderKey}`}>{display}</TableCell>;
-                                    })}
-                                </TableRow>
-                                )
-                            })
-                        ) : (
+            <div className="overflow-x-auto">
+                <ScrollArea className="flex-grow border rounded-lg">
+                    <Table>
+                        <TableHeader>
                             <TableRow>
-                                <TableCell colSpan={visibleFields.length + 1} className="text-center py-8">
-                                    No submissions yet for this form.
-                                </TableCell>
+                                <TableHead>Submission Date</TableHead>
+                                {visibleFields.map((f: any) => <TableHead key={`h_${f._renderKey}`}>{f.label}</TableHead>)}
                             </TableRow>
-                        )}
-                    </TableBody>
-                </Table>
-            </ScrollArea>
+                        </TableHeader>
+                        <TableBody>
+                            {loading ? (
+                                Array.from({ length: 3 }).map((_, i) => (
+                                    <TableRow key={`sk_${i}`}>
+                                        {Array.from({ length: visibleFields.length + 1 }).map((_, j) => (
+                                            <TableCell key={`sk_${i}_${j}`}><Skeleton className="h-5 w-full" /></TableCell>
+                                        ))}
+                                    </TableRow>
+                                ))
+                            ) : sortedSubs.length ? (
+                                sortedSubs.map((sub) => {
+                                    const submissionData = sub.data?.data || sub.data;
+                                    return (
+                                    <TableRow key={`${sub._src}_${sub.id}`}>
+                                        <TableCell className="text-xs">{formatWhen(sub.submittedAt, sub.createdAt)}</TableCell>
+                                        {visibleFields.map((f: any) => {
+                                            const val = submissionData?.[f.fieldId];
+                                            const display = val == null ? "N/A" : Array.isArray(val) ? val.join(", ") : typeof val === "object" ? JSON.stringify(val) : String(val);
+                                            return <TableCell key={`${sub._src}_${sub.id}_${f._renderKey}`}>{display}</TableCell>;
+                                        })}
+                                    </TableRow>
+                                    )
+                                })
+                            ) : (
+                                <TableRow>
+                                    <TableCell colSpan={visibleFields.length + 1} className="text-center py-8">
+                                        No submissions yet for this form.
+                                    </TableCell>
+                                </TableRow>
+                            )}
+                        </TableBody>
+                    </Table>
+                </ScrollArea>
+            </div>
         </DialogContent>
     );
 };

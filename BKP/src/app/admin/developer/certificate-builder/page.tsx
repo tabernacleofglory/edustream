@@ -384,7 +384,7 @@ export default function CertificateBuilderPage() {
                     userName="Student Name"
                     courseName="Example Course Title"
                     completionDate={new Date().toISOString()}
-                    settingsOverride={watchedValues}
+                    settings={watchedValues}
                   />
             </div>
         </CardContent>

@@ -44,6 +44,7 @@ import {
   Library,
   Theater,
   List,
+  Mail,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
@@ -187,6 +188,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
             { href: "/admin/content/certificates", label: t('admin.nav.content.certificates', "Certificates"), icon: Award },
             { href: "/admin/content/documentation", label: t('admin.nav.content.documentation', "Documentation"), icon: BookCopy },
             { href: "/admin/content/announcements", label: t('admin.nav.content.announcements', "Announcements"), icon: Megaphone },
+            { href: "/admin/content/emails", label: "Email Templates", icon: Mail },
             { href: "/admin/content/languages", label: t('admin.nav.content.languages', "Languages"), icon: Languages },
             { href: "/admin/content/ministries", label: t('admin.nav.content.ministries', "Ministries"), icon: Church },
           ],
