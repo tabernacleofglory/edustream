@@ -1,0 +1,483 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ---------- Helpers ----------
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function userDoc() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+    }
+
+    function userExists() {
+      return isSignedIn() && exists(/databases/$(database)/documents/users/$(request.auth.uid));
+    }
+
+    // Admins are ONLY admin/developer (moderators are NOT admins)
+    function isAdmin() {
+      return userExists() && (userDoc().role in ['admin', 'developer']);
+    }
+
+    function isModerator() {
+      return userExists() && (userDoc().role == 'moderator');
+    }
+
+    // Works with either list or map permissions
+    function permAllows(permission) {
+      return userExists() && (
+        userDoc().role == 'developer' || (
+          exists(/databases/$(database)/documents/rolePermissions/$(userDoc().role)) &&
+          (
+            (
+              get(/databases/$(database)/documents/rolePermissions/$(userDoc().role)).data.permissions is list &&
+              (permission in get(/databases/$(database)/documents/rolePermissions/$(userDoc().role)).data.permissions)
+            )
+            ||
+            (
+              get(/databases/$(database)/documents/rolePermissions/$(userDoc().role)).data.permissions is map &&
+              get(/databases/$(database)/documents/rolePermissions/$(userDoc().role)).data.permissions[permission] == true
+            )
+          )
+        )
+      );
+    }
+
+    // Convenience: admin OR role with a specific permission
+    function hasPermission(permission) {
+      return isSignedIn() && (isAdmin() || permAllows(permission));
+    }
+
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    // Convenience: expected enrollment doc id
+    function enrollmentDocIdFor(userId, courseId) {
+      return userId + '_' + courseId;
+    }
+
+    // Helper: check if a form by id exists and is public
+    function formIsPublicById(formId) {
+      return formId is string
+        && exists(/databases/$(database)/documents/forms/$(formId))
+        && get(/databases/$(database)/documents/forms/$(formId)).data.public == true;
+    }
+
+    // Helper: allow either submittedAt or createdAt to equal request.time
+    function hasServerNow(d) {
+      return (('submittedAt' in d) && d.submittedAt == request.time)
+          || (('createdAt'   in d) && d.createdAt   == request.time);
+    }
+
+    // ---------- Analytics visibility ----------
+    function canViewAnalytics() {
+      return hasPermission('viewReports')
+          || hasPermission('analytics')
+          || hasPermission('analyticsAccess')
+          || permAllows('viewForms')
+          || permAllows('manageForms');
+    }
+
+    // ---------- Quizzes ----------
+    match /quizzes/{quizId} {
+      allow read: if true;
+      allow write: if isSignedIn() && permAllows('manageQuizzes');
+    }
+
+    // ---------- Quiz Results ----------
+    match /userQuizResults/{resultId} {
+      allow read: if isSignedIn() && (
+        isAdmin()
+        || (resource.data.userId == request.auth.uid)
+        || resultId.matches('^' + request.auth.uid + '_.*$')
+      );
+      allow create: if isSignedIn() && request.resource.data.userId == request.auth.uid;
+      allow delete: if isAdmin();
+    }
+
+    // ---------- Users ----------
+    match /users/{userId} {
+      allow read:   if isSignedIn();
+      allow create: if true;
+      allow delete: if isModerator() && hasPermission('viewReports');
+      allow write:  if isOwner(userId) || isAdmin();
+    }
+
+    // ---------- Courses ----------
+    match /courses/{courseId} {
+      allow read:   if true;
+      allow create: if isAdmin();
+      allow delete: if isAdmin();
+
+      // Non-admins may ONLY change enrollmentCount and ONLY by ±1
+      // (Admins may update anything.)
+      allow update: if isAdmin()
+        || (
+          isSignedIn()
+          && request.resource.data.diff(resource.data).changedKeys().hasOnly(['enrollmentCount'])
+          && (
+            request.resource.data.enrollmentCount == resource.data.enrollmentCount + 1
+            || request.resource.data.enrollmentCount == resource.data.enrollmentCount - 1
+          )
+        );
+    }
+
+    match /courseGroups/{groupId} {
+      allow read, write: if isAdmin();
+    }
+
+    // ---------- Ladders (top-level) ----------
+    match /ladders/{ladderId} {
+      allow read:  if true;
+      allow write: if isAdmin();
+    }
+
+    // ---------- Enrollments (docId MUST be "<uid>_<courseId>") ----------
+    match /enrollments/{enrollmentId} {
+      function idMatchesPayload() {
+        return request.resource.data.userId is string
+               && request.resource.data.courseId is string
+               && enrollmentId == enrollmentDocIdFor(request.resource.data.userId, request.resource.data.courseId);
+      }
+
+      allow read: if isSignedIn() && (
+        isAdmin()
+        || resource.data.userId == request.auth.uid
+        || enrollmentId.matches('^' + request.auth.uid + '_.*$')
+      );
+
+      allow create: if isSignedIn()
+        && (isAdmin() || request.resource.data.userId == request.auth.uid)
+        && idMatchesPayload();
+
+      allow update: if isSignedIn()
+        && (isAdmin() || resource.data.userId == request.auth.uid)
+        && request.resource.data.userId == resource.data.userId
+        && request.resource.data.courseId == resource.data.courseId;
+
+      allow delete: if isSignedIn()
+        && (isAdmin() || resource.data.userId == request.auth.uid);
+    }
+
+    // ---------- User Video Progress (docId = "<uid>_<courseId>") ----------
+    match /userVideoProgress/{progressId} {
+      function progressIdMatchesPayload() {
+        return request.resource.data.userId is string
+               && request.resource.data.courseId is string
+               && progressId == (request.resource.data.userId + '_' + request.resource.data.courseId);
+      }
+
+      allow read: if isSignedIn() && (
+        isAdmin()
+        || resource.data.userId == request.auth.uid
+        || progressId.matches('^' + request.auth.uid + '_.*$')
+      );
+
+      allow create: if isSignedIn()
+        && (isAdmin() || request.resource.data.userId == request.auth.uid)
+        && progressIdMatchesPayload();
+
+      allow update: if isSignedIn()
+        && (isAdmin() || resource.data.userId == request.auth.uid)
+        && request.resource.data.userId == resource.data.userId
+        && request.resource.data.courseId == resource.data.courseId;
+
+      allow delete: if isSignedIn()
+        && (isAdmin() || resource.data.userId == request.auth.uid);
+    }
+
+    // ---------- Achievements / Badges ----------
+    match /userBadges/{badgeId} {
+      allow read:  if isSignedIn() && (isAdmin() || resource.data.userId == request.auth.uid);
+      allow write: if isAdmin();
+    }
+
+    // ---------- Onsite Completions ----------
+    match /onsiteCompletions/{completionId} {
+      function actorCampus() {
+        return userExists() ? userDoc().get('campus', null) : null;
+      }
+
+      // READ
+      allow read: if isAdmin()
+        || (
+          isSignedIn()
+          && (isModerator() || permAllows('manageCompletions'))
+          && (
+            actorCampus() == null
+            || resource.data.get('userCampus', null) == actorCampus()
+            || resource.data.get('userCampus', null) == null
+          )
+        );
+
+      // CREATE
+      allow create: if isAdmin()
+        || (
+          isSignedIn()
+          && (isModerator() || permAllows('manageCompletions'))
+          && (
+            actorCampus() == null
+            || request.resource.data.userCampus == actorCampus()
+          )
+        );
+
+      // UPDATE & DELETE
+      allow update, delete: if isAdmin()
+        || (
+          isSignedIn()
+          && (isModerator() || permAllows('manageCompletions'))
+          && (
+            actorCampus() == null
+            || resource.data.get('userCampus', null) == actorCampus()
+            || resource.data.get('userCampus', null) == null
+          )
+        );
+    }
+
+    // ---------- Forms (PUBLIC read/list for public forms; staff manage; builder-safe constraints) ----------
+    match /forms/{formId} {
+      function isPublicForm() {
+        return resource.data.public == true;
+      }
+
+      // Anyone can GET/LIST public forms. Staff can see everything.
+      allow get, list: if isPublicForm()
+        || (isSignedIn() && (permAllows('viewForms') || permAllows('manageForms') || isAdmin()));
+
+      // CREATE via builder: staff only, with sane defaults + server timestamp
+      allow create: if isSignedIn()
+        && (permAllows('manageForms') || isAdmin())
+        && (request.resource.data.title is string)
+        && (request.resource.data.fields is list)
+        && (request.resource.data.type in ['custom', 'hybrid'])
+        && (request.resource.data.public == false)
+        && (request.resource.data.submissionCount == 0)
+        && hasServerNow(request.resource.data) // createdAt == request.time
+        && request.resource.data.diff({}).changedKeys().hasOnly([
+          'title','fields','type','createdAt','submissionCount','public'
+        ]);
+
+      // UPDATE:
+      //  - Staff: full control; only require updatedAt == request.time IF updatedAt is being changed.
+      //  - Public: ONLY bump submissionCount by exactly +1 on public forms.
+      allow update: if
+        (
+          isSignedIn() && (permAllows('manageForms') || isAdmin())
+          && (
+            !request.resource.data.diff(resource.data).changedKeys().hasAny(['updatedAt'])
+            || request.resource.data.updatedAt == request.time
+          )
+        )
+        ||
+        (
+          isPublicForm()
+          && request.resource.data.diff(resource.data).changedKeys().hasOnly(['submissionCount'])
+          && request.resource.data.submissionCount == resource.data.submissionCount + 1
+        );
+
+      // Staff manage lifecycle
+      allow delete: if isSignedIn() && (permAllows('manageForms') || isAdmin());
+
+      // ---------- Nested Form Submissions (guest-friendly) ----------
+      match /submissions/{submissionId} {
+        allow create: if formIsPublicById(formId)
+          && (request.resource.data.data is map)
+          && ('submittedAt' in request.resource.data)
+          && (request.resource.data.submittedAt == request.time)
+          && (
+            !('createdBy' in request.resource.data)
+            || (request.auth == null && request.resource.data.createdBy == null)
+            || (request.auth != null && request.resource.data.createdBy == request.auth.uid)
+          );
+
+        // Staff-only read/list
+        allow get, list: if isSignedIn() && (permAllows('viewForms') || permAllows('manageForms') || isAdmin());
+
+        allow update: if false;
+        allow delete: if isSignedIn() && (permAllows('manageForms') || isAdmin());
+      }
+    }
+
+    // ---------- Custom Fields (admin UI) ----------
+    match /customFields/{fieldId} {
+      // Only staff can see/manage these in the admin UI.
+      allow get, list: if isSignedIn() && (
+        permAllows('viewForms') || permAllows('manageForms') || isAdmin()
+      );
+
+      // Create: manageForms or admin; require name and server-set createdAt
+      allow create: if isSignedIn()
+        && (permAllows('manageForms') || isAdmin())
+        && (request.resource.data.name is string)
+        && (request.resource.data.name.size() > 0 && request.resource.data.name.size() <= 100)
+        && hasServerNow(request.resource.data) // createdAt == request.time
+        && request.resource.data.diff({}).changedKeys().hasOnly(['name','createdAt']);
+
+      // Update: only allow renaming
+      allow update: if isSignedIn()
+        && (permAllows('manageForms') || isAdmin())
+        && request.resource.data.diff(resource.data).changedKeys().hasOnly(['name']);
+
+      // Delete: manageForms or admin
+      allow delete: if isSignedIn() && (permAllows('manageForms') || isAdmin());
+
+      // ----- Subcollection: options (list/add/delete only; no rename in UI) -----
+      match /options/{optionId} {
+        // Staff read/list
+        allow get, list: if isSignedIn() && (
+          permAllows('viewForms') || permAllows('manageForms') || isAdmin()
+        );
+
+        // Create: require a simple valid name; no timestamps needed
+        allow create: if isSignedIn()
+          && (permAllows('manageForms') || isAdmin())
+          && (request.resource.data.name is string)
+          && (request.resource.data.name.size() > 0 && request.resource.data.name.size() <= 100)
+          && request.resource.data.diff({}).changedKeys().hasOnly(['name']);
+
+        // No rename path in the UI → block updates
+        allow update: if false;
+
+        // Delete: staff
+        allow delete: if isSignedIn() && (permAllows('manageForms') || isAdmin());
+      }
+    }
+
+    // ---------- Collection-group READ for submissions (analytics) ----------
+    // Needed for: query(collectionGroup(db, 'submissions')) on the analytics page.
+    match /{anyPath=**}/submissions/{submissionId} {
+      allow get, list: if isSignedIn() && canViewAnalytics();
+    }
+
+    // ---------- PUBLIC FORM SUBMISSIONS (top-level, guest-friendly) ----------
+    match /formSubmissions/{submissionId} {
+      allow create: if formIsPublicById(request.resource.data.formId)
+        && (request.resource.data.data is map)
+        && ('submittedAt' in request.resource.data)
+        && (request.resource.data.submittedAt == request.time)
+        && (
+          !('createdBy' in request.resource.data)
+          || (request.auth == null && request.resource.data.createdBy == null)
+          || (request.auth != null && request.resource.data.createdBy == request.auth.uid)
+        )
+        && (!('formTitle' in request.resource.data) || (request.resource.data.formTitle is string));
+
+      // Staff-only read/list
+      allow get, list: if isSignedIn() && (permAllows('manageForms') || isAdmin());
+
+      allow update: if false;
+      allow delete: if isAdmin();
+    }
+
+    // ---------- Contents ----------
+    match /Contents/{contentId} {
+      allow read:  if resource.data.status == 'published' || isSignedIn();
+      allow write: if isAdmin();
+
+      match /comments/{commentId} { allow read: if true; allow write: if isSignedIn(); }
+      match /likes/{likeId}     { allow read: if true; allow write: if isSignedIn(); }
+      match /shares/{shareId}   { allow read: if true; allow write: if isSignedIn(); }
+    }
+
+    // ---------- Languages (PUBLIC read if published) ----------
+    match /languages/{langId} {
+      allow read:  if resource.data.status == "published" || isSignedIn();
+      allow write: if isAdmin();
+    }
+
+    // ---------- Translations ----------
+    match /translations/{translationId} {
+      allow read, write: if permAllows('manageLocalization');
+    }
+
+    // ---------- Taxonomy / Catalog ----------
+    match /courseCategories/{categoryId} { allow read: if true; allow write: if isAdmin(); }
+    match /courseLevels/{levelId}        { allow read: if true; allow write: if isAdmin(); }
+
+    // ---------- Public Speaker Profiles ----------
+    match /speakers/{speakerId} { allow read: if true; allow write: if isAdmin(); }
+
+    // ---------- Site Settings ----------
+    // OPEN reads for any site setting doc; writes limited to manageContent or admin
+    match /siteSettings/{settingId} {
+      allow read: if true;
+      allow write: if isSignedIn() && (permAllows('manageContent') || isAdmin());
+    }
+
+    // ---------- Role Permissions ----------
+    match /rolePermissions/{role} {
+      allow read:  if isSignedIn();
+      allow write: if isAdmin();
+    }
+
+    // ---------- Navigation Links ----------
+    match /navLinks/{linkId} { allow read: if true; allow write: if isAdmin(); }
+
+    // ---------- Live Events ----------
+    match /liveEvents/{eventId} { allow read: if isSignedIn(); allow write: if isAdmin(); }
+
+    // ---------- Community ----------
+    match /communityPosts/{postId} {
+      allow read:  if permAllows('viewCommunityPage');
+      allow write: if isSignedIn();
+      match /replies/{replyId} { allow read: if permAllows('viewCommunityPage'); allow write: if isSignedIn(); }
+    }
+
+    // ---------- Certificates ----------
+    match /certificates/{certId} { allow read: if isSignedIn(); allow write: if isAdmin(); }
+
+    // ---------- Promotion Requests ----------
+    match /promotionRequests/{reqId} {
+      allow get, list: if permAllows('managePromotions');
+      allow update, delete: if permAllows('managePromotions');
+      allow create: if isSignedIn() && request.resource.data.userId == request.auth.uid;
+    }
+
+    // ---------- Static Catalogs ----------
+    match /Campus/{campusId}             { allow read: if true; allow write: if isAdmin(); }
+    match /charges/{chargeId}            { allow read: if true; allow write: if isAdmin(); }
+    match /maritalStatuses/{statusId}    { allow read: if true; allow write: if isAdmin(); }
+    match /membershipStatuses/{statusId} { allow read: if true; allow write: if isAdmin(); }
+    match /ministries/{ministryId}       { allow read: if true; allow write: if isAdmin(); }
+
+    // Options loader support
+    match /roles/{roleId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    // ---------- Documentation ----------
+    match /documentation/{docId} { allow read: if true; allow write: if isAdmin(); }
+
+    // ---------- Announcements ----------
+    // Reads open; writes allowed for manageContent or admin
+    match /announcements/{announcementId} {
+      allow read: if true;
+      allow write: if isSignedIn() && (permAllows('manageContent') || isAdmin());
+    }
+    
+    match /emailTemplates/{templateId} {
+      allow read, write: if permAllows('manageContent');
+    }
+
+    // ---------- External (public read for anything under /external/...) ----------
+    match /external/{document=**} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    // ---------- Reports (read-only access gated by 'viewReports') ----------
+    // Grants read access to specific collections for users with the 'viewReports' permission (or admins).
+    // This is additive and won't block more permissive collection-specific rules.
+    match /{collection}/{docId} {
+      allow read: if (collection in [
+        'users', 'courses', 'courseGroups', 'courseLevels', 'Campus',
+        'enrollments', 'userVideoProgress', 'onsiteCompletions',
+        'quizzes', 'userQuizResults'
+      ]) && hasPermission('viewReports');
+    }
+  }
+}

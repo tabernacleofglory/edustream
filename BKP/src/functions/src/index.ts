@@ -406,6 +406,84 @@ export const sendHpFollowUp = functions
     }
   });
 
+export const sendEmailViaAppsheet = functions
+  .region(REGION)
+  .https.onCall(async (data, context) => {
+    const requesterUid = context.auth?.uid;
+    if (!requesterUid) {
+      throw new functions.https.HttpsError("unauthenticated", "You must be signed in.");
+    }
+    await assertAdminOrDeveloper(requesterUid);
+
+    const { userId, templateId } = data;
+    if (!userId || !templateId) {
+      throw new functions.https.HttpsError("invalid-argument", "Both userId and templateId are required.");
+    }
+
+    const appsheetWebhookUrl = functions.config().appsheet?.webhook_url;
+    if (!appsheetWebhookUrl) {
+      throw new functions.https.HttpsError("failed-precondition", "AppSheet webhook URL is not configured.");
+    }
+
+    try {
+      // Fetch user data
+      const userDoc = await db.doc(`users/${userId}`).get();
+      if (!userDoc.exists) {
+        throw new functions.https.HttpsError("not-found", "User not found.");
+      }
+      const userData = userDoc.data()!;
+
+      // Fetch email template
+      const templateDoc = await db.doc(`emailTemplates/${templateId}`).get();
+      if (!templateDoc.exists) {
+        throw new functions.https.HttpsError("not-found", "Email template not found.");
+      }
+      const templateData = templateDoc.data()!;
+
+      // Basic variable substitution
+      let subject = templateData.subject || "";
+      let body = templateData.body || "";
+      for (const key in userData) {
+        const regex = new RegExp(`{{${key}}}`, "g");
+        subject = subject.replace(regex, userData[key]);
+        body = body.replace(regex, userData[key]);
+      }
+      // Add a special case for userName
+      subject = subject.replace(/{{userName}}/g, userData.displayName || userData.firstName || '');
+      body = body.replace(/{{userName}}/g, userData.displayName || userData.firstName || '');
+
+
+      // Prepare data payload for AppSheet
+      const payload = {
+        to: userData.email,
+        subject: subject,
+        body: body,
+        // You can add any other user data AppSheet might need
+        userData: userData,
+      };
+
+      // Send data to AppSheet webhook
+      const response = await fetch(appsheetWebhookUrl, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+
+      if (!response.ok) {
+        throw new functions.https.HttpsError("internal", `AppSheet API returned status ${response.status}`);
+      }
+
+      return { success: true, message: "Email request sent to AppSheet successfully." };
+    } catch (error) {
+      functions.logger.error("Error sending email via AppSheet:", error);
+      if (error instanceof functions.https.HttpsError) {
+        throw error;
+      }
+      throw new functions.https.HttpsError("internal", "An internal error occurred.");
+    }
+  });
+
+
 // ---- completions ------------------------------------------------
 
 export const setCourseCompletions = functions
@@ -590,3 +668,4 @@ export { onVideoDeleted, onVideoUpdate, transcodeVideo, updateVideoOnTranscodeCo
 
     
     
+
