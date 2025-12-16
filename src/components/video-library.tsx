@@ -20,7 +20,7 @@ import { Label } from './ui/label';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from './ui/tooltip';
 import { AspectRatio } from './ui/aspect-ratio';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from './ui/alert-dialog';
-import ReactPlayer from 'react-player/lazy';
+import ReactPlayer from 'react-player';
 import { useAuth } from '@/hooks/use-auth';
 
 

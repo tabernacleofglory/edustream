@@ -7,6 +7,141 @@ import { onVideoDeleted, onVideoUpdate, transcodeVideo, updateVideoOnTranscodeCo
 
 admin.initializeApp();
 const db = admin.firestore();
+const FieldValue = admin.firestore.FieldValue;
+const FieldPath = admin.firestore.FieldPath;
+
+function chunkArray<T>(arr: T[], size: number): T[][] {
+  const result: T[][] = [];
+  for (let i = 0; i < arr.length; i += size) {
+    result.push(arr.slice(i, i + size));
+  }
+  return result;
+}
+
+async function getVideoDurationMap(videoIds: string[]): Promise<Map<string, number>> {
+  const map = new Map<string, number>();
+  if (!videoIds.length) return map;
+
+  for (const chunk of chunkArray(videoIds, 10)) {
+    const snap = await db
+      .collection("Contents")
+      .where(FieldPath.documentId(), "in", chunk)
+      .get();
+    snap.forEach((doc) => {
+      const dur = doc.get("duration");
+      if (typeof dur === "number") {
+        map.set(doc.id, Math.max(1, Math.round(dur)));
+      }
+    });
+  }
+  return map;
+}
+
+async function addFullCreditWrites(params: {
+  batch: FirebaseFirestore.WriteBatch;
+  userId: string;
+  courseId: string;
+  courseData: any;
+  videoDurationCache: Map<string, number>;
+}) {
+  const { batch, userId, courseId, courseData, videoDurationCache } = params;
+
+  const enrollmentRef = db.collection("enrollments").doc(`${userId}_${courseId}`);
+  const enrollmentDoc = await enrollmentRef.get();
+
+  const videoIds: string[] = Array.isArray(courseData.videos) ? courseData.videos : [];
+  const videoProgress = videoIds.map((videoId: string) => ({
+    videoId,
+    completed: true,
+    timeSpent: Math.max(1, videoDurationCache.get(videoId) ?? 1),
+  }));
+
+  batch.set(
+    enrollmentRef,
+    {
+      userId,
+      courseId,
+      enrolledAt: enrollmentDoc.exists
+        ? enrollmentDoc.data()?.enrolledAt ?? FieldValue.serverTimestamp()
+        : FieldValue.serverTimestamp(),
+      completedAt: FieldValue.serverTimestamp(),
+    },
+    { merge: true }
+  );
+
+  const progressRef = db.collection("userVideoProgress").doc(`${userId}_${courseId}`);
+  batch.set(
+    progressRef,
+    {
+      userId,
+      courseId,
+      videoProgress,
+      totalProgress: 100,
+      percent: 100,
+      lastWatchedVideoId: videoIds.length ? videoIds[videoIds.length - 1] : null,
+      updatedAt: FieldValue.serverTimestamp(),
+    },
+    { merge: true }
+  );
+
+  const quizIds: string[] = Array.isArray(courseData.quizIds) ? courseData.quizIds : [];
+  quizIds.forEach((quizId) => {
+    const quizResultRef = db.collection("userQuizResults").doc(`${userId}_${courseId}_${quizId}_onsite`);
+    batch.set(
+      quizResultRef,
+      {
+        userId,
+        courseId,
+        quizId,
+        answers: null,
+        score: 100,
+        passed: true,
+        attemptedAt: FieldValue.serverTimestamp(),
+        source: "onsite",
+      },
+      { merge: true }
+    );
+  });
+
+  if (courseData.formId) {
+    const formSubmissionRef = db
+      .collection("forms")
+      .doc(courseData.formId)
+      .collection("submissions")
+      .doc(`${userId}_${courseId}_onsite`);
+    batch.set(
+      formSubmissionRef,
+      {
+        userId,
+        courseId,
+        formId: courseData.formId,
+        submittedAt: FieldValue.serverTimestamp(),
+        source: "onsite",
+      },
+      { merge: true }
+    );
+  }
+
+  if (courseData.badgeEnabled) {
+    const badgeRef = db.collection("userBadges").doc(`${userId}_${courseId}`);
+    batch.set(
+      badgeRef,
+      {
+        userId,
+        courseId,
+        badgeTitle: courseData.title,
+        badgeIconUrl: courseData["Image ID"],
+        earnedAt: FieldValue.serverTimestamp(),
+      },
+      { merge: true }
+    );
+  }
+
+  if (!enrollmentDoc.exists) {
+    const courseRef = db.collection("courses").doc(courseId);
+    batch.update(courseRef, { enrollmentCount: FieldValue.increment(1) });
+  }
+}
 
 // ---- helpers ----------------------------------------------------
 
@@ -517,50 +652,23 @@ export const setCourseCompletions = functions
 
       const newCompletions = completions.filter((c: any) => c.isCompleted);
 
+      const videoIdsToFetch = new Set<string>();
+      newCompletions.forEach((c: any) => {
+        const courseData: any = coursesMap.get(c.courseId);
+        if (courseData?.videos) {
+          (courseData.videos as string[]).forEach((v: string) => videoIdsToFetch.add(v));
+        }
+      });
+      const videoDurationCache = await getVideoDurationMap(Array.from(videoIdsToFetch));
+
       for (const completion of newCompletions) {
         const courseData: any = coursesMap.get(completion.courseId);
-        if (!courseData || !courseData.videos) {
+        if (!courseData) {
           functions.logger.warn(
-            `Course data or videos not found for courseId: ${completion.courseId}. Skipping.`
+            `Course data not found for courseId: ${completion.courseId}. Skipping.`
           );
           continue;
         }
-
-        const enrollmentRef = db.collection("enrollments").doc(`${userId}_${completion.courseId}`);
-        const enrollmentDoc = await enrollmentRef.get();
-
-        // Mark enrollment and completion
-        batch.set(
-          enrollmentRef,
-          {
-            userId,
-            courseId: completion.courseId,
-            enrolledAt: enrollmentDoc.exists
-              ? enrollmentDoc.data()?.enrolledAt
-              : admin.firestore.FieldValue.serverTimestamp(),
-            completedAt: admin.firestore.FieldValue.serverTimestamp(),
-          },
-          { merge: true }
-        );
-
-        // Mark all videos as complete
-        const progressRef = db.collection("userVideoProgress").doc(`${userId}_${completion.courseId}`);
-        const videoProgress = (courseData.videos as string[]).map((videoId: string) => ({
-          videoId,
-          completed: true,
-          timeSpent: 1,
-        }));
-        batch.set(
-          progressRef,
-          {
-            userId,
-            courseId: completion.courseId,
-            videoProgress,
-            totalProgress: 100,
-            updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-          },
-          { merge: true }
-        );
 
         // If marked as onsite, create a log entry
         if (completion.isOnsite) {
@@ -571,32 +679,18 @@ export const setCourseCompletions = functions
             userCampus: userData?.campus,
             courseId: completion.courseId,
             courseName: courseData.title,
-            completedAt: admin.firestore.FieldValue.serverTimestamp(),
+            completedAt: FieldValue.serverTimestamp(),
             markedBy: adminUser.displayName || adminUser.email,
           });
         }
 
-        // Grant badge if enabled
-        if (courseData.badgeEnabled) {
-          const badgeRef = db.collection("userBadges").doc(`${userId}_${completion.courseId}`);
-          batch.set(
-            badgeRef,
-            {
-              userId,
-              courseId: completion.courseId,
-              badgeTitle: courseData.title,
-              badgeIconUrl: courseData["Image ID"],
-              earnedAt: admin.firestore.FieldValue.serverTimestamp(),
-            },
-            { merge: true }
-          );
-        }
-
-        // Only increment enrollment count if it's a new enrollment
-        if (!enrollmentDoc.exists) {
-          const courseRef = coursesRef.doc(completion.courseId);
-          batch.update(courseRef, { enrollmentCount: admin.firestore.FieldValue.increment(1) });
-        }
+        await addFullCreditWrites({
+          batch,
+          userId,
+          courseId: completion.courseId,
+          courseData,
+          videoDurationCache,
+        });
       }
 
       await batch.commit();
@@ -611,6 +705,41 @@ export const setCourseCompletions = functions
   });
 
 // ---- video sync/transcoding exports -----------------------------
+
+export const onOnsiteCompletionCreate = functions
+  .region(REGION)
+  .firestore.document("onsiteCompletions/{completionId}")
+  .onCreate(async (snap) => {
+    const data = snap.data() || {};
+    const userId = data.userId as string | undefined;
+    const courseId = data.courseId as string | undefined;
+
+    if (!userId || !courseId) {
+      functions.logger.warn("onsiteCompletions entry missing userId or courseId; skipping credit application.");
+      return null;
+    }
+
+    const courseDoc = await db.collection("courses").doc(courseId).get();
+    if (!courseDoc.exists) {
+      functions.logger.warn(`Course ${courseId} not found while applying onsite credit.`);
+      return null;
+    }
+
+    const courseData = courseDoc.data() || {};
+    const videoIds: string[] = Array.isArray(courseData.videos) ? courseData.videos : [];
+    const videoDurationCache = await getVideoDurationMap(videoIds);
+
+    const batch = db.batch();
+    await addFullCreditWrites({
+      batch,
+      userId,
+      courseId,
+      courseData,
+      videoDurationCache,
+    });
+    await batch.commit();
+    return null;
+  });
 
 export const syncVideos = functions
   .region(REGION)
@@ -668,4 +797,3 @@ export { onVideoDeleted, onVideoUpdate, transcodeVideo, updateVideoOnTranscodeCo
 
     
     
-

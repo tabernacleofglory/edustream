@@ -4,7 +4,7 @@
 import { useState, useEffect } from 'react';
 import { db } from '@/lib/firebase';
 import { doc, onSnapshot } from 'firebase/firestore';
-import ReactPlayer from 'react-player/lazy';
+import ReactPlayer from 'react-player';
 import { Card, CardContent } from '@/components/ui/card';
 import { Skeleton } from './ui/skeleton';
 import { VolumeX, Volume1, Volume2 } from 'lucide-react';

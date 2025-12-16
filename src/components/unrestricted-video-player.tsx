@@ -5,7 +5,7 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import Hls from "hls.js";
-import ReactPlayer from 'react-player/lazy';
+import ReactPlayer from 'react-player';
 import {
   Play, Pause, SkipBack, SkipForward, Maximize, Minimize, Volume2, VolumeX, Repeat, ToggleLeft, ToggleRight, MessageCircle, FileText, Link as LinkIcon, CheckCircle2
 } from "lucide-react";
