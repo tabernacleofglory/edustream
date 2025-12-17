@@ -23,33 +23,10 @@
       "app": {
         "backend": "studio"
       }
-    },
-    {
-      "site": "gloryhub",
-      "public": ".next",
-      "ignore": [
-        "firebase-debug.log",
-        "firebase-debug.*.log",
-        "firestore.rules"
-      ],
-      "headers": [
-        {
-          "source": "**",
-          "headers": [
-            {
-              "key": "Cache-Control",
-              "value": "no-cache, no-store, must-revalidate"
-            }
-          ]
-        }
-      ],
-      "app": {
-        "backend": "studio"
-      }
     }
   ],
   "functions": {
-    "source": "functions",
+    "source": "src/functions",
     "runtime": "nodejs20"
   },
   "firestore": {

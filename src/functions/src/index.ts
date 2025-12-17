@@ -163,7 +163,7 @@ async function assertAdminOrDeveloper(requesterUid: string) {
 
 export const deleteUserAccount = functions
   .region(REGION)
-  .https.onCall(async (data, context) => {
+  .https.onCall(async (data: any, context: functions.https.CallableContext) => {
     const requesterUid = context.auth?.uid;
     if (!requesterUid) {
       throw new functions.https.HttpsError("unauthenticated", "You must be signed in to perform this action.");
@@ -198,7 +198,7 @@ export const deleteUserAccount = functions
 
 // ---- Manual Quiz Re-evaluation ----
 
-export const reevaluateQuizSubmissions = functions.https.onCall(async (data, context) => {
+export const reevaluateQuizSubmissions = functions.https.onCall(async (data: any, context: functions.https.CallableContext) => {
     if (!context.auth) {
         throw new functions.https.HttpsError("unauthenticated", "You must be logged in.");
     }
@@ -310,7 +310,7 @@ export const reevaluateQuizSubmissions = functions.https.onCall(async (data, con
 
 export const onQuizUpdate = functions.firestore
   .document('quizzes/{quizId}')
-  .onUpdate(async (change, context) => {
+  .onUpdate(async (change: functions.Change<FirebaseFirestore.DocumentSnapshot>, context: functions.EventContext) => {
     const beforeData = change.before.data();
     const afterData = change.after.data();
     const { quizId } = context.params;
@@ -435,7 +435,7 @@ export const onQuizUpdate = functions.firestore
 export const enrollInCourse = functions
   .runWith({ memory: "512MB" })
   .region(REGION)
-  .https.onCall(async (data, context) => {
+  .https.onCall(async (data: any, context: functions.https.CallableContext) => {
     if (!context.auth) {
       throw new functions.https.HttpsError("unauthenticated", "You must be logged in to enroll.");
     }
@@ -473,7 +473,7 @@ export const enrollInCourse = functions
 
 export const sendCertificateEmail = functions
   .region(REGION)
-  .https.onCall(async (data, context) => {
+  .https.onCall(async (data: any, context: functions.https.CallableContext) => {
     const sendgridApiKey = functions.config().sendgrid?.key;
     if (!sendgridApiKey) {
       throw new functions.https.HttpsError(
@@ -508,7 +508,7 @@ export const sendCertificateEmail = functions
 
 export const sendHpFollowUp = functions
   .region(REGION)
-  .https.onCall(async (data, context) => {
+  .https.onCall(async (data: any, context: functions.https.CallableContext) => {
     const sendgridApiKey = functions.config().sendgrid?.key;
     if (!sendgridApiKey) {
       throw new functions.https.HttpsError(
@@ -543,7 +543,7 @@ export const sendHpFollowUp = functions
 
 export const sendEmailViaAppsheet = functions
   .region(REGION)
-  .https.onCall(async (data, context) => {
+  .https.onCall(async (data: any, context: functions.https.CallableContext) => {
     const requesterUid = context.auth?.uid;
     if (!requesterUid) {
       throw new functions.https.HttpsError("unauthenticated", "You must be signed in.");
@@ -624,7 +624,7 @@ export const sendEmailViaAppsheet = functions
 export const setCourseCompletions = functions
   .runWith({ memory: "512MB" })
   .region(REGION)
-  .https.onCall(async (data, context) => {
+  .https.onCall(async (data: any, context: functions.https.CallableContext) => {
     if (!context.auth) {
       throw new functions.https.HttpsError("unauthenticated", "You must be signed in.");
     }
@@ -709,7 +709,7 @@ export const setCourseCompletions = functions
 export const onOnsiteCompletionCreate = functions
   .region(REGION)
   .firestore.document("onsiteCompletions/{completionId}")
-  .onCreate(async (snap) => {
+  .onCreate(async (snap: FirebaseFirestore.DocumentSnapshot, context: functions.EventContext) => {
     const data = snap.data() || {};
     const userId = data.userId as string | undefined;
     const courseId = data.courseId as string | undefined;
@@ -743,7 +743,7 @@ export const onOnsiteCompletionCreate = functions
 
 export const syncVideos = functions
   .region(REGION)
-  .https.onCall(async (data, context) => {
+  .https.onCall(async (data: any, context: functions.https.CallableContext) => {
     const bucket = admin.storage().bucket();
     const videoFolderPath = "contents/videos/";
     const [files] = await bucket.getFiles({ prefix: videoFolderPath });
