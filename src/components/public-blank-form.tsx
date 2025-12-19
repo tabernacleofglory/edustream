@@ -1,3 +1,5 @@
+
+
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
@@ -25,6 +27,7 @@ import {
     signInWithPopup, 
     signInWithEmailAndPassword,
 } from "firebase/auth";
+import { format, isValid } from "date-fns";
 
 import PhoneInput from "react-phone-number-input";
 import "react-phone-number-input/style.css";
@@ -44,12 +47,16 @@ import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Loader2, PartyPopper, User as UserIcon, LogIn } from "lucide-react";
+import { Loader2, PartyPopper, User as UserIcon, LogIn, CalendarIcon } from "lucide-react";
 import type { CustomForm, FormFieldConfig, Ladder } from "@/lib/types";
 import { useToast } from "@/hooks/use-toast";
 import { Skeleton } from "./ui/skeleton";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogTrigger } from './ui/dialog';
 import { Avatar, AvatarFallback, AvatarImage } from './ui/avatar';
+import { Popover, PopoverTrigger, PopoverContent } from "./ui/popover";
+import { Calendar } from "./ui/calendar";
+import { cn } from "@/lib/utils";
+
 
 type Opt = { value: string; label: string };
 
@@ -204,6 +211,11 @@ export default function PublicBlankForm({ formConfig, courseId, existingSubmissi
          } else {
              schema = schema.optional();
          }
+      } else if (type === "date") {
+          schema = z.string().optional();
+          if (c.required) {
+              schema = z.string().min(1, `${label} is required.`);
+          }
       } else {
         schema = z.any().optional();
         if (c.required) {
@@ -391,7 +403,7 @@ export default function PublicBlankForm({ formConfig, courseId, existingSubmissi
     }
   };
 
-  const renderField = (cfg: FormFieldConfig) => {
+  const renderField = (cfg: FormFieldConfig, index: number) => {
     const c = cfg as any;
 
     // Conditional Logic Check
@@ -536,7 +548,33 @@ export default function PublicBlankForm({ formConfig, courseId, existingSubmissi
             );
         
         case "date":
-            return <Input id={fieldId} type="date" {...form.register(fieldId as any)} />;
+            return (
+                <Controller
+                    name={fieldId as any}
+                    control={form.control}
+                    render={({ field }) => (
+                        <Popover>
+                            <PopoverTrigger asChild>
+                                <Button
+                                    variant={"outline"}
+                                    className={cn("w-full justify-start text-left font-normal", !field.value && "text-muted-foreground")}
+                                >
+                                    <CalendarIcon className="mr-2 h-4 w-4" />
+                                    {field.value && isValid(new Date(field.value)) ? format(new Date(field.value), "PPP") : <span>Pick a date</span>}
+                                </Button>
+                            </PopoverTrigger>
+                            <PopoverContent className="w-auto p-0">
+                                <Calendar
+                                    mode="single"
+                                    selected={field.value ? new Date(field.value) : undefined}
+                                    onSelect={(date) => field.onChange(date ? format(date, 'yyyy-MM-dd') : '')}
+                                    initialFocus
+                                />
+                            </PopoverContent>
+                        </Popover>
+                    )}
+                />
+            );
 
         case "password":
             return <Input id={fieldId} type="password" {...form.register(fieldId as any)} />;
@@ -562,7 +600,7 @@ export default function PublicBlankForm({ formConfig, courseId, existingSubmissi
     const isFullWidth = ['textarea', 'address', 'multiple-select', 'multiple-choice'].includes(type);
 
     return (
-        <div className={`space-y-2 ${isFullWidth ? 'md:col-span-2' : ''}`} key={fieldId}>
+        <div className={`space-y-2 ${isFullWidth ? 'md:col-span-2' : ''}`} key={`${fieldId}-${index}`}>
              <Label htmlFor={fieldId}>
               {label} {required && <span className="text-destructive">*</span>}
             </Label>

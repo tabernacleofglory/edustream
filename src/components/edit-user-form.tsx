@@ -2,7 +2,7 @@
 
 "use client";
 
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { useForm, Controller } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -31,6 +31,7 @@ import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { Textarea } from "./ui/textarea";
 import PhoneInput from 'react-phone-number-input';
 import 'react-phone-number-input/style.css';
+
 
 const profileSchema = z.object({
   firstName: z.string().min(1, "First name is required"),
@@ -180,29 +181,30 @@ export default function EditUserForm({ userToEdit, onUserUpdated }: EditUserForm
         getDocs(langQuery).then(snapshot => {
             setAvailableLanguages(snapshot.docs.map(d => ({id: d.id, name: d.data().name} as StoredItem)));
         });
+    }, [fetchCampuses, fetchItems, db]);
 
-        const roleHierarchy: Record<string, string[]> = {
-            developer: ['developer', 'admin', 'moderator', 'team', 'user'],
-            admin: ['admin', 'moderator', 'team', 'user'],
-            moderator: ['moderator', 'team', 'user'],
-            team: ['team', 'user'],
-            user: ['user']
-        };
+  const roleHierarchy: Record<string, string[]> = {
+    developer: ['developer', 'admin', 'moderator', 'team', 'user'],
+    admin: ['admin', 'moderator', 'team', 'user'],
+    moderator: ['moderator', 'team', 'user'],
+    team: ['team', 'user'],
+    user: ['user']
+  };
+    
+  const allRoles = [
+      { id: 'developer', name: 'Developer' },
+      { id: 'admin', name: 'Admin' },
+      { id: 'moderator', name: 'Moderator' },
+      { id: 'team', name: 'Team' },
+      { id: 'user', name: 'User' },
+  ];
 
-        const currentUserRole = currentUser?.role || 'user';
-        const visibleRoles = roleHierarchy[currentUserRole] || ['user'];
-        
-        const allRoles = [
-            { id: 'developer', name: 'Developer' },
-            { id: 'admin', name: 'Admin' },
-            { id: 'moderator', name: 'Moderator' },
-            { id: 'team', name: 'Team' },
-            { id: 'user', name: 'User' },
-        ];
+  const assignableRoles = useMemo(() => {
+      const currentUserRole = currentUser?.role || 'user';
+      const allowedRoleIds = roleHierarchy[currentUserRole] || ['user'];
+      return allRoles.filter(role => allowedRoleIds.includes(role.id));
+  }, [currentUser?.role]);
 
-        setRoles(allRoles.filter(role => visibleRoles.includes(role.id)));
-
-    }, [fetchCampuses, fetchItems, db, currentUser?.role]);
 
   const onSubmit: SubmitHandler<ProfileFormValues> = async (data) => {
     setIsSubmitting(true);
@@ -411,46 +413,41 @@ export default function EditUserForm({ userToEdit, onUserUpdated }: EditUserForm
                     )}
                 />
             </div>
-             {isInHpGroupValue === 'true' ? (
-                <>
-                    <div className="space-y-2">
-                        <Label htmlFor="hpNumber">HP Number</Label>
-                        <Input id="hpNumber" {...register("hpNumber")} />
-                    </div>
-                    <div className="space-y-2">
-                        <Label htmlFor="facilitatorName">Facilitator's Full Name</Label>
-                        <Input id="facilitatorName" {...register("facilitatorName")} />
-                    </div>
-                </>
-            ) : (
-                <>
-                    <div className="space-y-2">
-                        <Label>HP Availability Day</Label>
-                        <Controller
-                            name="hpAvailabilityDay"
-                            control={control}
-                            render={({ field }) => (
-                                <Select onValueChange={field.onChange} value={field.value} disabled={isSubmitting}>
-                                    <SelectTrigger><SelectValue placeholder="Select a day" /></SelectTrigger>
-                                    <SelectContent>
-                                        <SelectItem value="Monday">Monday</SelectItem>
-                                        <SelectItem value="Tuesday">Tuesday</SelectItem>
-                                        <SelectItem value="Wednesday">Wednesday</SelectItem>
-                                        <SelectItem value="Thursday">Thursday</SelectItem>
-                                        <SelectItem value="Friday">Friday</SelectItem>
-                                        <SelectItem value="Saturday">Saturday</SelectItem>
-                                        <SelectItem value="Sunday">Sunday</SelectItem>
-                                    </SelectContent>
-                                </Select>
-                            )}
-                        />
-                    </div>
-                     <div className="space-y-2">
-                        <Label>HP Availability Time</Label>
-                        <Input type="time" {...register("hpAvailabilityTime")} disabled={isSubmitting} />
-                    </div>
-                </>
-            )}
+            <div className="space-y-2">
+                <Label htmlFor="hpNumber">HP Number</Label>
+                <Input id="hpNumber" {...register("hpNumber")} />
+                {errors.hpNumber && <p className="text-sm text-destructive">{errors.hpNumber.message}</p>}
+            </div>
+            <div className="space-y-2">
+                <Label htmlFor="facilitatorName">Facilitator's Full Name</Label>
+                <Input id="facilitatorName" {...register("facilitatorName")} />
+                 {errors.facilitatorName && <p className="text-sm text-destructive">{errors.facilitatorName.message}</p>}
+            </div>
+            <div className="space-y-2">
+                <Label>HP Availability Day</Label>
+                <Controller
+                    name="hpAvailabilityDay"
+                    control={control}
+                    render={({ field }) => (
+                        <Select onValueChange={field.onChange} value={field.value} disabled={isSubmitting}>
+                            <SelectTrigger><SelectValue placeholder="Select a day" /></SelectTrigger>
+                            <SelectContent>
+                                <SelectItem value="Monday">Monday</SelectItem>
+                                <SelectItem value="Tuesday">Tuesday</SelectItem>
+                                <SelectItem value="Wednesday">Wednesday</SelectItem>
+                                <SelectItem value="Thursday">Thursday</SelectItem>
+                                <SelectItem value="Friday">Friday</SelectItem>
+                                <SelectItem value="Saturday">Saturday</SelectItem>
+                                <SelectItem value="Sunday">Sunday</SelectItem>
+                            </SelectContent>
+                        </Select>
+                    )}
+                />
+            </div>
+            <div className="space-y-2">
+            <Label>HP Availability Time</Label>
+            <Input type="time" {...register("hpAvailabilityTime")} disabled={isSubmitting} />
+            </div>
             <div className="space-y-2">
                  <Label>Are you baptized?</Label>
                 <Controller
@@ -467,25 +464,23 @@ export default function EditUserForm({ userToEdit, onUserUpdated }: EditUserForm
                     )}
                 />
             </div>
-            {isBaptizedValue === 'true' && (
-                <div className="space-y-2">
-                    <Label>Denomination</Label>
-                    <Controller
-                        name="denomination"
-                        control={control}
-                        render={({ field }) => (
-                            <Select onValueChange={field.onChange} value={field.value} disabled={isSubmitting}>
-                                <SelectTrigger><SelectValue placeholder="Select denomination" /></SelectTrigger>
-                                <SelectContent>
-                                    {[ "Apostolic", "Baptist", "Pentecostal", "Protestant", "Catholic", "Evangelical",
-                                       "Methodist", "Lutheran", "Presbyterian", "Anglican", "Other"
-                                    ].map(d => <SelectItem key={d} value={d}>{d}</SelectItem>)}
-                                </SelectContent>
-                            </Select>
-                        )}
-                    />
-                </div>
-            )}
+            <div className="space-y-2">
+                <Label>Denomination</Label>
+                <Controller
+                    name="denomination"
+                    control={control}
+                    render={({ field }) => (
+                        <Select onValueChange={field.onChange} value={field.value} disabled={isSubmitting}>
+                            <SelectTrigger><SelectValue placeholder="Select denomination" /></SelectTrigger>
+                            <SelectContent>
+                                {[ "Apostolic", "Baptist", "Pentecostal", "Protestant", "Catholic", "Evangelical",
+                                   "Methodist", "Lutheran", "Presbyterian", "Anglican", "Other"
+                                ].map(d => <SelectItem key={d} value={d}>{d}</SelectItem>)}
+                            </SelectContent>
+                        </Select>
+                    )}
+                />
+            </div>
             <div className="space-y-2">
                 <Label>Campus</Label>
                 <Controller
@@ -498,7 +493,7 @@ export default function EditUserForm({ userToEdit, onUserUpdated }: EditUserForm
                             </SelectTrigger>
                             <SelectContent>
                                 {currentUser?.campus === 'All Campuses' && <SelectItem value="All Campuses">All Campuses</SelectItem>}
-                                {campuses.filter(c => c["Campus Name"] !== 'All Campuses').map((c) => (
+                                {campuses.filter(c => c["Campus Name"] !== 'All Campuses').map(c => (
                                     <SelectItem key={c.id} value={c["Campus Name"]}>{c["Campus Name"]}</SelectItem>
                                 ))}
                             </SelectContent>
@@ -610,44 +605,41 @@ export default function EditUserForm({ userToEdit, onUserUpdated }: EditUserForm
                     )}
                 />
             </div>
-            {isCurrentUserAdmin && (
-                <>
-                    <div className="space-y-2">
-                        <Label>Role</Label>
-                        <Controller
-                            control={control}
-                            name="role"
-                            render={({ field }) => (
-                                <Select onValueChange={field.onChange} value={field.value}>
-                                    <SelectTrigger><SelectValue /></SelectTrigger>
-                                    <SelectContent>
-                                        {roles.map((role) => (
-                                            <SelectItem key={role.id} value={role.id}>{role.name}</SelectItem>
-                                        ))}
-                                    </SelectContent>
-                                </Select>
-                            )}
-                        />
-                    </div>
-                     <div className="space-y-2">
-                        <Label>Membership Status</Label>
-                        <Controller
-                            control={control}
-                            name="membershipStatus"
-                            render={({ field }) => (
-                                <Select onValueChange={field.onChange} value={field.value}>
-                                    <SelectTrigger><SelectValue /></SelectTrigger>
-                                    <SelectContent>
-                                        {statuses.map((status) => (
-                                            <SelectItem key={status.id} value={status.name}>{status.name}</SelectItem>
-                                        ))}
-                                    </SelectContent>
-                                </Select>
-                            )}
-                        />
-                    </div>
-                </>
-            )}
+            
+            <div className="space-y-2">
+                <Label>Role</Label>
+                <Controller
+                    control={control}
+                    name="role"
+                    render={({ field }) => (
+                        <Select onValueChange={field.onChange} value={field.value}>
+                            <SelectTrigger><SelectValue /></SelectTrigger>
+                            <SelectContent>
+                                {assignableRoles.map((role) => (
+                                    <SelectItem key={role.id} value={role.id}>{role.name}</SelectItem>
+                                ))}
+                            </SelectContent>
+                        </Select>
+                    )}
+                />
+            </div>
+                <div className="space-y-2">
+                <Label>Membership Status</Label>
+                <Controller
+                    control={control}
+                    name="membershipStatus"
+                    render={({ field }) => (
+                        <Select onValueChange={field.onChange} value={field.value}>
+                            <SelectTrigger><SelectValue /></SelectTrigger>
+                            <SelectContent>
+                                {statuses.map((status) => (
+                                    <SelectItem key={status.id} value={status.name}>{status.name}</SelectItem>
+                                ))}
+                            </SelectContent>
+                        </Select>
+                    )}
+                />
+            </div>
              <div className="space-y-2 md:col-span-2">
                 <Label htmlFor="bio">Bio</Label>
                 <Textarea id="bio" {...register("bio")} placeholder="A brief user bio..." />

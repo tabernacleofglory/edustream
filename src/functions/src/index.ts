@@ -117,6 +117,7 @@ async function addFullCreditWrites(params: {
         formId: courseData.formId,
         submittedAt: FieldValue.serverTimestamp(),
         source: "onsite",
+        data: { autoCompleted: true }
       },
       { merge: true }
     );
@@ -795,5 +796,4 @@ export const syncVideos = functions
 
 export { onVideoDeleted, onVideoUpdate, transcodeVideo, updateVideoOnTranscodeComplete };
 
-    
     

@@ -1,4 +1,5 @@
 
+
 "use client";
 
 import { useState, useEffect, useCallback, useMemo } from "react";
@@ -627,12 +628,11 @@ export default function UserManagement() {
     }
   }, [viewingUser, fetchUserProgressAndCompletions]);
 
-  const handleRoleChange = async (userId: string, newRole: 'user' | 'admin' | string) => {
+  const handleRoleChange = async (userId: string, newRole: string) => {
     const userDocRef = doc(db, "users", userId);
-    const roleInLowercase = newRole.toLowerCase();
     try {
-        await updateDoc(userDocRef, { role: roleInLowercase });
-        setUsers(users.map(u => u.id === userId ? { ...u, role: roleInLowercase as User['role'] } : u));
+        await updateDoc(userDocRef, { role: newRole });
+        setUsers(users.map(u => u.id === userId ? { ...u, role: newRole as User['role'] } : u));
         toast({
             title: "Success",
             description: "User role updated successfully."
@@ -938,6 +938,29 @@ export default function UserManagement() {
                 : [...prev, userId]
         );
     };
+    
+    const roleHierarchy: Record<string, string[]> = {
+        developer: ['developer', 'admin', 'moderator', 'team', 'user'],
+        admin: ['admin', 'moderator', 'team', 'user'],
+        moderator: ['moderator', 'team', 'user'],
+        team: ['team', 'user'],
+        user: ['user']
+    };
+    
+    const allRoles = [
+        { id: 'developer', name: 'Developer' },
+        { id: 'admin', name: 'Admin' },
+        { id: 'moderator', name: 'Moderator' },
+        { id: 'team', name: 'Team' },
+        { id: 'user', name: 'User' },
+    ];
+
+    const assignableRoles = useMemo(() => {
+        const currentUserRole = currentUser?.role || 'user';
+        const allowedRoleIds = roleHierarchy[currentUserRole] || ['user'];
+        return allRoles.filter(role => allowedRoleIds.includes(role.id));
+    }, [currentUser?.role]);
+
 
   return (
     <>
@@ -1129,11 +1152,9 @@ export default function UserManagement() {
                                     <SelectValue placeholder="Select Role" />
                                 </SelectTrigger>
                                 <SelectContent>
-                                    <SelectItem value="admin">Admin</SelectItem>
-                                    <SelectItem value="moderator">Moderator</SelectItem>
-                                    <SelectItem value="team">Team</SelectItem>
-                                    <SelectItem value="user">User</SelectItem>
-                                    {isCurrentUserAdmin && <SelectItem value="developer">Developer</SelectItem>}
+                                    {assignableRoles.map((role) => (
+                                        <SelectItem key={role.id} value={role.id}>{role.name}</SelectItem>
+                                    ))}
                                 </SelectContent>
                             </Select>
                         </TableCell>
@@ -1236,31 +1257,40 @@ export default function UserManagement() {
                   </div>
                   <div className="grid grid-cols-2 gap-4 text-sm">
                       {[
-                        { label: 'First Name', value: viewingUser.firstName },
-                        { label: 'Last Name', value: viewingUser.lastName },
-                        { label: 'Gender', value: viewingUser.gender, capitalize: true },
-                        { label: 'Age Range', value: viewingUser.ageRange },
-                        { label: 'Phone Number', value: viewingUser.phoneNumber },
-                        { label: 'Campus', value: viewingUser.campus },
-                        { label: 'Language', value: viewingUser.language },
-                        { label: 'Location Preference', value: viewingUser.locationPreference },
-                        { label: 'Marital Status', value: viewingUser.maritalStatus },
-                        { label: 'Ministry', value: viewingUser.ministry },
-                        { label: 'HP Number', value: viewingUser.hpNumber },
-                        { label: 'HP Facilitator', value: viewingUser.facilitatorName },
-                        { label: 'Membership Ladder', value: getUserLadderName(viewingUser.classLadderId) },
-                        { label: 'Charge', value: viewingUser.charge },
-                        { label: 'Role', value: viewingUser.role, isBadge: true, variant: (viewingUser.role === 'admin' || viewingUser.role === 'developer' ? 'default' : 'secondary') },
-                        { label: 'Membership Status', value: viewingUser.membershipStatus, isBadge: true, variant: 'secondary' },
+                          { label: 'First Name', value: viewingUser.firstName },
+                          { label: 'Last Name', value: viewingUser.lastName },
+                          { label: 'Gender', value: viewingUser.gender, capitalize: true },
+                          { label: 'Age Range', value: viewingUser.ageRange },
+                          { label: 'Phone Number', value: viewingUser.phoneNumber },
+                          { label: 'Campus', value: viewingUser.campus },
+                          { label: 'Language', value: viewingUser.language },
+                          { label: 'Location Preference', value: viewingUser.locationPreference },
+                          { label: 'Marital Status', value: viewingUser.maritalStatus },
+                          { label: 'Baptized', value: viewingUser.isBaptized ? 'Yes' : 'No' },
+                          ...(viewingUser.isBaptized ? [{ label: 'Denomination', value: viewingUser.denomination }] : []),
+                          { label: 'Ministry', value: viewingUser.ministry },
+                          { label: 'In HP Group', value: viewingUser.isInHpGroup ? 'Yes' : 'No' },
+                          ...(viewingUser.isInHpGroup ? [
+                              { label: 'HP Number', value: viewingUser.hpNumber },
+                              { label: 'HP Facilitator', value: viewingUser.facilitatorName },
+                          ] : [
+                              { label: 'HP Availability', value: viewingUser.hpAvailabilityDay ? `${viewingUser.hpAvailabilityDay} at ${viewingUser.hpAvailabilityTime}` : ''},
+                          ]),
+                          { label: 'Membership Ladder', value: getUserLadderName(viewingUser.classLadderId) },
+                          { label: 'Charge', value: viewingUser.charge },
+                          { label: 'Role', value: viewingUser.role, isBadge: true, variant: (viewingUser.role === 'admin' || viewingUser.role === 'developer' ? 'default' : 'secondary') },
+                          { label: 'Membership Status', value: viewingUser.membershipStatus, isBadge: true, variant: 'secondary' },
                       ].map(field => (
-                        <div key={field.label}>
-                            <p className="font-semibold">{field.label}</p>
-                            {field.isBadge ? (
-                                <Badge variant={field.variant as any} className="capitalize">{field.value || "Not provided"}</Badge>
-                            ) : (
-                                <p className={field.capitalize ? 'capitalize' : ''}>{field.value || "Not provided"}</p>
-                            )}
-                        </div>
+                          field.value ? (
+                              <div key={field.label}>
+                                  <p className="font-semibold">{field.label}</p>
+                                  {field.isBadge ? (
+                                      <Badge variant={field.variant as any} className="capitalize">{field.value}</Badge>
+                                  ) : (
+                                      <p className={cn("text-muted-foreground", field.capitalize && 'capitalize')}>{field.value}</p>
+                                  )}
+                              </div>
+                          ) : null
                       ))}
                       <div className="col-span-2">
                           <Label>Bio</Label>

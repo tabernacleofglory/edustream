@@ -53,6 +53,7 @@ const ALL_PERMISSIONS: Permission[] = [
   { id: 'managePromotions', name: 'Manage Promotions', description: 'Can approve or reject user promotion requests.' },
   { id: 'manageHpRequests', name: 'Manage HP Requests', description: 'Can view and manage HP placement requests.' },
   { id: 'manageCompletions', name: 'Manage On-site Completions', description: 'Can manually log course completions for users.' },
+  { id: 'manageCourseCredit', name: 'Manage Course Credit', description: 'Can manually grant full or partial course credit to users.' },
   { id: 'manageOnlineCompletions', name: 'Manage Online Completions', description: 'Can manually mark an online course as complete for a user.' },
   { id: 'manageCommunity', name: 'Manage Community', description: 'Can pin or delete any post in the community feed.' },
   { id: 'manageForms', name: 'Manage Forms', description: 'Can create, edit, and delete forms.' },

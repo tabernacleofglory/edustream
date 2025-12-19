@@ -405,12 +405,10 @@ export default function FormsPage() {
                                   <Label htmlFor={`public-switch-${form.id}`}>{form.public ? 'Public' : 'Private'}</Label>
                               </div>
                               <div className="flex items-center gap-1">
-                                  <Button variant="outline" size="sm" onClick={() => {
-                                      if (form.type !== 'userProfile') {
-                                          setViewingResponsesForm(form);
-                                      }
-                                  }} disabled={form.type === 'userProfile'}>
-                                    <BarChart2 className="mr-2 h-4 w-4" /> {form.submissionCount || 0} Responses
+                                  <Button asChild variant="outline" size="sm" disabled={form.type === 'userProfile'}>
+                                    <Link href={`/admin/forms/responses/${form.id}`}>
+                                      <BarChart2 className="mr-2 h-4 w-4" /> {form.submissionCount || 0} Responses
+                                    </Link>
                                   </Button>
                                   <Button asChild variant="ghost" size="icon">
                                   <Link href={getPublicFormUrl(form)} target="_blank">

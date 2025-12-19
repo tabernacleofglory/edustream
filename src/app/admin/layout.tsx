@@ -151,6 +151,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
           subItems: [
             { href: "/admin/users", label: t('admin.nav.users.management', "User Management"), icon: Users, permission: 'manageUsers' },
             { href: "/admin/users/completions", label: "Onsite Completions", icon: BookCheck, permission: 'manageCompletions' },
+            { href: "/admin/users/course-credit", label: "Course Credit", icon: Award, permission: 'manageCourseCredit' },
             { href: "/admin/ladders", label: t('admin.nav.users.ladders', "Ladders"), icon: Shield, permission: 'manageUsers' },
             { href: "/admin/speakers", label: t('admin.nav.users.speakers', "Speakers"), icon: UserRound, permission: 'manageContent' },
             { href: "/admin/promotions", label: t('admin.nav.users.promotions', "Promotion Requests"), icon: UserCheck, permission: 'managePromotions'},

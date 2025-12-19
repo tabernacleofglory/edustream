@@ -5,7 +5,7 @@ import { useState, useEffect, useRef, useMemo, useCallback } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import Hls from "hls.js";
-import ReactPlayer from 'react-player';
+import ReactPlayer from 'react-player/lazy';
 import {
   Play,
   Pause,

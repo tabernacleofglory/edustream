@@ -1,10 +1,11 @@
 
+
 "use client";
 
 import { useState, useEffect, useMemo, Suspense } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { db } from "@/lib/firebase";
-import { collection, query, onSnapshot, orderBy, doc, getDoc, writeBatch, updateDoc } from "firebase/firestore";
+import { collection, query, onSnapshot, orderBy, doc, getDoc, writeBatch, updateDoc, where, increment } from "firebase/firestore";
 import Link from "next/link";
 import Papa from "papaparse";
 import { format } from "date-fns";
@@ -17,7 +18,7 @@ import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from "@/components/ui/select";
-import { Loader2, ArrowLeft, Download, Search, ChevronLeft, ChevronRight, Trash2, UserCog } from "lucide-react";
+import { Loader2, ArrowLeft, Download, Search, ChevronLeft, ChevronRight, Trash2, UserCog, Link as LinkIcon } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
   AlertDialog,
@@ -67,6 +68,7 @@ function FormResponsesComponent() {
   const [currentPage, setCurrentPage] = useState(1);
   const [rowsPerPage, setRowsPerPage] = useState(25);
   const [selectedSubmissionIds, setSelectedSubmissionIds] = useState<string[]>([]);
+  const [totalSubmissions, setTotalSubmissions] = useState(0);
 
 
   useEffect(() => {
@@ -90,6 +92,7 @@ function FormResponsesComponent() {
     const unsubSubmissions = onSnapshot(submissionsQuery, (snapshot) => {
         const rows: Submission[] = snapshot.docs.map((d) => ({ id: d.id, ...(d.data() as any) }));
         setSubmissions(rows);
+        setTotalSubmissions(snapshot.size); // Use real-time size
         setLoading(false);
     }, (err) => {
         console.error("Error fetching submissions:", err);
@@ -157,6 +160,10 @@ function FormResponsesComponent() {
         const docRef = doc(db, 'forms', formId, 'submissions', resultId);
         batch.delete(docRef);
     });
+
+    // Also decrement the submission count on the parent form document
+    const formRef = doc(db, 'forms', formId);
+    batch.update(formRef, { submissionCount: increment(-selectedSubmissionIds.length) });
 
     try {
         await batch.commit();
@@ -246,7 +253,7 @@ function FormResponsesComponent() {
                 {form.title} - Responses
             </h1>
             <p className="text-muted-foreground">
-                Viewing all submissions for this form.
+                Viewing all {totalSubmissions} submissions for this form.
             </p>
         </div>
         <Card>
@@ -315,14 +322,22 @@ function FormResponsesComponent() {
                                      />
                                 </TableHead>
                                 <TableHead>Submission Date</TableHead>
-                                {visibleFields.map((f: any) => <TableHead key={f.fieldId}>{f.label}</TableHead>)}
+                                <TableHead>User ID</TableHead>
+                                {visibleFields.map((f: any, index: number) => (
+                                    <TableHead key={`${f.fieldId}-${index}`}>
+                                        <div className="flex items-center gap-2">
+                                            {f.label}
+                                            {f.userProfileField && <LinkIcon className="h-3 w-3 text-muted-foreground" />}
+                                        </div>
+                                    </TableHead>
+                                ))}
                             </TableRow>
                         </TableHeader>
                         <TableBody>
                             {loading ? (
                                 Array.from({ length: 3 }).map((_, i) => (
                                     <TableRow key={`sk_${i}`}>
-                                        {Array.from({ length: visibleFields.length + 2 }).map((_, j) => (
+                                        {Array.from({ length: visibleFields.length + 3 }).map((_, j) => (
                                             <TableCell key={`sk_cell_${i}_${j}`}><Skeleton className="h-5 w-full" /></TableCell>
                                         ))}
                                     </TableRow>
@@ -344,17 +359,18 @@ function FormResponsesComponent() {
                                             />
                                         </TableCell>
                                         <TableCell className="text-xs whitespace-nowrap">{formatWhen(sub.submittedAt, sub.createdAt)}</TableCell>
-                                        {visibleFields.map((f: any) => {
+                                        <TableCell className="text-xs font-mono">{sub.userId || 'N/A'}</TableCell>
+                                        {visibleFields.map((f: any, index: number) => {
                                             const val = sub.data?.[f.fieldId];
                                             const display = val == null ? "N/A" : Array.isArray(val) ? val.join(", ") : typeof val === "object" ? JSON.stringify(val) : String(val);
-                                            return <TableCell key={f.fieldId}>{display}</TableCell>;
+                                            return <TableCell key={`${sub.id}_${f.fieldId}-${index}`}>{display}</TableCell>;
                                         })}
                                     </TableRow>
                                     )
                                 })
                             ) : (
                                 <TableRow>
-                                    <TableCell colSpan={visibleFields.length + 2} className="text-center py-8">
+                                    <TableCell colSpan={visibleFields.length + 3} className="text-center py-8">
                                         No submissions found.
                                     </TableCell>
                                 </TableRow>
@@ -403,3 +419,4 @@ export default function FormResponsesPage() {
         </Suspense>
     );
 }
+
