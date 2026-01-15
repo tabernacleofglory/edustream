@@ -53,7 +53,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import type { CustomForm, FormFieldConfig, User } from "@/lib/types";
+import type { CustomForm, FormFieldConfig, User, Ladder } from "@/lib/types";
 import { useToast } from "@/hooks/use-toast";
 import Link from "next/link";
 
@@ -80,6 +80,7 @@ const DynamicForm = ({ formConfig }: { formConfig: CustomForm }) => {
     {}
   );
   const [loadingOptions, setLoadingOptions] = useState(true);
+  const [ladders, setLadders] = useState<Ladder[]>([]);
 
   const secondaryAuth = useMemo(() => {
     const secondaryAppName = "secondaryFormApp";
@@ -166,6 +167,9 @@ const DynamicForm = ({ formConfig }: { formConfig: CustomForm }) => {
   useEffect(() => {
     const fetchOptions = async () => {
       const options: { [key: string]: any[] } = {};
+      const laddersSnap = await getDocs(query(collection(db, "courseLevels"), orderBy("order")));
+      const laddersData = laddersSnap.docs.map(d => ({id: d.id, ...d.data()} as Ladder));
+      setLadders(laddersData);
 
       if (formConfig.fields.find((f) => f.fieldId === "campus" && f.visible)) {
         const campusSnap = await getDocs(
@@ -188,6 +192,10 @@ const DynamicForm = ({ formConfig }: { formConfig: CustomForm }) => {
           value: d.data().name,
           label: d.data().name,
         }));
+      }
+      
+      if (formConfig.fields.find((f) => f.fieldId === "classLadderId" && f.visible)) {
+        options["classLadderId"] = laddersData.map(l => ({ value: l.id, label: l.name }));
       }
 
       options["gender"] = [
@@ -250,15 +258,22 @@ const DynamicForm = ({ formConfig }: { formConfig: CustomForm }) => {
       const fullName = `${data.firstName || ""} ${data.lastName || ""}`.trim();
       await updateProfile(user, { displayName: fullName });
 
-      const defaultLadderSnap = await getDocs(
-        query(collection(db, "courseLevels"), orderBy("order"), limit(1))
-      );
-      const defaultLadder = !defaultLadderSnap.empty
-        ? {
-            id: defaultLadderSnap.docs[0].id,
-            name: defaultLadderSnap.docs[0].data().name,
+      let ladderId = data.classLadderId;
+      let ladderName = 'New Member';
+      
+      if (ladderId) {
+          const selectedLadder = ladders.find(l => l.id === ladderId);
+          if (selectedLadder) {
+              ladderName = selectedLadder.name;
           }
-        : null;
+      } else {
+          const defaultLadderSnap = await getDocs(query(collection(db, "courseLevels"), orderBy("order"), limit(1)));
+          if (!defaultLadderSnap.empty) {
+              const defaultLadderDoc = defaultLadderSnap.docs[0];
+              ladderId = defaultLadderDoc.id;
+              ladderName = defaultLadderDoc.data().name;
+          }
+      }
 
       const newUser: Partial<User> = {
         uid: user.uid,
@@ -267,15 +282,15 @@ const DynamicForm = ({ formConfig }: { formConfig: CustomForm }) => {
         displayName: fullName,
         role: "user",
         createdAt: serverTimestamp(),
-        classLadderId: defaultLadder?.id || null,
-        classLadder: defaultLadder?.name || null,
+        classLadderId: ladderId,
+        classLadder: ladderName,
         isInHpGroup: data.isInHpGroup === "true",
-        isBaptized: data.isBaptized === "true",
+        isBaptized: data.isBaptized === 'true',
         createdFromFormId: formConfig.id,
       };
 
       formConfig.fields.forEach((field) => {
-        if (field.visible && data[field.fieldId] !== undefined) {
+        if (field.visible && data[field.fieldId] !== undefined && field.fieldId !== 'classLadderId') {
           (newUser as any)[field.fieldId] = data[field.fieldId];
         }
       });
@@ -343,7 +358,7 @@ const DynamicForm = ({ formConfig }: { formConfig: CustomForm }) => {
     if (
       [
         "gender", "ageRange", "campus", "language", "locationPreference",
-        "hpAvailabilityDay", "denomination"
+        "hpAvailabilityDay", "denomination", "classLadderId"
       ].includes(fieldId)
     ) {
       return (

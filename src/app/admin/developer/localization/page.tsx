@@ -62,7 +62,10 @@ const DEFAULT_TRANSLATIONS: { [key: string]: { [key: string]: string } } = {
     "admin.courses.edit_sheet_title": { "en": "Edit Course" },
     "admin.courses.add_sheet_title": { "en": "Create a New Course" },
     "admin.users.title": { "en": "User Management" },
-    "admin.users.description": { "en": "View, edit, and manage user roles, permissions, and details." }
+    "admin.users.description": { "en": "View, edit, and manage user roles, permissions, and details." },
+    "settings.hp_followup.title": { "en": "Thank You!" },
+    "settings.hp_followup.description": { "en": "We have received your information. Someone from our team will reach out to place you in a prayer group (HP). Once you have your HP number, please come back to complete your profile." },
+    "settings.hp_followup.button": { "en": "Complete Profile Now" }
 };
 
 interface StoredLanguage {

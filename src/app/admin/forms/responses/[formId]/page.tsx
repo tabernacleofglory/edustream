@@ -4,8 +4,8 @@
 
 import { useState, useEffect, useMemo, Suspense } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { db } from "@/lib/firebase";
-import { collection, query, onSnapshot, orderBy, doc, getDoc, writeBatch, updateDoc, where, increment } from "firebase/firestore";
+import { db, getFirebaseFirestore } from "@/lib/firebase";
+import { collection, query, onSnapshot, orderBy, doc, getDoc, writeBatch, updateDoc, where, increment, getDocs } from "firebase/firestore";
 import Link from "next/link";
 import Papa from "papaparse";
 import { format } from "date-fns";
@@ -18,7 +18,7 @@ import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from "@/components/ui/select";
-import { Loader2, ArrowLeft, Download, Search, ChevronLeft, ChevronRight, Trash2, UserCog, Link as LinkIcon } from "lucide-react";
+import { Loader2, ArrowLeft, Download, Search, ChevronLeft, ChevronRight, Trash2, UserCog, Link as LinkIcon, UserPlus, CheckCircle2 } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
   AlertDialog,
@@ -31,9 +31,14 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 
 
-import type { CustomForm, FormFieldConfig } from "@/lib/types";
+import type { CustomForm, FormFieldConfig, User } from "@/lib/types";
+import { getFirebaseFunctions } from "@/lib/firebase";
+import { httpsCallable } from "firebase/functions";
+import { cn } from "@/lib/utils";
 
 interface Submission {
   id: string;
@@ -43,6 +48,100 @@ interface Submission {
   userId?: string;
   createdBy?: string | null;
 }
+
+const getInitials = (name?: string | null) => (!name ? "U" : name.trim().split(/\s+/).map(p => p[0]?.toUpperCase()).join(""));
+
+const LinkProfileDialog = ({ formId, submission, onClose, onLinkComplete }: { formId: string, submission: Submission, onClose: () => void, onLinkComplete: () => void }) => {
+    const [users, setUsers] = useState<User[]>([]);
+    const [loading, setLoading] = useState(true);
+    const [searchTerm, setSearchTerm] = useState('');
+    const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
+    const [isLinking, setIsLinking] = useState(false);
+    const db = getFirebaseFirestore();
+    const { toast } = useToast();
+
+    useEffect(() => {
+        const fetchUsers = async () => {
+            setLoading(true);
+            const usersSnap = await getDocs(query(collection(db, 'users'), orderBy('displayName')));
+            setUsers(usersSnap.docs.map(d => ({id: d.id, ...d.data()} as User)));
+            setLoading(false);
+        };
+        fetchUsers();
+    }, [db]);
+
+    const filteredUsers = useMemo(() => {
+        const lowercasedSearch = searchTerm.toLowerCase();
+        if (!searchTerm) return users;
+        return users.filter(u => 
+            (u.displayName || "").toLowerCase().includes(lowercasedSearch) ||
+            (u.email || "").toLowerCase().includes(lowercasedSearch)
+        );
+    }, [users, searchTerm]);
+
+    const handleLink = async () => {
+        if (!selectedUserId) {
+            toast({ variant: 'destructive', title: 'No user selected.' });
+            return;
+        }
+        setIsLinking(true);
+        try {
+            const submissionRef = doc(db, 'forms', formId, 'submissions', submission.id);
+            await updateDoc(submissionRef, { userId: selectedUserId });
+            toast({ title: 'Success', description: 'Submission linked to user profile.'});
+            onLinkComplete();
+            onClose();
+        } catch (error: any) {
+            toast({ variant: 'destructive', title: 'Linking Failed', description: error.message });
+        } finally {
+            setIsLinking(false);
+        }
+    };
+
+    return (
+        <DialogContent className="max-w-xl">
+            <DialogHeader>
+                <DialogTitle>Link Submission to User Profile</DialogTitle>
+                <DialogDescription>Search for and select a user to associate with this submission.</DialogDescription>
+            </DialogHeader>
+            <div className="py-4 space-y-4">
+                <div className="relative">
+                    <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+                    <Input placeholder="Search users by name or email..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} className="pl-8" />
+                </div>
+                <ScrollArea className="h-64 border rounded-md">
+                    {loading ? <div className="p-4"><Loader2 className="animate-spin" /></div> : (
+                        filteredUsers.map(user => (
+                            <div
+                                key={user.id}
+                                className={cn("flex items-center gap-3 p-2 border-b cursor-pointer", selectedUserId === user.id && "bg-muted")}
+                                onClick={() => setSelectedUserId(user.id)}
+                            >
+                                <Avatar className="h-8 w-8">
+                                    <AvatarImage src={user.photoURL || undefined} />
+                                    <AvatarFallback>{getInitials(user.displayName)}</AvatarFallback>
+                                </Avatar>
+                                <div className="flex-1">
+                                    <p className="font-medium text-sm">{user.displayName}</p>
+                                    <p className="text-xs text-muted-foreground">{user.email}</p>
+                                </div>
+                                {selectedUserId === user.id && <CheckCircle2 className="h-5 w-5 text-primary" />}
+                            </div>
+                        ))
+                    )}
+                </ScrollArea>
+            </div>
+            <DialogFooter>
+                <Button variant="outline" onClick={onClose}>Cancel</Button>
+                <Button onClick={handleLink} disabled={!selectedUserId || isLinking}>
+                    {isLinking && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                    Link Profile
+                </Button>
+            </DialogFooter>
+        </DialogContent>
+    )
+};
+
 
 function formatWhen(ts?: any, fallback?: any) {
   const t = ts ?? fallback;
@@ -69,6 +168,7 @@ function FormResponsesComponent() {
   const [rowsPerPage, setRowsPerPage] = useState(25);
   const [selectedSubmissionIds, setSelectedSubmissionIds] = useState<string[]>([]);
   const [totalSubmissions, setTotalSubmissions] = useState(0);
+  const [linkingSubmission, setLinkingSubmission] = useState<Submission | null>(null);
 
 
   useEffect(() => {
@@ -103,7 +203,7 @@ function FormResponsesComponent() {
         unsubForm();
         unsubSubmissions();
     };
-  }, [formId, toast]);
+  }, [formId, toast, db]);
 
   const visibleFields = useMemo(() => {
     const fields = form?.fields?.filter((f: any) => f?.visible) ?? [];
@@ -173,6 +273,39 @@ function FormResponsesComponent() {
         toast({ variant: 'destructive', title: 'Failed to delete records' });
     }
   };
+
+    const handleCreateSelectedProfiles = async () => {
+        if (selectedSubmissionIds.length === 0) {
+            toast({ variant: "destructive", title: "No submissions selected." });
+            return;
+        }
+
+        try {
+            const functions = getFirebaseFunctions();
+            const createUsersFromSubmissions = httpsCallable(functions, 'createUsersFromSubmissions');
+            
+            toast({ title: "Processing...", description: `Creating profiles for ${selectedSubmissionIds.length} submissions.`});
+
+            const result = await createUsersFromSubmissions({ formId, submissionIds: selectedSubmissionIds });
+            
+            const { successCount, errorCount, errors } = result.data as any;
+
+            toast({
+                title: "Processing Complete",
+                description: `${successCount} profiles created/updated. ${errorCount} failed.`,
+            });
+
+            if (errorCount > 0) {
+                console.error("Failures:", errors);
+            }
+
+            setSelectedSubmissionIds([]);
+        } catch (error: any) {
+            console.error("Error creating profiles:", error);
+            toast({ variant: "destructive", title: "Failed to create profiles", description: error.message });
+        }
+    };
+
 
   const handleUpdateSelectedProfiles = async () => {
     if (selectedSubmissionIds.length === 0) {
@@ -271,6 +404,16 @@ function FormResponsesComponent() {
                      <div className="flex items-center gap-2">
                         {selectedSubmissionIds.length > 0 && (
                            <>
+                            {selectedSubmissionIds.length === 1 && (
+                                <Button variant="outline" onClick={() => setLinkingSubmission(submissions.find(s => s.id === selectedSubmissionIds[0]) || null)}>
+                                    <LinkIcon className="mr-2 h-4 w-4" />
+                                    Link to Profile
+                                </Button>
+                            )}
+                            <Button variant="outline" onClick={handleCreateSelectedProfiles}>
+                                <UserPlus className="mr-2 h-4 w-4" />
+                                Create Profiles ({selectedSubmissionIds.length})
+                            </Button>
                             <Button variant="outline" onClick={handleUpdateSelectedProfiles}>
                                 <UserCog className="mr-2 h-4 w-4" />
                                 Update Profiles ({selectedSubmissionIds.length})
@@ -408,6 +551,10 @@ function FormResponsesComponent() {
                 </CardFooter>
             )}
         </Card>
+
+        <Dialog open={!!linkingSubmission} onOpenChange={() => setLinkingSubmission(null)}>
+            {linkingSubmission && <LinkProfileDialog formId={formId} submission={linkingSubmission} onClose={() => setLinkingSubmission(null)} onLinkComplete={onSnapshot as any} />}
+        </Dialog>
     </div>
   )
 }

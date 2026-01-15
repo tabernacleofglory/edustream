@@ -49,6 +49,7 @@ import LanguageSwitcher from "@/components/language-switcher";
 const navItems = [
   { href: "/dashboard", icon: LayoutDashboard, label: "Dashboard", permission: "viewDashboard" },
   { href: "/courses", icon: BookOpen, label: "All Courses", permission: "viewCoursesPage" },
+  { href: "/ministry-training", icon: Shield, label: "Ministry Training", permission: "viewCoursesPage" },
   { href: "/my-certificates", icon: Award, label: "My Certificates", permission: "viewDashboard" },
   { href: "/live", icon: Tv, label: "Live", permission: "viewLivePage" },
   { href: "/admin/courses/teaching", icon: Play, label: "Teaching", permission: "viewTeachingPage" },
@@ -267,6 +268,14 @@ function AppContentInternal({ children }: { children: React.ReactNode }) {
   
   if (!user) return null;
 
+  const getVisibleNavItems = () => {
+    let items = navItems.filter(item => hasPermission(item.permission));
+    if (user.classLadder === 'New Member') {
+        items = items.filter(item => item.href !== '/ministry-training');
+    }
+    return items;
+  }
+
   return (
         <SidebarProvider open={isSidebarOpen} onOpenChange={setIsSidebarOpen}>
             <PanelGroup direction="horizontal" className="min-h-screen w-full relative">
@@ -278,7 +287,7 @@ function AppContentInternal({ children }: { children: React.ReactNode }) {
                 </SidebarHeader>
                 <SidebarContent>
                     <SidebarMenu>
-                    {canSeeFullMenu && navItems.filter(item => hasPermission(item.permission)).map((item) => (
+                    {canSeeFullMenu && getVisibleNavItems().map((item) => (
                         <SidebarMenuItem key={item.href}>
                         <Link href={item.href}>
                             <SidebarMenuButton

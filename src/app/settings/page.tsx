@@ -24,6 +24,9 @@ import LanguageSwitcher from "@/components/language-switcher";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import Image from "next/image";
 import { format } from "date-fns";
+import { useProcessedCourses, CourseWithStatus } from "@/hooks/useProcessedCourses";
+import { Skeleton } from "@/components/ui/skeleton";
+import { useI18n } from "@/hooks/use-i18n";
 
 
 interface StoredItem {
@@ -48,7 +51,8 @@ const settingsSchema = z.discriminatedUnion("isInHpGroup", [
         bio: z.string().max(200, "Bio cannot be more than 200 characters.").optional(),
         phoneNumber: z.string().min(1, "Phone number is required."),
         hpNumber: z.string().min(1, "HP Number is required."),
-        facilitatorName: z.string().min(1, "Facilitator's name is required."),
+        isBaptized: z.enum(['true', 'false']).optional(),
+        denomination: z.string().optional(),
         campus: z.string().min(1, "Campus is required."),
         language: z.string().min(1, "Language is required."),
         locationPreference: z.enum(['Onsite', 'Online'], { required_error: "Please select your location preference."}),
@@ -70,61 +74,67 @@ const settingsSchema = z.discriminatedUnion("isInHpGroup", [
         locationPreference: z.enum(['Onsite', 'Online'], { required_error: "Please select your location preference."}),
         hpAvailabilityDay: z.string().min(1, "Please select an availability day."),
         hpAvailabilityTime: z.string().min(1, "Please enter an availability time."),
-        // Optional fields that are not required when not in HP
+        isBaptized: z.enum(['true', 'false']).optional(),
+        denomination: z.string().optional(),
         hpNumber: z.string().optional(),
-        facilitatorName: z.string().optional(),
         charge: z.string().optional(),
         role: z.string(),
         classLadderId: z.string().optional(),
     })
 ]).refine(data => {
-    // When not in HP, we don't need to validate these fields
-    if (data.isInHpGroup === false) return true;
-    // When in HP, these fields are required
-    return !!data.hpNumber && !!data.facilitatorName;
+    if (data.isInHpGroup === true) {
+        return !!data.hpNumber;
+    }
+    if (data.isBaptized === 'true') {
+        return !!data.denomination;
+    }
+    return true;
 }, {
-    message: "HP Number and Facilitator Name are required when you are in an HP.",
-    path: ['hpNumber'], // Can only point to one field, but the message clarifies
+    message: "HP Number is required if in a prayer group.",
+    path: ['hpNumber'],
 });
 
 
 type SettingsFormValues = z.infer<typeof settingsSchema>;
 
 const AchievementsTab = ({ userId }: { userId: string }) => {
-    const [badges, setBadges] = useState<UserBadge[]>([]);
-    const [loading, setLoading] = useState(true);
-    const db = getFirebaseFirestore();
-
-    useEffect(() => {
-        const q = query(collection(db, 'userBadges'), where('userId', '==', userId), orderBy('earnedAt', 'desc'));
-        const unsubscribe = onSnapshot(q, (snapshot) => {
-            const userBadges = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as UserBadge));
-            setBadges(userBadges);
-            setLoading(false);
-        });
-        return () => unsubscribe();
-    }, [userId, db]);
+    const { processedCourses, loading } = useProcessedCourses();
+    const { user } = useAuth();
+    
+    const completedCourses = processedCourses.filter(c => 
+        c.isCompleted && c.language === user?.language
+    );
 
     if (loading) {
-        return <div className="text-center p-4">Loading achievements...</div>;
+        return (
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">
+                {Array.from({ length: 4 }).map((_, i) => (
+                    <div key={i} className="flex flex-col items-center text-center">
+                        <Skeleton className="h-24 w-24 rounded-md" />
+                        <Skeleton className="h-4 w-20 mt-2" />
+                        <Skeleton className="h-3 w-16 mt-1" />
+                    </div>
+                ))}
+            </div>
+        );
     }
 
-    if (badges.length === 0) {
+    if (completedCourses.length === 0) {
         return (
             <div className="text-center p-8 text-muted-foreground">
                 <Trophy className="mx-auto h-12 w-12" />
-                <p className="mt-4">No badges earned yet. Complete courses to earn them!</p>
+                <p className="mt-4">No achievements yet. Complete courses to earn trophies!</p>
             </div>
         );
     }
     
     return (
         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">
-            {badges.map(badge => (
-                <div key={badge.id} className="flex flex-col items-center text-center">
-                    <Image src={badge.badgeIconUrl} alt={badge.badgeTitle} width={96} height={96} className="rounded-md object-cover mb-2" />
-                    <p className="font-semibold text-sm line-clamp-2">{badge.badgeTitle}</p>
-                    <p className="text-xs text-muted-foreground">{badge.earnedAt ? format(badge.earnedAt.toDate(), 'PPP') : ''}</p>
+            {completedCourses.map(course => (
+                <div key={course.id} className="flex flex-col items-center text-center p-2 rounded-lg hover:bg-muted/50">
+                    <Trophy className="h-24 w-24 text-yellow-500 fill-yellow-400" />
+                    <p className="font-semibold text-sm line-clamp-2 mt-2">{course.title}</p>
+                    {course.completedAt && <p className="text-xs text-muted-foreground">{format(new Date(course.completedAt), 'PPP')}</p>}
                 </div>
             ))}
         </div>
@@ -134,6 +144,7 @@ const AchievementsTab = ({ userId }: { userId: string }) => {
 
 export default function SettingsPage() {
   const { user, refreshUser, isProfileComplete } = useAuth();
+  const { t } = useI18n();
   const { toast } = useToast();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const db = getFirebaseFirestore();
@@ -148,10 +159,16 @@ export default function SettingsPage() {
   const [showProfileForm, setShowProfileForm] = useState(true);
 
    useEffect(() => {
-    if (!isProfileComplete) {
-      setShowProfileForm(true);
+    // This logic ensures that if a user has already submitted "No" to being in an HP,
+    // they are shown the message instead of the form on page load.
+    if (user && user.isInHpGroup === false && isProfileComplete === false) {
+        // A user is not "profile complete" if they are not in an HP group.
+        // We also check `isInHpGroup` directly for clarity.
+        setShowProfileForm(false);
+    } else {
+        setShowProfileForm(true);
     }
-  }, [isProfileComplete]);
+  }, [user, isProfileComplete]);
 
 
   const {
@@ -170,9 +187,10 @@ export default function SettingsPage() {
         phoneNumber: undefined,
         isInHpGroup: false,
         hpNumber: "",
-        facilitatorName: "",
         hpAvailabilityDay: "",
         hpAvailabilityTime: "",
+        isBaptized: undefined,
+        denomination: "",
         campus: "",
         language: "",
         locationPreference: undefined,
@@ -185,6 +203,7 @@ export default function SettingsPage() {
   });
   
   const isInHpGroup = watch("isInHpGroup");
+  const isBaptized = watch("isBaptized");
 
    useEffect(() => {
     async function fetchAllData() {
@@ -226,7 +245,8 @@ export default function SettingsPage() {
             phoneNumber: user.phoneNumber || undefined,
             isInHpGroup: user.isInHpGroup || false,
             hpNumber: user.hpNumber || "",
-            facilitatorName: user.facilitatorName || "",
+            isBaptized: user.isBaptized !== undefined ? String(user.isBaptized) as 'true' | 'false' : undefined,
+            denomination: user.denomination || "",
             hpAvailabilityDay: user.hpAvailabilityDay || "",
             hpAvailabilityTime: user.hpAvailabilityTime || "",
             campus: user.campus || "",
@@ -277,6 +297,8 @@ export default function SettingsPage() {
         campus: data.campus,
         language: data.language,
         locationPreference: data.locationPreference,
+        isBaptized: data.isBaptized === 'true',
+        denomination: data.isBaptized === 'true' ? data.denomination : undefined,
       };
 
       if (data.isInHpGroup) {
@@ -284,7 +306,6 @@ export default function SettingsPage() {
           ...dataToUpdate,
           bio: data.bio,
           hpNumber: data.hpNumber,
-          facilitatorName: data.facilitatorName,
           charge: data.charge,
           classLadderId: data.classLadderId,
           classLadder: selectedLadder ? selectedLadder.name : '',
@@ -307,13 +328,14 @@ export default function SettingsPage() {
               description: "Thank you for filling out the form. We will follow up with you shortly to integrate you into a Prayer Group (HP) so you can start your classes.",
               duration: 10000,
           });
+          setShowProfileForm(false);
+      } else {
+         toast({
+            title: "Profile Updated",
+            description: "Your settings have been successfully updated.",
+        });
+        router.push('/dashboard');
       }
-      
-      toast({
-        title: "Profile Updated",
-        description: "Your settings have been successfully updated.",
-      });
-      router.push('/dashboard');
 
     } catch (error) {
       toast({
@@ -342,7 +364,17 @@ export default function SettingsPage() {
                     <TabsTrigger value="achievements">My Achievements</TabsTrigger>
                 </TabsList>
                 <TabsContent value="profile">
-                     {user && (
+                    {!showProfileForm ? (
+                        <div className="text-center p-8 border-2 border-dashed rounded-lg">
+                            <h3 className="text-lg font-semibold">{t('settings.hp_followup.title', 'Thank You!')}</h3>
+                            <p className="text-muted-foreground mt-2">
+                                {t('settings.hp_followup.description', "We have received your information. Someone from our team will reach out to place you in a prayer group (HP). Once you have your HP number, please come back to complete your profile.")}
+                            </p>
+                            <Button className="mt-4" onClick={() => setShowProfileForm(true)}>
+                                {t('settings.hp_followup.button', 'Complete Profile Now')}
+                            </Button>
+                        </div>
+                    ) : user && (
                         <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
                         <div className="flex items-center space-x-4">
                             <Avatar className="h-20 w-20">
@@ -443,18 +475,11 @@ export default function SettingsPage() {
                             </div>
 
                             {isInHpGroup ? (
-                                <>
-                                    <div className="space-y-2">
-                                        <Label htmlFor="hpNumber">HP Number <span className="text-destructive">*</span></Label>
-                                        <Input id="hpNumber" {...register("hpNumber")} />
-                                        {errors.hpNumber && <p className="text-sm text-destructive">{errors.hpNumber.message}</p>}
-                                    </div>
-                                    <div className="space-y-2">
-                                        <Label htmlFor="facilitatorName">Facilitator's Full Name <span className="text-destructive">*</span></Label>
-                                        <Input id="facilitatorName" {...register("facilitatorName")} />
-                                        {errors.facilitatorName && <p className="text-sm text-destructive">{errors.facilitatorName.message}</p>}
-                                    </div>
-                                </>
+                                <div className="space-y-2">
+                                    <Label htmlFor="hpNumber">HP Number <span className="text-destructive">*</span></Label>
+                                    <Input id="hpNumber" {...register("hpNumber")} />
+                                    {errors.hpNumber && <p className="text-sm text-destructive">{errors.hpNumber.message}</p>}
+                                </div>
                             ) : (
                                 <>
                                     <div className="space-y-2">
@@ -488,8 +513,6 @@ export default function SettingsPage() {
                                     </div>
                                 </>
                             )}
-
-
                             
                             <div className="space-y-2">
                                 <Label>Campus <span className="text-destructive">*</span></Label>
@@ -550,6 +573,42 @@ export default function SettingsPage() {
                                 />
                                 {errors.language && <p className="text-sm text-destructive">{errors.language.message}</p>}
                             </div>
+                             <div className="space-y-2">
+                                <Label>Are you baptized?</Label>
+                                <Controller
+                                    name="isBaptized"
+                                    control={control}
+                                    render={({ field }) => (
+                                        <Select onValueChange={field.onChange} value={field.value}>
+                                            <SelectTrigger><SelectValue placeholder="Select an option" /></SelectTrigger>
+                                            <SelectContent>
+                                                <SelectItem value="true">Yes</SelectItem>
+                                                <SelectItem value="false">No</SelectItem>
+                                            </SelectContent>
+                                        </Select>
+                                    )}
+                                />
+                            </div>
+                            {isBaptized === 'true' && (
+                                <div className="space-y-2">
+                                    <Label>Denomination</Label>
+                                    <Controller
+                                        name="denomination"
+                                        control={control}
+                                        render={({ field }) => (
+                                            <Select onValueChange={field.onChange} value={field.value}>
+                                                <SelectTrigger><SelectValue placeholder="Select denomination" /></SelectTrigger>
+                                                <SelectContent>
+                                                    {[ "Apostolic", "Baptist", "Pentecostal", "Protestant", "Catholic", "Evangelical",
+                                                    "Methodist", "Lutheran", "Presbyterian", "Anglican", "Other"
+                                                    ].map(d => <SelectItem key={d} value={d}>{d}</SelectItem>)}
+                                                </SelectContent>
+                                            </Select>
+                                        )}
+                                    />
+                                    {errors.denomination && <p className="text-sm text-destructive">{errors.denomination.message}</p>}
+                                </div>
+                            )}
                             
                             {isInHpGroup ? (
                                 <>

@@ -1,5 +1,4 @@
 
-
 "use client";
 
 import { useState, useEffect, useMemo, useCallback } from "react";
@@ -28,14 +27,15 @@ import {
   SelectGroup,
   SelectLabel,
 } from "@/components/ui/select";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { collection, getDocs, query, where, orderBy } from "firebase/firestore";
 import { getFirebaseFirestore } from "@/lib/firebase";
-import type { User, Course, UserProgress, Enrollment, CourseGroup, OnsiteCompletion, Ladder, UserQuizResult } from "@/lib/types";
+import type { User, Course, UserProgress as UserProgressType, Enrollment, CourseGroup, OnsiteCompletion, Ladder, UserQuizResult, Video } from "@/lib/types";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Download, Calendar as CalendarIcon, X as XIcon, Search, ChevronLeft, ChevronRight, Lock } from "lucide-react";
+import { Download, Calendar as CalendarIcon, X as XIcon, Search, ChevronLeft, ChevronRight, Lock, Eye, ArrowUpDown } from "lucide-react";
 import Papa from 'papaparse';
-import { format, isValid, startOfDay, endOfDay } from "date-fns";
+import { format, isValid, startOfDay, endOfDay, startOfWeek, endOfWeek } from "date-fns";
 import { DateRange } from "react-day-picker";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Calendar } from "@/components/ui/calendar";
@@ -46,7 +46,6 @@ import { Input } from "@/components/ui/input";
 import { useAuth } from "@/hooks/use-auth";
 import { Progress } from "@/components/ui/progress";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-
 
 interface Campus {
   id: string;
@@ -66,6 +65,28 @@ interface EnrollmentReportData {
     completionType: 'Online' | 'On-site';
 }
 
+interface ProgressDetail {
+  progress: UserProgressType;
+  user: User;
+  course: Course;
+}
+
+type SortKey = 'user' | 'course' | 'startDate' | 'completionDate';
+type SortDirection = 'asc' | 'desc';
+
+function formatDuration(seconds: number) {
+  const hours = Math.floor(seconds / 3600);
+  const minutes = Math.floor((seconds % 3600) / 60);
+  const remainingSeconds = Math.round(seconds % 60);
+
+  let result = "";
+  if (hours > 0) result += `${hours}h `;
+  if (minutes > 0) result += `${minutes}m `;
+  if (remainingSeconds > 0 && hours === 0 && minutes === 0) result += `${remainingSeconds}s`;
+  return result.trim() || "0s";
+}
+
+
 export default function CourseReportsPage() {
   const { user: currentUser, canViewAllCampuses, hasPermission } = useAuth();
   const [allUsers, setAllUsers] = useState<User[]>([]);
@@ -73,23 +94,42 @@ export default function CourseReportsPage() {
   const [allCourseGroups, setAllCourseGroups] = useState<CourseGroup[]>([]);
   const [allLadders, setAllLadders] = useState<Ladder[]>([]);
   const [allCampuses, setAllCampuses] = useState<Campus[]>([]);
+  const [allVideos, setAllVideos] = useState<Video[]>([]);
   const [enrollmentReportData, setEnrollmentReportData] = useState<EnrollmentReportData[]>([]);
+  const [userProgressDetails, setUserProgressDetails] = useState<UserProgressType[]>([]);
   const [loading, setLoading] = useState(true);
+  const [isClient, setIsClient] = useState(false);
 
   const [selectedCourse, setSelectedCourse] = useState<string | "all">("all");
+  const [selectedDetailedCourse, setSelectedDetailedCourse] = useState<string | "all">("all");
   const [selectedCampus, setSelectedCampus] = useState<string | "all">("all");
+  const [selectedDetailedCampus, setSelectedDetailedCampus] = useState<string | "all">("all");
   const [selectedCompletionType, setSelectedCompletionType] = useState<'all' | 'Online' | 'On-site'>('all');
   const [completionStatusFilter, setCompletionStatusFilter] = useState<'all' | 'completed' | 'in-progress'>('all');
   const [percentageFilter, setPercentageFilter] = useState<string>('all');
-  const [dateRange, setDateRange] = useState<DateRange | undefined>();
+  const [dateRange, setDateRange] = useState<DateRange | undefined>({ from: startOfWeek(new Date()), to: endOfWeek(new Date()) });
+  const [detailedReportDateRange, setDetailedReportDateRange] = useState<DateRange | undefined>();
   const [searchTerm, setSearchTerm] = useState("");
+  const [detailedSearchTerm, setDetailedSearchTerm] = useState("");
+
 
   const [currentPage, setCurrentPage] = useState(1);
   const [rowsPerPage, setRowsPerPage] = useState(10);
+  
+  const [detailedReportPage, setDetailedReportPage] = useState(1);
+  const [detailedReportPageSize, setDetailedReportPageSize] = useState(10);
+  
+  const [sortConfig, setSortConfig] = useState < { key: SortKey; direction: SortDirection } | null > (null);
+  const [selectedProgressDetail, setSelectedProgressDetail] = useState<ProgressDetail | null>(null);
+
   const { toast } = useToast();
   const db = getFirebaseFirestore();
 
   const canViewReports = hasPermission('viewReports');
+
+  useEffect(() => {
+    setIsClient(true);
+  }, []);
 
   const fetchAllData = useCallback(async () => {
     if (!canViewReports) {
@@ -98,7 +138,7 @@ export default function CourseReportsPage() {
     }
     setLoading(true);
     try {
-      const [usersSnap, coursesSnap, groupsSnap, laddersSnap, campusesSnap, enrollmentsSnap, progressSnap, onsiteCompletionsSnap, quizResultsSnap] = await Promise.all([
+      const [usersSnap, coursesSnap, groupsSnap, laddersSnap, campusesSnap, enrollmentsSnap, progressSnap, onsiteCompletionsSnap, quizResultsSnap, videosSnap] = await Promise.all([
         getDocs(collection(db, 'users')),
         getDocs(query(collection(db, 'courses'), where('status', '==', 'published'))),
         getDocs(collection(db, 'courseGroups')),
@@ -108,6 +148,7 @@ export default function CourseReportsPage() {
         getDocs(collection(db, 'userVideoProgress')),
         getDocs(query(collection(db, 'onsiteCompletions'), orderBy('completedAt', 'desc'))),
         getDocs(collection(db, 'userQuizResults')),
+        getDocs(collection(db, 'Contents')),
       ]);
 
       const usersList = usersSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as User));
@@ -116,17 +157,21 @@ export default function CourseReportsPage() {
       const laddersList = laddersSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Ladder));
       const campusesList = campusesSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Campus));
       const enrollmentsList = enrollmentsSnap.docs.map(doc => ({ id: `${doc.data().userId}_${doc.data().courseId}`, ...doc.data() } as Enrollment & { id: string }));
-      const progressList = progressSnap.docs.map(doc => doc.data() as UserProgress);
+      const progressList = progressSnap.docs.map(doc => doc.data() as UserProgressType);
       const onsiteCompletionsList = onsiteCompletionsSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as OnsiteCompletion & { id: string }));
       const quizResultsList = quizResultsSnap.docs.map(doc => doc.data() as UserQuizResult);
+      const videosList = videosSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Video));
+
 
       setAllUsers(usersList);
       setAllCourses(coursesList);
       setAllCourseGroups(groupsList);
       setAllLadders(laddersList);
       setAllCampuses(campusesList);
+      setAllVideos(videosList);
+      setUserProgressDetails(progressList);
 
-      const progressMap = new Map<string, UserProgress>();
+      const progressMap = new Map<string, UserProgressType>();
       progressList.forEach(p => progressMap.set(`${p.userId}_${p.courseId}`, p));
 
       const passedQuizzesMap = new Map<string, Set<string>>(); // key: userId_courseId, value: Set<quizId>
@@ -148,7 +193,7 @@ export default function CourseReportsPage() {
         
         const requiredQuizzes = course?.quizIds || [];
         const passedQuizzes = passedQuizzesMap.get(`${enrollment.userId}_${enrollment.courseId}`) || new Set();
-        const allQuizzesCompleted = requiredQuizzes.every(qid => passedQuizzes.has(qid));
+        const allQuizzesCompleted = requiredQuizzes.length > 0 ? requiredQuizzes.every(qid => passedQuizzes.has(qid)) : true;
 
         const isCompleted = allVideosCompleted && allQuizzesCompleted;
 
@@ -312,15 +357,80 @@ export default function CourseReportsPage() {
     return { summary, grandTotal };
   }, [allLadders, allCourses, enrollmentReportData, allUsers]);
 
+ const sortedAndFilteredDetailedProgress = useMemo(() => {
+    let filtered = [...userProgressDetails];
+    
+    if (detailedSearchTerm) {
+        const lowercasedSearch = detailedSearchTerm.toLowerCase();
+        filtered = filtered.filter(item => {
+            const user = allUsers.find(u => u.id === item.userId);
+            const course = allCourses.find(c => c.id === item.courseId);
+            return user?.displayName?.toLowerCase().includes(lowercasedSearch) ||
+                   course?.title.toLowerCase().includes(lowercasedSearch);
+        });
+    }
+
+    // Since we don't have enrollments here directly, we can't filter by date effectively without another join
+    // This part is simplified. For full date filtering, we'd need to cross-reference with enrollments.
+
+    if (selectedDetailedCourse !== 'all') {
+      filtered = filtered.filter(item => item.courseId === selectedDetailedCourse);
+    }
+    
+    if (selectedDetailedCampus !== 'all') {
+        const campus = allCampuses.find(c => c.id === selectedDetailedCampus);
+        if (campus) {
+             const userIdsInCampus = new Set(allUsers.filter(u => u.campus === campus["Campus Name"]).map(u => u.id));
+             filtered = filtered.filter(item => userIdsInCampus.has(item.userId));
+        }
+    }
+
+    if (sortConfig !== null) {
+      filtered.sort((a, b) => {
+        const userA = allUsers.find(u => u.id === a.userId);
+        const userB = allUsers.find(u => u.id === b.userId);
+        const courseA = allCourses.find(c => c.id === a.courseId);
+        const courseB = allCourses.find(c => c.id === b.courseId);
+
+        let valA, valB;
+        switch (sortConfig.key) {
+          case 'user': valA = userA?.displayName; valB = userB?.displayName; break;
+          case 'course': valA = courseA?.title; valB = courseB?.title; break;
+          // Note: Start/Completion dates are not available in userProgressDetails, so sorting by them is removed.
+          default: valA = ''; valB = '';
+        }
+
+        if (valA === undefined || valA === null) valA = sortConfig.direction === 'asc' ? Infinity : -Infinity;
+        if (valB === undefined || valB === null) valB = sortConfig.direction === 'asc' ? Infinity : -Infinity;
+        
+        if (typeof valA === 'string' && typeof valB === 'string') {
+          return sortConfig.direction === 'asc' ? valA.localeCompare(valB) : valB.localeCompare(valA);
+        }
+        if (typeof valA === 'number' && typeof valB === 'number') {
+          return sortConfig.direction === 'asc' ? valA - valB : valB - valA;
+        }
+        return 0;
+      });
+    }
+
+    return filtered;
+  }, [userProgressDetails, detailedSearchTerm, selectedDetailedCourse, selectedDetailedCampus, allUsers, allCourses, allCampuses, sortConfig]);
 
   useEffect(() => {
     setCurrentPage(1);
-  }, [selectedCourse, selectedCampus, dateRange, searchTerm, rowsPerPage, selectedCompletionType, percentageFilter]);
+    setDetailedReportPage(1);
+  }, [selectedCourse, selectedCampus, dateRange, searchTerm, rowsPerPage, selectedCompletionType, percentageFilter, detailedSearchTerm, detailedReportDateRange, selectedDetailedCourse, selectedDetailedCampus]);
 
   const totalPages = Math.ceil(filteredEnrollmentData.length / rowsPerPage);
   const paginatedData = filteredEnrollmentData.slice((currentPage - 1) * rowsPerPage, currentPage * rowsPerPage);
 
-  const handleExportCSV = async () => {
+  const detailedReportTotalPages = Math.ceil(sortedAndFilteredDetailedProgress.length / detailedReportPageSize);
+  const currentDetailedReportData = sortedAndFilteredDetailedProgress.slice(
+    (detailedReportPage - 1) * detailedReportPageSize,
+    (detailedReportPage * detailedReportPageSize)
+  );
+
+  const handleExportEnrollmentCSV = async () => {
     if (filteredEnrollmentData.length === 0) {
       toast({ variant: 'destructive', title: 'No data to export' });
       return;
@@ -352,6 +462,41 @@ export default function CourseReportsPage() {
     document.body.removeChild(link);
   };
   
+  const handleExportDetailedCSV = async () => {
+    if (sortedAndFilteredDetailedProgress.length === 0) {
+        toast({ variant: 'destructive', title: 'No detailed data to export' });
+        return;
+    }
+    const dataToExport = sortedAndFilteredDetailedProgress.map(item => {
+      const user = allUsers.find(u => u.id === item.userId);
+      const course = allCourses.find(c => c.id === item.courseId);
+      const totalTimeSpent = (item.videoProgress || []).reduce((acc, vp) => acc + (vp.timeSpent || 0), 0);
+      return {
+          "User": user?.displayName || item.userId,
+          "Campus": user?.campus || 'N/A',
+          "Course": course?.title || item.courseId,
+          "Progress": `${item.totalProgress}%`,
+          "Time Spent": formatDuration(totalTimeSpent),
+      };
+    });
+    const csv = Papa.unparse(dataToExport);
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+    const link = document.createElement("a");
+    link.href = URL.createObjectURL(blob);
+    link.download = `detailed_progress_report.csv`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
+  const handleSort = (key: SortKey) => {
+    let direction: SortDirection = 'asc';
+    if (sortConfig && sortConfig.key === key && sortConfig.direction === 'asc') {
+      direction = 'desc';
+    }
+    setSortConfig({ key, direction });
+  };
+  
   if (!canViewReports) {
       return (
           <Alert variant="destructive">
@@ -362,9 +507,19 @@ export default function CourseReportsPage() {
       );
   }
 
+  if (!isClient) {
+    return (
+      <div className="space-y-8">
+        <Skeleton className="h-96 w-full" />
+        <Skeleton className="h-96 w-full" />
+        <Skeleton className="h-96 w-full" />
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-8">
-      <Card>
+       <Card>
         <CardHeader>
           <CardTitle>Ladder Completion Report</CardTitle>
           <CardDescription>A summary of unique users who have completed all required courses in each ladder.</CardDescription>
@@ -412,7 +567,7 @@ export default function CourseReportsPage() {
                 Found {filteredEnrollmentData.length} enrollments and {completionCount} completions matching your filters.
               </CardDescription>
             </div>
-            <Button onClick={handleExportCSV} variant="outline" disabled={filteredEnrollmentData.length === 0}>
+            <Button onClick={handleExportEnrollmentCSV} variant="outline" disabled={filteredEnrollmentData.length === 0}>
               <Download className="mr-2 h-4 w-4" /> Export CSV
             </Button>
           </div>
@@ -589,6 +744,80 @@ export default function CourseReportsPage() {
           </CardFooter>
         )}
       </Card>
+      
+      <Card>
+        <CardHeader>
+          <CardTitle>Detailed Report</CardTitle>
+          <CardDescription>User progress and time spent on courses.</CardDescription>
+        </CardHeader>
+        <CardContent>
+          {loading ? <Skeleton className="h-64 w-full" /> : (
+            <>
+              <div className="flex flex-col sm:flex-row items-center gap-4 mb-4 flex-wrap">
+                <div className="relative flex-grow w-full sm:w-auto">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                    <Input placeholder="Search..." value={detailedSearchTerm} onChange={e => setDetailedSearchTerm(e.target.value)} className="pl-10" />
+                </div>
+                <Select value={selectedDetailedCourse} onValueChange={setSelectedDetailedCourse}><SelectTrigger className="w-full sm:w-auto flex-grow"><SelectValue placeholder="Select Course or Learning Path" /></SelectTrigger><SelectContent><SelectItem value="all">All Courses</SelectItem>{allCourses.map((course) => (<SelectItem key={course.id} value={course.id}>{course.title}</SelectItem>))}</SelectContent></Select>
+                <Select value={selectedDetailedCampus} onValueChange={setSelectedDetailedCampus} disabled={!canViewAllCampuses}><SelectTrigger className="w-full sm:w-auto flex-grow"><SelectValue placeholder="Select Campus" /></SelectTrigger><SelectContent><SelectItem value="all">All Campuses</SelectItem>{allCampuses.map((campus) => (<SelectItem key={campus.id} value={campus.id}>{campus["Campus Name"]}</SelectItem>))}</SelectContent></Select>
+                <Popover><PopoverTrigger asChild><Button id="date" variant={"outline"} className={cn("w-full sm:w-auto justify-start text-left font-normal", !detailedReportDateRange && "text-muted-foreground")}><CalendarIcon className="mr-2 h-4 w-4" />{detailedReportDateRange?.from ? (detailedReportDateRange.to ? (<>{format(detailedReportDateRange.from, "LLL dd, y")} - {format(detailedReportDateRange.to, "LLL dd, y")}</>) : (format(detailedReportDateRange.from, "LLL dd, y"))) : (<span>Pick a date range</span>)}</Button></PopoverTrigger><PopoverContent className="w-auto p-0" align="start"><Calendar initialFocus mode="range" defaultMonth={detailedReportDateRange?.from} selected={detailedReportDateRange} onSelect={setDetailedReportDateRange} numberOfMonths={2} /></PopoverContent></Popover>
+                {detailedReportDateRange && <Button variant="ghost" size="icon" onClick={() => setDetailedReportDateRange(undefined)}><XIcon className="h-4 w-4" /></Button>}
+                <Button onClick={handleExportDetailedCSV} variant="outline" disabled={!sortedAndFilteredDetailedProgress || sortedAndFilteredDetailedProgress.length === 0} className="w-full sm:w-auto"><Download className="mr-2 h-4 w-4" />Export as CSV</Button>
+              </div>
+              <div className="overflow-x-auto">
+                <Table>
+                  <TableHeader><TableRow><TableHead><Button variant="ghost" onClick={() => handleSort('user')}>User<ArrowUpDown className="ml-2 h-4 w-4" /></Button></TableHead><TableHead><Button variant="ghost" onClick={() => handleSort('course')}>Course<ArrowUpDown className="ml-2 h-4 w-4" /></Button></TableHead><TableHead>Progress</TableHead><TableHead>Videos Watched</TableHead><TableHead>Time Spent</TableHead><TableHead className="text-right">Details</TableHead></TableRow></TableHeader>
+                  <TableBody>
+                      {currentDetailedReportData.map((progress) => {
+                        const user = allUsers.find(u => u.id === progress.userId);
+                        const course = allCourses.find(c => c.id === progress.courseId);
+                        const totalTimeSpent = (progress.videoProgress || []).reduce((acc, vp) => acc + (vp.timeSpent || 0), 0);
+                        if (!user || !course) return null;
+                        if (totalTimeSpent === 0 && !progress.videoProgress?.some(vp => vp.completed)) return null;
+                        
+                        const publishedVideoIdsInCourse = new Set((course?.videos || []));
+                        const totalVideos = publishedVideoIdsInCourse.size;
+                        const completedVideos = (progress.videoProgress || []).filter(vp => vp.completed && publishedVideoIdsInCourse.has(vp.videoId)).length;
+                        return (<TableRow key={`${progress.userId}-${progress.courseId}`}><TableCell>({user.campus || 'N/A'}) {user.displayName}</TableCell><TableCell>{course.title}</TableCell><TableCell>{progress.totalProgress}%</TableCell><TableCell>{`${completedVideos} / ${totalVideos}`}</TableCell><TableCell>{formatDuration(totalTimeSpent)}</TableCell><TableCell className="text-right"><Button variant="ghost" size="icon" onClick={() => setSelectedProgressDetail({ progress, user, course })}><Eye className="h-4 w-4" /></Button></TableCell></TableRow>);
+                      })}
+                  </TableBody>
+                </Table>
+              </div>
+              {(!sortedAndFilteredDetailedProgress || sortedAndFilteredDetailedProgress.length === 0) && <p className="text-center p-8 text-muted-foreground">No data available for the selected filters.</p>}
+            </>
+          )}
+        </CardContent>
+        {detailedReportTotalPages > 1 && (
+          <CardFooter className="flex justify-end items-center gap-4">
+            <div className="flex items-center gap-2 text-sm text-muted-foreground"><span>Rows per page</span><Select value={`${detailedReportPageSize}`} onValueChange={(value) => { setDetailedReportPageSize(Number(value)); setDetailedReportPage(1);}}><SelectTrigger className="w-[70px]"><SelectValue placeholder={`${detailedReportPageSize}`} /></SelectTrigger><SelectContent>{[10, 25, 50, 100].map(size => (<SelectItem key={size} value={`${size}`}>{size}</SelectItem>))}</SelectContent></Select></div>
+            <span className="text-sm text-muted-foreground">Page {detailedReportPage} of {detailedReportTotalPages}</span>
+            <div className="flex items-center gap-2"><Button variant="outline" size="sm" onClick={() => setDetailedReportPage(prev => Math.max(prev - 1, 1))} disabled={detailedReportPage === 1}><ChevronLeft className="h-4 w-4" />Previous</Button><Button variant="outline" size="sm" onClick={() => setDetailedReportPage(prev => Math.min(prev + 1, detailedReportTotalPages))} disabled={detailedReportPage === detailedReportTotalPages}>Next<ChevronRight className="h-4 w-4" /></Button></div>
+          </CardFooter>
+        )}
+      </Card>
+      
+       <Dialog open={!!selectedProgressDetail} onOpenChange={() => setSelectedProgressDetail(null)}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Progress Details</DialogTitle>
+            <DialogDescription>Detailed video progress for {selectedProgressDetail?.user.displayName} in {selectedProgressDetail?.course.title}.</DialogDescription>
+          </DialogHeader>
+          {selectedProgressDetail && (
+            <div className="max-h-[60vh] overflow-y-auto">
+              <Table>
+                <TableHeader><TableRow><TableHead>Video Title</TableHead><TableHead>Status</TableHead><TableHead className="text-right">Time Spent</TableHead></TableRow></TableHeader>
+                <TableBody>
+                  {selectedProgressDetail.course.videos?.map(videoId => {
+                    const video = allVideos.find(v => v.id === videoId);
+                    const videoProgress = selectedProgressDetail.progress.videoProgress.find(vp => vp.videoId === videoId);
+                    return (<TableRow key={videoId}><TableCell>{video?.title || 'Unknown Video'}</TableCell><TableCell>{videoProgress?.completed ? 'Completed' : 'In Progress'}</TableCell><TableCell className="text-right">{formatDuration(videoProgress?.timeSpent || 0)}</TableCell></TableRow>)
+                  })}
+                </TableBody>
+              </Table>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

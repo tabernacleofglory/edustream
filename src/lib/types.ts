@@ -6,7 +6,7 @@ export interface User {
   email?: string | null;
   displayName?: string | null;
   photoURL?: string | null;
-  role?: 'admin' | 'user' | 'developer' | 'moderator';
+  role?: 'admin' | 'user' | 'developer' | 'moderator' | 'team';
   fullName?: string;
   firstName?: string;
   lastName?: string;
@@ -126,6 +126,10 @@ export interface OnsiteCompletion {
     courseName: string;
     completedAt: any;
     markedBy: string;
+    creditedVideos?: string[];
+    creditedQuizzes?: string[];
+    creditedForm?: { formId: string, submissionId: string };
+    source?: 'manual_credit' | 'onsite';
 }
 
 
@@ -146,13 +150,15 @@ export interface Video {
   type?: 'video' | 'quiz' | 'youtube' | 'googledrive';
   questions?: QuizQuestion[];
   enableStillWatchingPrompt?: boolean;
+  uploaderId?: string;
 }
 
 export interface UserQuizResult {
+  id: string;
   userId: string;
   courseId: string;
   quizId: string;
-  answers: any; // Changed from number[] to any to support multiple answer types
+  answers: any; 
   score: number;
   passed: boolean;
   attemptedAt: any;
@@ -171,6 +177,8 @@ export interface UserProgress {
     videoProgress: VideoProgress[];
     totalProgress: number;
     lastWatchedVideoId?: string;
+    percent?: number;
+    updatedAt?: any;
 }
 
 export interface VideoProgress {
@@ -194,6 +202,8 @@ export interface Post {
     isPinned?: boolean;
     repostCount?: number;
     shareCount?: number;
+    parentId?: string;
+    parentAuthorName?: string;
 }
 
 
@@ -291,6 +301,7 @@ export interface CustomForm {
     submissionCount: number;
     createdAt: any;
     createdBy: string;
+    autoSignup?: boolean;
 }
 
 export interface FormFieldConfig {
@@ -301,6 +312,9 @@ export interface FormFieldConfig {
     type?: 'text' | 'email' | 'phone' | 'textarea' | 'select' | 'multiple-choice' | 'multiple-select' | 'password';
     options?: string[];
     dataSource?: 'manual' | 'campuses';
+    dataSourceOptions?: {
+        ladders?: string[];
+    };
 }
 
 export interface SiteSettings {

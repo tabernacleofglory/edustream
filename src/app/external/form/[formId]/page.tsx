@@ -1,16 +1,18 @@
 
+
 "use client";
 
 import { useParams } from "next/navigation";
 import { useEffect, useState } from "react";
 import { doc, getDoc } from "firebase/firestore";
-import { getFirebaseFirestore } from "@/lib/firebase";
+import { getFirebaseFirestore, getFirebaseFunctions } from "@/lib/firebase";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { FileWarning, Loader2 } from "lucide-react";
+import { FileWarning } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Card, CardHeader, CardContent } from "@/components/ui/card";
 import type { CustomForm } from "@/lib/types";
 import PublicBlankForm from "@/components/public-blank-form";
+import { httpsCallable } from 'firebase/functions';
 
 const toStr = (x: unknown, fb = "") => (x == null ? fb : typeof x === "string" ? x : String(x));
 
@@ -50,6 +52,7 @@ export default function PublicBlankFormPage() {
           fields: Array.isArray(data.fields) ? data.fields : [],
           type: data.type,
           public: !!data.public,
+          autoSignup: !!data.autoSignup,
         } as CustomForm;
         setFormConfig(cfg);
       } catch (e: any) {
@@ -60,6 +63,18 @@ export default function PublicBlankFormPage() {
     };
     run();
   }, [formId, db]);
+
+  const handleFormComplete = async () => {
+    if (formConfig?.autoSignup) {
+        try {
+            const functions = getFirebaseFunctions();
+            const processFormSubmission = httpsCallable(functions, 'processFormSubmission');
+            await processFormSubmission({ formId: formConfig.id });
+        } catch (error) {
+            console.error("Error calling processFormSubmission function:", error);
+        }
+    }
+  };
 
   if (loading) {
     return (
@@ -105,7 +120,7 @@ export default function PublicBlankFormPage() {
 
   return (
     <div className="flex items-center justify-center p-4">
-      <PublicBlankForm formConfig={formConfig} />
+      <PublicBlankForm formConfig={formConfig} onFormComplete={handleFormComplete} />
     </div>
   );
 }

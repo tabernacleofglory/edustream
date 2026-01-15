@@ -1,7 +1,7 @@
 
 "use client";
 
-import { useState, useEffect, useCallback, FormEvent, MouseEvent } from "react";
+import React, { useState, useEffect, useCallback, FormEvent, MouseEvent } from "react";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/use-auth";
 import { db, storage } from "@/lib/firebase";
@@ -13,7 +13,7 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Megaphone, Upload, Loader2, Edit, Trash, Eye, Image as ImageIcon, Link2, Plus, Video as VideoIcon } from "lucide-react";
+import { Megaphone, Upload, Loader2, Edit, Trash, Eye, Image as ImageIcon, Link2, Plus, Video as VideoIcon, Bold, Italic, List } from "lucide-react";
 import Image from 'next/image';
 import { Skeleton } from "@/components/ui/skeleton";
 import type { User, Video } from "@/lib/types";
@@ -22,6 +22,9 @@ import { Textarea } from "@/components/ui/textarea";
 import ImageLibrary from "@/components/image-library";
 import { Switch } from "@/components/ui/switch";
 import VideoLibrary from "@/components/video-library";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
+import { ScrollArea } from "@/components/ui/scroll-area";
 
 interface Announcement {
     id: string;
@@ -58,6 +61,33 @@ const AnnouncementForm = ({
     const [isSubmitting, setIsSubmitting] = useState(false);
     const { toast } = useToast();
     const { user } = useAuth();
+    const descriptionRef = React.useRef<HTMLTextAreaElement>(null);
+
+    const applyMarkdown = (syntax: 'bold' | 'italic' | 'list') => {
+        const textarea = descriptionRef.current;
+        if (!textarea) return;
+
+        const start = textarea.selectionStart;
+        const end = textarea.selectionEnd;
+        const selectedText = textarea.value.substring(start, end);
+        
+        let newText;
+        switch(syntax) {
+            case 'bold':
+                newText = `**${selectedText}**`;
+                break;
+            case 'italic':
+                newText = `*${selectedText}*`;
+                break;
+            case 'list':
+                newText = `\n- ${selectedText.replace(/\n/g, '\n- ')}`;
+                break;
+        }
+
+        const updatedValue = textarea.value.substring(0, start) + newText + textarea.value.substring(end);
+        setDescription(updatedValue);
+        textarea.focus();
+    };
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -108,39 +138,65 @@ const AnnouncementForm = ({
     }
 
     return (
-        <form onSubmit={handleSubmit} className="space-y-4">
-            <div className="space-y-2">
-                <Label>Banner Image</Label>
-                <div 
-                    className="aspect-video w-full relative bg-muted rounded-lg flex items-center justify-center cursor-pointer border-2 border-dashed hover:border-primary"
-                    onClick={() => setIsImageLibraryOpen(true)}
-                >
-                    {imageUrl ? (
-                        <Image src={imageUrl} alt="Announcement Banner" layout="fill" objectFit="cover" className="rounded-lg" />
-                    ) : (
-                        <div className="text-center text-muted-foreground">
-                            <ImageIcon className="mx-auto h-8 w-8" />
-                            <p>Select an Image</p>
+        <form onSubmit={handleSubmit} className="h-full flex flex-col">
+            <ScrollArea className="flex-grow pr-6 -mr-6">
+                <div className="space-y-4">
+                    <div className="space-y-2">
+                        <Label>Banner Image</Label>
+                        <div 
+                            className="aspect-video w-full relative bg-muted rounded-lg flex items-center justify-center cursor-pointer border-2 border-dashed hover:border-primary"
+                            onClick={() => setIsImageLibraryOpen(true)}
+                        >
+                            {imageUrl ? (
+                                <Image src={imageUrl} alt="Announcement Banner" fill style={{objectFit:"cover"}} className="rounded-lg" />
+                            ) : (
+                                <div className="text-center text-muted-foreground">
+                                    <ImageIcon className="mx-auto h-8 w-8" />
+                                    <p>Select an Image</p>
+                                </div>
+                            )}
                         </div>
-                    )}
+                        <Dialog open={isImageLibraryOpen} onOpenChange={setIsImageLibraryOpen}>
+                            <ImageLibrary onSelectImage={handleImageSelect} selectedImageUrl={imageUrl} />
+                        </Dialog>
+                    </div>
+                    <div className="space-y-2">
+                        <Label htmlFor="description">Description</Label>
+                        <Card>
+                            <div className="p-2 border-b flex gap-1">
+                                <Button type="button" variant="ghost" size="icon" onClick={() => applyMarkdown('bold')}><Bold className="h-4 w-4" /></Button>
+                                <Button type="button" variant="ghost" size="icon" onClick={() => applyMarkdown('italic')}><Italic className="h-4 w-4" /></Button>
+                                <Button type="button" variant="ghost" size="icon" onClick={() => applyMarkdown('list')}><List className="h-4 w-4" /></Button>
+                            </div>
+                            <Textarea 
+                                id="description" 
+                                ref={descriptionRef}
+                                value={description} 
+                                onChange={e => setDescription(e.target.value)} 
+                                required 
+                                disabled={isSubmitting} 
+                                placeholder="e.g., New course available now! Enroll today."
+                                className="border-0 focus-visible:ring-0 shadow-none min-h-[100px]"
+                            />
+                            <div className="p-4 border-t bg-muted/50">
+                                <Label className="text-xs">Preview</Label>
+                                <div className="prose dark:prose-invert prose-sm max-w-full">
+                                    <ReactMarkdown remarkPlugins={[remarkGfm]}>{description}</ReactMarkdown>
+                                </div>
+                            </div>
+                        </Card>
+                    </div>
+                    <div className="space-y-2">
+                        <Label htmlFor="buttonText">Button Text</Label>
+                        <Input id="buttonText" value={buttonText} onChange={e => setButtonText(e.target.value)} required disabled={isSubmitting} placeholder="e.g., Learn More" />
+                    </div>
+                    <div className="space-y-2">
+                        <Label htmlFor="buttonUrl">Button URL</Label>
+                        <Input id="buttonUrl" value={buttonUrl} onChange={e => setButtonUrl(e.target.value)} required disabled={isSubmitting} placeholder="/courses or https://..." />
+                    </div>
                 </div>
-                <Dialog open={isImageLibraryOpen} onOpenChange={setIsImageLibraryOpen}>
-                     <ImageLibrary onSelectImage={handleImageSelect} selectedImageUrl={imageUrl} />
-                </Dialog>
-            </div>
-            <div className="space-y-2">
-                <Label htmlFor="description">Description</Label>
-                <Textarea id="description" value={description} onChange={e => setDescription(e.target.value)} required disabled={isSubmitting} placeholder="e.g., New course available now! Enroll today." />
-            </div>
-             <div className="space-y-2">
-                <Label htmlFor="buttonText">Button Text</Label>
-                <Input id="buttonText" value={buttonText} onChange={e => setButtonText(e.target.value)} required disabled={isSubmitting} placeholder="e.g., Learn More" />
-            </div>
-             <div className="space-y-2">
-                <Label htmlFor="buttonUrl">Button URL</Label>
-                <Input id="buttonUrl" value={buttonUrl} onChange={e => setButtonUrl(e.target.value)} required disabled={isSubmitting} placeholder="/courses or https://..." />
-            </div>
-            <DialogFooter>
+            </ScrollArea>
+            <DialogFooter className="pt-6 border-t mt-6 flex-shrink-0">
                 <Button type="button" variant="secondary" onClick={closeDialog} disabled={isSubmitting}>Cancel</Button>
                 <Button type="submit" disabled={isSubmitting}>
                     {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
@@ -374,8 +430,10 @@ export default function AnnouncementsPage() {
                         <div key={item.id} className="flex flex-col sm:flex-row items-start sm:items-center gap-4 rounded-lg border p-4">
                             <Image src={item.imageUrl} alt={item.description} width={128} height={72} className="aspect-video object-cover rounded-md" />
                             <div className="flex-1">
-                                <p className="font-medium">{item.description}</p>
-                                <a href={item.buttonUrl} target="_blank" rel="noopener noreferrer" className="text-sm text-muted-foreground hover:underline flex items-center gap-1">
+                                <div className="prose dark:prose-invert prose-sm max-w-full">
+                                  <ReactMarkdown remarkPlugins={[remarkGfm]}>{item.description}</ReactMarkdown>
+                                </div>
+                                <a href={item.buttonUrl} target="_blank" rel="noopener noreferrer" className="text-sm text-muted-foreground hover:underline flex items-center gap-1 mt-2">
                                     <Link2 className="h-3 w-3" />
                                     {item.buttonText} ({item.buttonUrl})
                                 </a>
@@ -414,7 +472,7 @@ export default function AnnouncementsPage() {
       </Card>
 
       <Dialog open={isFormOpen} onOpenChange={setIsFormOpen}>
-        <DialogContent>
+        <DialogContent className="h-[90vh] flex flex-col">
           <DialogHeader>
             <DialogTitle>{editingAnnouncement ? 'Edit Announcement' : 'Create New Announcement'}</DialogTitle>
           </DialogHeader>

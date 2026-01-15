@@ -1,4 +1,5 @@
 
+
 "use client";
 
 import { useState, useEffect, useRef, useMemo, useCallback } from "react";
@@ -101,6 +102,7 @@ interface QuizPerformanceSummary {
     quizId: string;
     quizTitle: string;
     totalAttempts: number;
+    uniqueAttempts: number;
     passCount: number;
     failCount: number;
 }
@@ -336,11 +338,13 @@ export default function AnalyticsDashboard() {
     const quizPerformance = allQuizzes.map(quiz => {
         const resultsForQuiz = quizResultsList.filter(r => r.quizId === quiz.id);
         const totalAttempts = resultsForQuiz.length;
+        const uniqueAttempts = new Set(resultsForQuiz.map(r => r.userId)).size;
         const passCount = resultsForQuiz.filter(r => r.passed).length;
         return {
             quizId: quiz.id,
             quizTitle: quiz.title,
             totalAttempts: totalAttempts,
+            uniqueAttempts: uniqueAttempts,
             passCount: passCount,
             failCount: totalAttempts - passCount,
         };
@@ -656,31 +660,34 @@ export default function AnalyticsDashboard() {
         <Card className="lg:col-span-1">
           <CardHeader>
             <CardTitle>Course Engagement</CardTitle>
-            <CardDescription>Total time spent per course in minutes.</CardDescription>
+            <CardDescription>Enrollment summary for each Learning Path.</CardDescription>
           </CardHeader>
           <CardContent>
-            {userProgressData === null ? (
-                <ClickToLoad onFetch={fetchProgressData} title="Engagement Report" />
-            ) : (
-              <>
-                <div className="flex flex-col sm:flex-row items-center gap-4">
-                  <Select value={selectedUser} onValueChange={setSelectedUser}>
-                    <SelectTrigger className="w-full sm:w-[180px]"><SelectValue placeholder="Select User" /></SelectTrigger>
-                    <SelectContent><SelectItem value="all">All Users</SelectItem>{allUsers.map((user) => (<SelectItem key={user.id} value={user.id}>{user.displayName}</SelectItem>))}</SelectContent>
-                  </Select>
-                  <Select value={selectedCampus} onValueChange={setSelectedCampus} disabled={!canViewAllCampuses}>
-                    <SelectTrigger className="w-full sm:w-[180px]"><SelectValue placeholder="Select Campus" /></SelectTrigger>
-                    <SelectContent><SelectItem value="all">All Campuses</SelectItem>{campusesWithProgress.map((campus) => (<SelectItem key={campus.id} value={campus.id}>{campus["Campus Name"]}</SelectItem>))}</SelectContent>
-                  </Select>
+            {courseEngagementData === null ? (
+                <ClickToLoad onFetch={fetchCourseEngagement} title="Engagement Report" />
+            ) : loading ? <Skeleton className="h-[300px] w-full mt-4" /> : (
+                <div className="border rounded-lg overflow-hidden">
+                    <Table>
+                        <TableHeader>
+                            <TableRow>
+                                <TableHead>Learning Path</TableHead>
+                                <TableHead className="text-right">Enrollments</TableHead>
+                            </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                            {learningPathSummary.summary.map(item => (
+                                <TableRow key={item.title}>
+                                    <TableCell className="font-medium">{item.title}</TableCell>
+                                    <TableCell className="text-right">{item.enrollments}</TableCell>
+                                </TableRow>
+                            ))}
+                              <TableRow className="font-bold bg-muted/50">
+                                <TableCell>Grand Total</TableCell>
+                                <TableCell className="text-right">{learningPathSummary.grandTotal.enrollments}</TableCell>
+                            </TableRow>
+                        </TableBody>
+                    </Table>
                 </div>
-                {loading ? <Skeleton className="h-[300px] w-full mt-4" /> : (
-                  <ChartContainer config={engagementChartConfig} className="min-h-[200px] w-full mt-4">
-                    <BarChart data={engagementChartData} height={300}>
-                      <CartesianGrid vertical={false} /><XAxis dataKey="course" tickLine={false} tickMargin={10} axisLine={false} /><YAxis /><Tooltip content={<ChartTooltipContent />} /><Bar dataKey="timeSpent" fill="var(--color-timeSpent)" radius={4} />
-                    </BarChart>
-                  </ChartContainer>
-                )}
-              </>
             )}
           </CardContent>
         </Card>
@@ -792,11 +799,11 @@ export default function AnalyticsDashboard() {
           {quizPerformanceSummary === null ? <ClickToLoad onFetch={fetchQuizPerformance} title="Quiz Performance" /> : loading ? <Skeleton className="h-48 w-full" /> : (
             <div className="border rounded-lg overflow-hidden">
                 <Table>
-                    <TableHeader><TableRow><TableHead>Quiz Title</TableHead><TableHead className="text-center">Total Attempts</TableHead><TableHead className="text-center">Passes</TableHead><TableHead className="text-center">Fails</TableHead></TableRow></TableHeader>
+                    <TableHeader><TableRow><TableHead>Quiz Title</TableHead><TableHead className="text-center">Total Attempts</TableHead><TableHead className="text-center">Unique User Attempts</TableHead><TableHead className="text-center">Passes</TableHead><TableHead className="text-center">Fails</TableHead></TableRow></TableHeader>
                     <TableBody>
                         {currentQuizPerformanceData.length > 0 ? (
-                            currentQuizPerformanceData.map(item => (<TableRow key={item.quizId}><TableCell className="font-medium">{item.quizTitle}</TableCell><TableCell className="text-center">{item.totalAttempts}</TableCell><TableCell className="text-center text-green-600">{item.passCount}</TableCell><TableCell className="text-center text-red-600">{item.failCount}</TableCell></TableRow>))
-                        ) : <TableRow><TableCell colSpan={4} className="text-center text-muted-foreground p-8">No quiz attempts recorded yet.</TableCell></TableRow>}
+                            currentQuizPerformanceData.map(item => (<TableRow key={item.quizId}><TableCell className="font-medium">{item.quizTitle}</TableCell><TableCell className="text-center">{item.totalAttempts}</TableCell><TableCell className="text-center">{item.uniqueAttempts}</TableCell><TableCell className="text-center text-green-600">{item.passCount}</TableCell><TableCell className="text-center text-red-600">{item.failCount}</TableCell></TableRow>))
+                        ) : <TableRow><TableCell colSpan={5} className="text-center text-muted-foreground p-8">No quiz attempts recorded yet.</TableCell></TableRow>}
                     </TableBody>
                 </Table>
             </div>
@@ -808,55 +815,6 @@ export default function AnalyticsDashboard() {
                 <span className="text-sm text-muted-foreground">Page {quizPerformancePage} of {quizPerformanceTotalPages}</span>
                 <div className="flex items-center gap-2"><Button variant="outline" size="sm" onClick={() => setQuizPerformancePage(prev => Math.max(prev - 1, 1))} disabled={quizPerformancePage === 1}><ChevronLeft className="h-4 w-4" />Previous</Button><Button variant="outline" size="sm" onClick={() => setQuizPerformancePage(prev => Math.min(prev + 1, quizPerformanceTotalPages))} disabled={quizPerformancePage === quizPerformanceTotalPages}>Next<ChevronRight className="h-4 w-4" /></Button></div>
             </CardFooter>
-        )}
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <CardTitle>Detailed Report</CardTitle>
-          <CardDescription>User progress and time spent on courses.</CardDescription>
-        </CardHeader>
-        <CardContent>
-          {userProgressData === null ? <ClickToLoad onFetch={fetchProgressData} title="Detailed Report" /> : loading ? <Skeleton className="h-64 w-full" /> : (
-            <>
-              <div className="flex flex-col sm:flex-row items-center gap-4 mb-4 flex-wrap">
-                <Select value={selectedUser} onValueChange={setSelectedUser}><SelectTrigger className="w-full sm:w-auto flex-grow"><SelectValue placeholder="Select User" /></SelectTrigger><SelectContent><SelectItem value="all">All Users</SelectItem>{allUsers.map((user) => (<SelectItem key={user.id} value={user.id}>{user.displayName}</SelectItem>))}</SelectContent></Select>
-                <Select value={selectedCourse} onValueChange={setSelectedCourse}><SelectTrigger className="w-full sm:w-auto flex-grow"><SelectValue placeholder="Select Course or Learning Path" /></SelectTrigger><SelectContent><SelectGroup><SelectLabel>Learning Paths</SelectLabel>{allCourseGroups.map((group) => (<SelectItem key={group.id} value={`group_${group.id}`}>{group.title}</SelectItem>))}</SelectGroup><SelectGroup><SelectLabel>Courses</SelectLabel>{allCourses.map((course) => (<SelectItem key={course.id} value={course.id}>{course.title}</SelectItem>))}</SelectGroup></SelectContent></Select>
-                <Select value={selectedCampus} onValueChange={setSelectedCampus} disabled={!canViewAllCampuses}><SelectTrigger className="w-full sm:w-auto flex-grow"><SelectValue placeholder="Select Campus" /></SelectTrigger><SelectContent><SelectItem value="all">All Campuses</SelectItem>{campusesWithProgress.map((campus) => (<SelectItem key={campus.id} value={campus.id}>{campus["Campus Name"]}</SelectItem>))}</SelectContent></Select>
-                <Popover><PopoverTrigger asChild><Button id="date" variant={"outline"} className={cn("w-full sm:w-auto justify-start text-left font-normal", !dateRange && "text-muted-foreground")}><CalendarIcon className="mr-2 h-4 w-4" />{dateRange?.from ? (dateRange.to ? (<>{format(dateRange.from, "LLL dd, y")} - {format(dateRange.to, "LLL dd, y")}</>) : (format(dateRange.from, "LLL dd, y"))) : (<span>Pick a date range</span>)}</Button></PopoverTrigger><PopoverContent className="w-auto p-0" align="start"><Calendar initialFocus mode="range" defaultMonth={dateRange?.from} selected={dateRange} onSelect={setDateRange} numberOfMonths={2} /></PopoverContent></Popover>
-                {dateRange && <Button variant="ghost" size="icon" onClick={() => setDateRange(undefined)}><XIcon className="h-4 w-4" /></Button>}
-                <Button onClick={handleExportCSV} variant="outline" disabled={!sortedAndFilteredProgress || sortedAndFilteredProgress.length === 0} className="w-full sm:w-auto"><Download className="mr-2 h-4 w-4" />Export as CSV</Button>
-              </div>
-              <div className="overflow-x-auto">
-                <Table>
-                  <TableHeader><TableRow><TableHead><Button variant="ghost" onClick={() => handleSort('user')}>User<ArrowUpDown className="ml-2 h-4 w-4" /></Button></TableHead><TableHead><Button variant="ghost" onClick={() => handleSort('course')}>Course<ArrowUpDown className="ml-2 h-4 w-4" /></Button></TableHead><TableHead>Progress</TableHead><TableHead>Videos Watched</TableHead><TableHead><Button variant="ghost" onClick={() => handleSort('startDate')}>Start Date<ArrowUpDown className="ml-2 h-4 w-4" /></Button></TableHead><TableHead><Button variant="ghost" onClick={() => handleSort('completionDate')}>Completion Date<ArrowUpDown className="ml-2 h-4 w-4" /></Button></TableHead><TableHead>Time Spent</TableHead><TableHead className="text-right">Details</TableHead></TableRow></TableHeader>
-                  <TableBody>
-                      {currentDetailedReportData.map((progress) => {
-                        const user = allUsers.find(u => u.id === progress.userId);
-                        const course = allCourses.find(c => c.id === progress.courseId);
-                        const totalTimeSpent = (progress.videoProgress || []).reduce((acc, vp) => acc + vp.timeSpent, 0);
-                        if (!user || !course) return null;
-                        if (totalTimeSpent === 0 && !progress.videoProgress?.some(vp => vp.completed)) return null;
-                        const startDate = progress.enrollment?.enrolledAt?.toDate ? format(progress.enrollment.enrolledAt.toDate(), 'yyyy-MM-dd') : 'N/A';
-                        const completionDate = progress.enrollment?.completedAt?.toDate ? format(progress.enrollment.completedAt.toDate(), 'yyyy-MM-dd') : 'N/A';
-                        const publishedVideoIdsInCourse = new Set((course?.videos || []).filter(vid => allVideos.some(v => v.id === vid && v.status === 'published')));
-                        const totalVideos = publishedVideoIdsInCourse.size;
-                        const completedVideos = (progress.videoProgress || []).filter(vp => vp.completed && publishedVideoIdsInCourse.has(vp.videoId)).length;
-                        return (<TableRow key={`${progress.userId}-${progress.courseId}`}><TableCell>({user.campus || 'N/A'}) {user.displayName}</TableCell><TableCell>{course.title}</TableCell><TableCell>{progress.totalProgress}%</TableCell><TableCell>{`${completedVideos} / ${totalVideos}`}</TableCell><TableCell>{startDate}</TableCell><TableCell>{completionDate}</TableCell><TableCell>{formatDuration(totalTimeSpent)}</TableCell><TableCell className="text-right"><Button variant="ghost" size="icon" onClick={() => setSelectedProgressDetail({ progress, user, course })}><Eye className="h-4 w-4" /></Button></TableCell></TableRow>);
-                      })}
-                  </TableBody>
-                </Table>
-              </div>
-              {(!sortedAndFilteredProgress || sortedAndFilteredProgress.length === 0) && <p className="text-center p-8 text-muted-foreground">No data available for the selected filters.</p>}
-            </>
-          )}
-        </CardContent>
-        {userProgressData && detailedReportTotalPages > 1 && (
-          <CardFooter className="flex justify-end items-center gap-4">
-            <div className="flex items-center gap-2 text-sm text-muted-foreground"><span>Rows per page</span><Select value={`${detailedReportPageSize}`} onValueChange={(value) => { setDetailedReportPageSize(Number(value)); setDetailedReportPage(1);}}><SelectTrigger className="w-[70px]"><SelectValue placeholder={`${detailedReportPageSize}`} /></SelectTrigger><SelectContent>{[10, 25, 50, 100].map(size => (<SelectItem key={size} value={`${size}`}>{size}</SelectItem>))}</SelectContent></Select></div>
-            <span className="text-sm text-muted-foreground">Page {detailedReportPage} of {detailedReportTotalPages}</span>
-            <div className="flex items-center gap-2"><Button variant="outline" size="sm" onClick={() => setDetailedReportPage(prev => Math.max(prev - 1, 1))} disabled={detailedReportPage === 1}><ChevronLeft className="h-4 w-4" />Previous</Button><Button variant="outline" size="sm" onClick={() => setDetailedReportPage(prev => Math.min(prev + 1, detailedReportTotalPages))} disabled={detailedReportPage === detailedReportTotalPages}>Next<ChevronRight className="h-4 w-4" /></Button></div>
-          </CardFooter>
         )}
       </Card>
 

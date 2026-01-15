@@ -10,6 +10,8 @@ import Image from 'next/image';
 import Link from 'next/link';
 import { Skeleton } from './ui/skeleton';
 import { ArrowRight } from 'lucide-react';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 
 interface Announcement {
     id: string;
@@ -83,7 +85,11 @@ export default function AnnouncementCard() {
                     />
                 </div>
                 <div className="p-6 flex flex-col justify-center">
-                    <p className="text-lg mb-4">{announcement.description}</p>
+                    <div className="prose dark:prose-invert prose-lg mb-4">
+                      <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                        {announcement.description}
+                      </ReactMarkdown>
+                    </div>
                     <ConditionalLink href={announcement.buttonUrl}>
                         <Button>
                             {announcement.buttonText}

@@ -185,8 +185,9 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     const authPages = ['/login', '/signup'];
     const isAuthPage = authPages.some(path => pathname.startsWith(path));
     const isHomePage = pathname === '/';
+    const isExternalPage = pathname.startsWith('/external');
     const isSettingsPage = pathname === '/settings';
-    const isAppPage = !isAuthPage && !isHomePage;
+    const isAppPage = !isAuthPage && !isHomePage && !isExternalPage;
 
     if (user) {
       // If profile is incomplete, force them to the settings page, unless they are already there.

@@ -323,7 +323,14 @@ export default function PublicBlankForm({ formConfig, courseId, existingSubmissi
                  q = query(collection(db, collectionName), orderBy(orderByField));
             }
             const snap = await getDocs(q);
-            options[f.fieldId] = snap.docs.map((d) => ({ value: d.data()[fieldName], label: d.data()[fieldName] }));
+            let data = snap.docs.map((d) => ({ value: d.data()[fieldName], label: d.data()[fieldName], id: d.id }));
+            
+            // If dataSource is 'ladders' and specific ladders are selected in the form builder
+            if (ds === 'ladders' && f.dataSourceOptions?.ladders) {
+                data = data.filter(item => f.dataSourceOptions.ladders.includes(item.id));
+            }
+            
+            options[f.fieldId] = data;
         } else if (ds === 'genders') {
             options[f.fieldId] = [{ value: "Male", label: "Male" }, { value: "Female", label: "Female" }];
         } else if (ds === 'ageRanges') {

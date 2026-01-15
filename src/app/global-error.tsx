@@ -2,6 +2,9 @@
 'use client';
 
 import { useEffect } from 'react';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
+import { AlertTriangle } from 'lucide-react';
 
 export default function GlobalError({
   error,
@@ -10,44 +13,64 @@ export default function GlobalError({
   error: Error & { digest?: string };
   reset: () => void;
 }) {
+  const isChunkLoadError = error.name === 'ChunkLoadError';
+
   useEffect(() => {
-    // This is a specific Next.js error that can happen when a new version of the
-    // site is deployed and the user's browser has cached an old HTML file
-    // that tries to load JS chunks that no longer exist.
-    // A hard reload is the best way to solve this.
-    if (error.name === 'ChunkLoadError') {
-      window.location.reload();
+    // For some specific errors, a hard reload is the best solution.
+    if (isChunkLoadError) {
+        // You can optionally log this error to your monitoring service
+        console.error("Caught ChunkLoadError, prompting user for reload.");
     }
-  }, [error]);
+  }, [isChunkLoadError]);
+
+  if (isChunkLoadError) {
+    return (
+        <html>
+            <body>
+                 <div className="flex flex-col items-center justify-center min-h-screen text-center px-4 bg-background">
+                    <Card className="w-full max-w-md">
+                        <CardHeader>
+                            <CardTitle className="flex items-center justify-center gap-2">
+                                <AlertTriangle className="h-6 w-6 text-amber-500" />
+                                Application Update
+                            </CardTitle>
+                            <CardDescription>A new version of the application is available.</CardDescription>
+                        </CardHeader>
+                        <CardContent>
+                            <p>Please reload the page to get the latest updates and continue.</p>
+                        </CardContent>
+                        <CardFooter>
+                            <Button className="w-full" onClick={() => window.location.reload()}>
+                                Reload Page
+                            </Button>
+                        </CardFooter>
+                    </Card>
+                </div>
+            </body>
+        </html>
+    );
+  }
 
   return (
     <html>
       <body>
-        <div style={{
-          display: 'flex',
-          flexDirection: 'column',
-          alignItems: 'center',
-          justifyContent: 'center',
-          minHeight: '100vh',
-          fontFamily: 'sans-serif',
-          textAlign: 'center',
-          padding: '1rem',
-        }}>
-          <h2>Something went wrong!</h2>
-          <p style={{ marginBottom: '1rem', color: '#666' }}>
-            An unexpected error occurred. We are attempting to fix it.
-          </p>
-          <button
-            onClick={() => reset()}
-            style={{
-              padding: '0.5rem 1rem',
-              border: '1px solid #ccc',
-              borderRadius: '0.25rem',
-              cursor: 'pointer',
-            }}
-          >
-            Try again
-          </button>
+        <div className="flex flex-col items-center justify-center min-h-screen text-center px-4 bg-background">
+            <Card className="w-full max-w-md">
+                <CardHeader>
+                    <CardTitle className="flex items-center justify-center gap-2">
+                        <AlertTriangle className="h-6 w-6 text-destructive" />
+                       Something Went Wrong
+                    </CardTitle>
+                </CardHeader>
+                <CardContent>
+                    <p>An unexpected error occurred. Please try again.</p>
+                </CardContent>
+                <CardFooter>
+                    <Button className="w-full" onClick={() => reset()}>
+                        Try Again
+                    </Button>
+                </CardFooter>
+            </Card>
         </div>
       </body>
     </html>

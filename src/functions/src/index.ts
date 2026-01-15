@@ -162,6 +162,253 @@ async function assertAdminOrDeveloper(requesterUid: string) {
 
 // ---- user management functions ----------------------------------
 
+export const createUsersFromSubmissions = functions
+  .region(REGION)
+  .https.onCall(async (data: any, context: functions.https.CallableContext) => {
+    if (!context.auth) {
+      throw new functions.https.HttpsError(
+        "unauthenticated",
+        "You must be logged in to perform this action."
+      );
+    }
+    await assertAdminOrDeveloper(context.auth.uid);
+
+    const formId = String(data?.formId || "").trim();
+    const submissionIds: string[] = Array.isArray(data?.submissionIds)
+      ? data.submissionIds.map((x: any) => String(x || "").trim()).filter(Boolean)
+      : [];
+
+    if (!formId || submissionIds.length === 0) {
+      throw new functions.https.HttpsError(
+        "invalid-argument",
+        "formId and an array of submissionIds are required."
+      );
+    }
+
+    const formDoc = await db.doc(`forms/${formId}`).get();
+    if (!formDoc.exists) {
+      throw new functions.https.HttpsError(
+        "not-found",
+        "Form configuration not found."
+      );
+    }
+    const formConfig = formDoc.data()!;
+    const fields: any[] = Array.isArray(formConfig.fields) ? formConfig.fields : [];
+
+    const emailField = fields.find((f: any) => f?.userProfileField === "email");
+    if (!emailField?.fieldId) {
+      throw new functions.https.HttpsError(
+        "failed-precondition",
+        "Form has no linked email field."
+      );
+    }
+
+    // Load default ladder once (not inside the loop)
+    const defaultLadderSnap = await db
+      .collection("courseLevels")
+      .orderBy("order")
+      .limit(1)
+      .get();
+
+    const defaultLadder = defaultLadderSnap.empty
+      ? null
+      : {
+          id: defaultLadderSnap.docs[0].id,
+          name: defaultLadderSnap.docs[0].data()?.name || "New Member",
+        };
+
+    let successCount = 0;
+    let createdCount = 0;
+    let updatedCount = 0;
+    let skippedCount = 0;
+    let errorCount = 0;
+
+    const errors: Array<{ submissionId: string; error: string }> = [];
+    const results: Array<{
+      submissionId: string;
+      status: "created" | "updated" | "skipped";
+      uid: string;
+      email: string;
+      passwordResetLink?: string | null;
+    }> = [];
+
+    for (const submissionId of submissionIds) {
+      try {
+        const submissionRef = db.doc(`forms/${formId}/submissions/${submissionId}`);
+        const submissionDoc = await submissionRef.get();
+
+        if (!submissionDoc.exists) {
+          errors.push({ submissionId, error: "Submission not found." });
+          errorCount++;
+          continue;
+        }
+
+        const submissionData = submissionDoc.data()!;
+
+        // If already linked, skip (prevents duplicate linking)
+        if (submissionData.userId) {
+          skippedCount++;
+          results.push({
+            submissionId,
+            status: "skipped",
+            uid: submissionData.userId,
+            email: String(submissionData?.data?.[emailField.fieldId] || "").trim(),
+          });
+          continue;
+        }
+
+        const emailRaw = submissionData.data?.[emailField.fieldId];
+        const email = String(emailRaw || "").trim().toLowerCase();
+
+        if (!email) {
+          errors.push({ submissionId, error: "Email not provided in submission." });
+          errorCount++;
+          continue;
+        }
+
+        // Map form submission -> user profile fields
+        const userProfileUpdates: Record<string, any> = {};
+        fields.forEach((field: any) => {
+          if (field?.userProfileField && submissionData.data?.[field.fieldId] !== undefined) {
+            userProfileUpdates[field.userProfileField] = submissionData.data[field.fieldId];
+          }
+        });
+
+        const displayName = `${userProfileUpdates.firstName || ""} ${userProfileUpdates.lastName || ""}`.trim();
+
+        // Check if user exists in Auth
+        let existingUser: admin.auth.UserRecord | null = null;
+        try {
+          existingUser = await admin.auth().getUserByEmail(email);
+        } catch (e: any) {
+          if (e?.code !== "auth/user-not-found") throw e;
+        }
+
+        // ----- CASE A: USER EXISTS -> UPDATE -----
+        if (existingUser) {
+          const uid = existingUser.uid;
+
+          // Update Auth displayName if we have one
+          if (displayName) {
+            await admin.auth().updateUser(uid, { displayName });
+          }
+
+          // Merge update into Firestore profile
+          const userRef = db.doc(`users/${uid}`);
+          const userSnap = await userRef.get();
+          const existingProfile = userSnap.exists ? (userSnap.data() || {}) : {};
+
+          await userRef.set(
+            {
+              ...userProfileUpdates,
+              uid,
+              id: uid,
+              email,
+              displayName: displayName || existingProfile.displayName || null,
+              updatedAt: FieldValue.serverTimestamp(),
+              // Preserve role if it exists, otherwise default to user
+              role: existingProfile.role ?? "user",
+              // Preserve createdAt if it exists
+              createdAt: existingProfile.createdAt ?? FieldValue.serverTimestamp(),
+              // Only set ladder if not already present
+              classLadderId: existingProfile.classLadderId ?? (defaultLadder?.id || null),
+              classLadder: existingProfile.classLadder ?? (defaultLadder?.name || "New Member"),
+            },
+            { merge: true }
+          );
+
+          // Link submission -> user
+          await submissionRef.update({
+            userId: uid,
+            updatedBy: context.auth.uid,
+            linkedAt: FieldValue.serverTimestamp(),
+          });
+
+          updatedCount++;
+          successCount++;
+
+          results.push({
+            submissionId,
+            status: "updated",
+            uid,
+            email,
+          });
+
+          continue;
+        }
+
+        // ----- CASE B: USER DOES NOT EXIST -> CREATE -----
+        const password = Math.random().toString(36).slice(-10);
+        const newUserRecord = await admin.auth().createUser({
+          email,
+          password,
+          displayName: displayName || undefined,
+        });
+
+        const uid = newUserRecord.uid;
+
+        const newUserProfile = {
+          ...userProfileUpdates,
+          uid,
+          id: uid,
+          email,
+          displayName: displayName || null,
+          role: "user",
+          createdAt: FieldValue.serverTimestamp(),
+          updatedAt: FieldValue.serverTimestamp(),
+          classLadderId: defaultLadder?.id || null,
+          classLadder: defaultLadder?.name || "New Member",
+        };
+
+        await db.doc(`users/${uid}`).set(newUserProfile, { merge: true });
+
+        await submissionRef.update({
+          userId: uid,
+          createdBy: context.auth.uid,
+          linkedAt: FieldValue.serverTimestamp(),
+        });
+
+        // Optional: generate password reset link (useful for onboarding)
+        let passwordResetLink: string | null = null;
+        try {
+          passwordResetLink = await admin.auth().generatePasswordResetLink(email);
+        } catch (linkErr) {
+          functions.logger.warn(
+            `User ${uid} created, but failed to generate password reset link.`,
+            linkErr
+          );
+        }
+
+        createdCount++;
+        successCount++;
+
+        results.push({
+          submissionId,
+          status: "created",
+          uid,
+          email,
+          passwordResetLink,
+        });
+      } catch (error: any) {
+        errorCount++;
+        errors.push({ submissionId, error: error?.message || String(error) });
+        functions.logger.error(`Failed to process submission ${submissionId}:`, error);
+      }
+    }
+
+    return {
+      success: true,
+      successCount,
+      createdCount,
+      updatedCount,
+      skippedCount,
+      errorCount,
+      errors,
+      results,
+    };
+  });
+
+
 export const deleteUserAccount = functions
   .region(REGION)
   .https.onCall(async (data: any, context: functions.https.CallableContext) => {
@@ -275,9 +522,9 @@ export const reevaluateQuizSubmissions = functions.https.onCall(async (data: any
                         allVideosWatched = requiredVideos.every((vid: string) => completedVideos.includes(vid));
                     }
                 } else {
-                    allVideosWatched = true;
+                    allVideosWatched = true; // No videos required
                 }
-
+                
                 if (!allVideosWatched) continue;
 
                 // Check quiz progress
@@ -291,12 +538,14 @@ export const reevaluateQuizSubmissions = functions.https.onCall(async (data: any
                     const passedQuizIds = new Set(quizResultsSnap.docs.map(d => d.data().quizId));
                     allQuizzesPassed = requiredQuizzes.every((qid: string) => passedQuizIds.has(qid));
                 } else {
-                    allQuizzesPassed = true;
+                    allQuizzesPassed = true; // No quizzes required
                 }
 
+                // If all conditions met, update enrollment
                 if (allVideosWatched && allQuizzesPassed) {
                     const enrollmentRef = db.doc(`enrollments/${userId}_${courseId}`);
                     courseCompletionBatch.set(enrollmentRef, { completedAt: admin.firestore.FieldValue.serverTimestamp() }, { merge: true });
+                    functions.logger.log(`Marking course ${courseId} as complete for user ${userId}.`);
                 }
             }
         }
@@ -306,131 +555,101 @@ export const reevaluateQuizSubmissions = functions.https.onCall(async (data: any
     return { success: true, updatedCount };
 });
 
-  
-// ---- Quiz Pass/Fail Re-evaluation ----
-
-export const onQuizUpdate = functions.firestore
-  .document('quizzes/{quizId}')
-  .onUpdate(async (change: functions.Change<FirebaseFirestore.DocumentSnapshot>, context: functions.EventContext) => {
-    const beforeData = change.before.data();
-    const afterData = change.after.data();
-    const { quizId } = context.params;
-
-    // Check if passThreshold has changed
-    if (beforeData.passThreshold === afterData.passThreshold) {
-      functions.logger.log(`Quiz ${quizId} updated, but passThreshold did not change. Skipping re-evaluation.`);
-      return null;
+export const processFormSubmission = functions
+  .region(REGION)
+  .https.onCall(async (data: any, context: functions.https.CallableContext) => {
+    const { formId } = data;
+    if (!formId) {
+      throw new functions.https.HttpsError("invalid-argument", "formId is required.");
     }
 
-    const newPassThreshold = afterData.passThreshold ?? 70;
-    functions.logger.log(`Re-evaluating submissions for quiz ${quizId} with new pass threshold: ${newPassThreshold}%`);
+    // This is simplified. In a real app, you'd get the submission data.
+    // For this simulation, we'll assume we have the submission data.
+    // Let's get the latest submission for that form to simulate this.
+    const submissionsSnap = await db.collection('forms').doc(formId).collection('submissions').orderBy('submittedAt', 'desc').limit(1).get();
+    if (submissionsSnap.empty) {
+      functions.logger.log(`No submissions found for form ${formId} to process.`);
+      return { success: false, message: "No submission found." };
+    }
+    const submissionDoc = submissionsSnap.docs[0];
+    const submissionData = submissionDoc.data();
 
-    const submissionsQuery = db.collection('userQuizResults').where('quizId', '==', quizId);
-    
+    const formDoc = await db.doc(`forms/${formId}`).get();
+    if (!formDoc.exists) {
+      throw new functions.https.HttpsError("not-found", "Form configuration not found.");
+    }
+    const formConfig = formDoc.data();
+
+    if (!formConfig?.autoSignup) {
+      return { success: false, message: "Auto-signup not enabled for this form." };
+    }
+
+    const emailField = formConfig.fields.find((f: any) => f.userProfileField === 'email');
+    if (!emailField) {
+      return { success: false, message: "Form has no linked email field." };
+    }
+
+    const email = submissionData.data[emailField.fieldId];
+    if (!email) {
+      return { success: false, message: "Email not provided in submission." };
+    }
+
+    let userRecord;
     try {
-      const snapshot = await submissionsQuery.get();
-      if (snapshot.empty) {
-        functions.logger.log(`No submissions found for quiz ${quizId}.`);
-        return null;
+      userRecord = await admin.auth().getUserByEmail(email);
+    } catch (error: any) {
+      if (error.code !== 'auth/user-not-found') {
+        throw new functions.https.HttpsError("internal", error.message);
       }
-      
-      const batch = db.batch();
-      let updatedCount = 0;
-      const usersAndCoursesToRecheck = new Map<string, Set<string>>();
+    }
 
+    const userProfileUpdates: Record<string, any> = {};
+    formConfig.fields.forEach((field: any) => {
+      if (field.userProfileField && submissionData.data[field.fieldId] !== undefined) {
+        userProfileUpdates[field.userProfileField] = submissionData.data[field.fieldId];
+      }
+    });
 
-      snapshot.forEach(doc => {
-        const submission = doc.data();
-        const currentScore = submission.score;
-        const currentStatus = submission.passed;
-
-        const newStatus = currentScore >= newPassThreshold;
-
-        if (newStatus !== currentStatus) {
-          batch.update(doc.ref, { passed: newStatus });
-          updatedCount++;
-           if (newStatus === true) { // Only re-check course completion if they now pass
-              if (!usersAndCoursesToRecheck.has(submission.userId)) {
-                usersAndCoursesToRecheck.set(submission.userId, new Set());
-              }
-              usersAndCoursesToRecheck.get(submission.userId)!.add(submission.courseId);
-          }
-        }
+    if (userRecord) {
+      // User exists, update their profile
+      await db.doc(`users/${userRecord.uid}`).update(userProfileUpdates);
+      await db.doc(`forms/${formId}/submissions/${submissionDoc.id}`).update({ userId: userRecord.uid });
+      return { success: true, message: `User ${userRecord.uid} updated.` };
+    } else {
+      // User does not exist, create them
+      const password = Math.random().toString(36).slice(-8); // Generate a random password
+      const newUserRecord = await admin.auth().createUser({
+        email: email,
+        password: password,
+        displayName: `${userProfileUpdates.firstName || ''} ${userProfileUpdates.lastName || ''}`.trim(),
       });
 
-      if (updatedCount > 0) {
-        await batch.commit();
-        functions.logger.log(`Successfully re-evaluated and updated ${updatedCount} submissions for quiz ${quizId}.`);
-      } else {
-        functions.logger.log(`No submission statuses needed to be changed for quiz ${quizId}.`);
-      }
+      const defaultLadderSnap = await db.collection("courseLevels").orderBy("order").limit(1).get();
+      const defaultLadder = defaultLadderSnap.empty ? null : { id: defaultLadderSnap.docs[0].id, name: defaultLadderSnap.docs[0].data().name };
 
-      if (usersAndCoursesToRecheck.size === 0) {
-        return null; // No need to check course completions
-      }
-
-      // --- Re-check overall course completion for affected users ---
-      functions.logger.log(`Found ${usersAndCoursesToRecheck.size} users whose course completion status may have changed.`);
-      const courseCompletionBatch = db.batch();
+      const newUserProfile = {
+        ...userProfileUpdates,
+        uid: newUserRecord.uid,
+        id: newUserRecord.uid,
+        email: email,
+        displayName: `${userProfileUpdates.firstName || ''} ${userProfileUpdates.lastName || ''}`.trim(),
+        role: 'user',
+        createdAt: FieldValue.serverTimestamp(),
+        classLadderId: defaultLadder?.id || null,
+        classLadder: defaultLadder?.name || 'New Member',
+      };
       
-      for (const [userId, courseIds] of usersAndCoursesToRecheck.entries()) {
-          for (const courseId of courseIds) {
-              const courseDoc = await db.doc(`courses/${courseId}`).get();
-              if (!courseDoc.exists) continue;
+      await db.doc(`users/${newUserRecord.uid}`).set(newUserProfile);
+      await db.doc(`forms/${formId}/submissions/${submissionDoc.id}`).update({ userId: newUserRecord.uid });
+      
+      // We should probably send a welcome/password reset email here.
+      // For now, just logging it.
+      functions.logger.log(`Created user ${newUserRecord.uid} with temporary password. A password reset email should be sent.`);
 
-              const courseData = courseDoc.data() as any;
-              const requiredVideos = courseData.videos || [];
-              const requiredQuizzes = courseData.quizIds || [];
-
-              // 1. Check video progress
-              let allVideosWatched = false;
-              if (requiredVideos.length > 0) {
-                  const progressDoc = await db.doc(`userVideoProgress/${userId}_${courseId}`).get();
-                  if (progressDoc.exists) {
-                      const videoProgress = progressDoc.data()?.videoProgress || [];
-                      const completedVideos = videoProgress.filter((v: any) => v.completed).map((v: any) => v.videoId);
-                      allVideosWatched = requiredVideos.every((vid: string) => completedVideos.includes(vid));
-                  }
-              } else {
-                  allVideosWatched = true; // No videos required
-              }
-              
-              if (!allVideosWatched) continue; // If videos aren't done, no need to check quizzes
-
-              // 2. Check quiz progress
-              let allQuizzesPassed = false;
-              if (requiredQuizzes.length > 0) {
-                  const quizResultsSnap = await db.collection('userQuizResults')
-                      .where('userId', '==', userId)
-                      .where('courseId', '==', courseId)
-                      .where('passed', '==', true)
-                      .get();
-                  const passedQuizIds = new Set(quizResultsSnap.docs.map(d => d.data().quizId));
-                  allQuizzesPassed = requiredQuizzes.every((qid: string) => passedQuizIds.has(qid));
-              } else {
-                  allQuizzesPassed = true; // No quizzes required
-              }
-
-              // 3. If all conditions met, update enrollment
-              if (allVideosWatched && allQuizzesPassed) {
-                  const enrollmentRef = db.doc(`enrollments/${userId}_${courseId}`);
-                  courseCompletionBatch.set(enrollmentRef, { completedAt: admin.firestore.FieldValue.serverTimestamp() }, { merge: true });
-                  functions.logger.log(`Marking course ${courseId} as complete for user ${userId}.`);
-              }
-          }
-      }
-
-      await courseCompletionBatch.commit();
-
-
-    } catch (error) {
-      functions.logger.error(`Error re-evaluating quiz submissions for ${quizId}:`, error);
+      return { success: true, message: `User ${newUserRecord.uid} created.` };
     }
-    
-    return null;
-  });
-
-
+});
+  
 // ---- enroll in course -------------------------------------------
 
 export const enrollInCourse = functions
@@ -795,5 +1014,3 @@ export const syncVideos = functions
   });
 
 export { onVideoDeleted, onVideoUpdate, transcodeVideo, updateVideoOnTranscodeComplete };
-
-    

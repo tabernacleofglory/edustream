@@ -1,5 +1,4 @@
 
-
 "use client";
 
 import { useState, useEffect, Suspense } from "react";
@@ -16,10 +15,10 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent } from "@/components/ui/card";
-import { Loader2, Plus, Trash2, X, Combine, Link as LinkIconLucide, File, FileText, ImageIcon, Music, MapPin, Calendar, List, GitBranch, User as UserIcon } from "lucide-react";
+import { Loader2, Plus, Trash2, X, Combine, Link as LinkIconLucide, File, FileText, ImageIcon, Music, MapPin, Calendar, List, GitBranch, User as UserIcon, ChevronsUpDown, ArrowUp, ArrowDown } from "lucide-react";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from "@/components/ui/select";
-import { Form, FormField, FormControl, FormLabel, FormMessage } from "@/components/ui/form";
+import { Form, FormControl, FormItem, FormLabel, FormMessage, FormField } from "@/components/ui/form";
 import 'react-phone-number-input/style.css';
 import PhoneInput from 'react-phone-number-input';
 import { Switch } from "@/components/ui/switch";
@@ -53,6 +52,9 @@ const formFieldSchema = z.object({
   ]),
   options: z.array(z.string()).optional(),
   dataSource: z.string().optional().default("manual"),
+  dataSourceOptions: z.object({
+      ladders: z.array(z.string()).optional(),
+  }).optional(),
   required: z.boolean().default(false),
   visible: z.boolean().default(true),
   fieldId: z.string().min(1, "Field ID is required"),
@@ -64,6 +66,7 @@ const formBuilderSchema = z.object({
   title: z.string().min(3, "Form title is required"),
   fields: z.array(formFieldSchema).min(1, "At least one field is required"),
   type: z.enum(['custom', 'hybrid']).default('custom'),
+  autoSignup: z.boolean().default(false),
 });
 
 type FormBuilderValues = z.infer<typeof formBuilderSchema>;
@@ -72,6 +75,7 @@ const USER_PROFILE_FIELD_OPTIONS = [
   { value: 'firstName', label: 'First Name' },
   { value: 'lastName', label: 'Last Name' },
   { value: 'email', label: 'Email' },
+  { value: 'password', label: 'Password' },
   { value: 'phoneNumber', label: 'Phone Number' },
   { value: 'gender', label: 'Gender' },
   { value: 'ageRange', label: 'Age Range' },
@@ -89,6 +93,7 @@ const USER_PROFILE_FIELD_OPTIONS = [
   { value: 'ministry', label: 'Ministry' },
   { value: 'charge', label: 'Charge' },
   { value: 'bio', label: 'Bio' },
+  { value: 'classLadderId', label: 'Class Ladder' },
 ];
 
 function MobilePreview({ form, dynamicOptions }: { form: any, dynamicOptions: Record<string, Opt[]> }) {
@@ -199,6 +204,7 @@ function BlankFormBuilder() {
     const [editingUserFieldLink, setEditingUserFieldLink] = useState<{ fieldIndex: number } | null>(null);
 
     const [customFieldGroups, setCustomFieldGroups] = useState<{ id: string; name: string }[]>([]);
+    const [allLadders, setAllLadders] = useState<any[]>([]);
 
     const form = useForm<FormBuilderValues>({
         resolver: zodResolver(formBuilderSchema),
@@ -206,6 +212,7 @@ function BlankFormBuilder() {
             title: '',
             fields: [],
             type: formType || 'custom',
+            autoSignup: false,
         },
     });
 
@@ -229,7 +236,11 @@ function BlankFormBuilder() {
                     q = query(collection(db, coll), orderBy(orderByField));
                 }
                 const snap = await getDocs(q);
-                options[name] = snap.docs.map(d => ({ value: d.data()[field], label: d.data()[field] }));
+                const data = snap.docs.map(d => ({ value: d.data()[field], label: d.data()[field], id: d.id }));
+                options[name] = data;
+                if(name === 'ladders') {
+                    setAllLadders(data);
+                }
             }
 
             const customFieldsSnap = await getDocs(query(collection(db, "customFields"), orderBy("name")));
@@ -264,6 +275,7 @@ function BlankFormBuilder() {
                         title: data.title,
                         fields: data.fields || [],
                         type: data.type || 'custom',
+                        autoSignup: data.autoSignup || false,
                     });
                 } else {
                     toast({ variant: 'destructive', title: 'Form not found' });
@@ -272,8 +284,9 @@ function BlankFormBuilder() {
             } else {
                  form.reset({
                     title: 'Untitled Form',
-                    fields: [{ id: uuidv4(), label: 'First Field', type: 'text', dataSource: 'manual', required: false, visible: true, fieldId: 'first_field' }],
+                    fields: [{ id: uuidv4(), label: 'First Field', type: 'text', dataSource: 'manual', required: false, visible: true, fieldId: `field_${uuidv4()}` }],
                     type: formType || 'custom',
+                    autoSignup: false,
                 });
             }
             setLoadingForm(false);
@@ -281,7 +294,7 @@ function BlankFormBuilder() {
         fetchForm();
     }, [formId, form, router, toast, formType]);
 
-    const { fields, append, remove, update } = useFieldArray({
+    const { fields, append, remove, update, move } = useFieldArray({
         control: form.control,
         name: "fields",
     });
@@ -421,6 +434,14 @@ function BlankFormBuilder() {
                                                         <SelectItem value="audio"><div className="flex items-center gap-2"><Music className="h-4 w-4" /> Audio</div></SelectItem>
                                                     </SelectContent>
                                                 </Select>
+                                                <div className="flex flex-col">
+                                                    <Button type="button" variant="ghost" size="icon" className="h-6 w-6" onClick={() => move(index, index - 1)} disabled={index === 0}>
+                                                        <ArrowUp className="h-4 w-4" />
+                                                    </Button>
+                                                    <Button type="button" variant="ghost" size="icon" className="h-6 w-6" onClick={() => move(index, index + 1)} disabled={index === fields.length - 1}>
+                                                        <ArrowDown className="h-4 w-4" />
+                                                    </Button>
+                                                </div>
                                                 <Button type="button" variant="ghost" size="icon" onClick={() => remove(index)}>
                                                     <Trash2 className="h-4 w-4 text-destructive" />
                                                 </Button>
@@ -460,6 +481,38 @@ function BlankFormBuilder() {
                                                         )}
                                                     />
                                                 </div>
+
+                                                {dataSource === 'ladders' && (
+                                                    <div className="space-y-2 pt-2">
+                                                        <Label>Select which ladders to show</Label>
+                                                        <ScrollArea className="h-32 border rounded-md p-2">
+                                                            {allLadders.map((ladder: any) => (
+                                                                <FormField
+                                                                    key={ladder.id}
+                                                                    control={form.control}
+                                                                    name={`fields.${index}.dataSourceOptions.ladders`}
+                                                                    render={({ field }) => (
+                                                                        <FormItem className="flex flex-row items-center space-x-3 space-y-0">
+                                                                            <FormControl>
+                                                                                <Checkbox
+                                                                                    checked={field.value?.includes(ladder.id)}
+                                                                                    onCheckedChange={(checked) => {
+                                                                                        return checked
+                                                                                            ? field.onChange([...(field.value || []), ladder.id])
+                                                                                            : field.onChange((field.value || []).filter((value: string) => value !== ladder.id));
+                                                                                    }}
+                                                                                />
+                                                                            </FormControl>
+                                                                            <FormLabel className="font-normal">
+                                                                                {ladder.label}
+                                                                            </FormLabel>
+                                                                        </FormItem>
+                                                                    )}
+                                                                />
+                                                            ))}
+                                                        </ScrollArea>
+                                                    </div>
+                                                )}
 
                                                 {dataSource === 'manual' && (
                                                     <div className="space-y-2 pt-2">
@@ -511,14 +564,34 @@ function BlankFormBuilder() {
                                 )})}
                             </div>
                         </ScrollArea>
-                        <div className="flex justify-between">
-                            <Button type="button" variant="secondary" onClick={() => append({ id: uuidv4(), label: `New Field ${fields.length + 1}`, type: 'text', dataSource: 'manual', required: false, visible: true, fieldId: `new_field_${fields.length + 1}` })}>
+                        <div className="flex justify-between items-center pt-6 mt-6 border-t">
+                            <Button type="button" variant="secondary" onClick={() => {
+                                const newId = uuidv4();
+                                append({ id: newId, label: `New Field ${fields.length + 1}`, type: 'text', dataSource: 'manual', required: false, visible: true, fieldId: `field_${newId}` })
+                            }}>
                                 <Plus className="mr-2 h-4 w-4" /> Add Field
                             </Button>
-                            <Button type="submit" disabled={isSubmitting}>
-                                {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                                {formId ? 'Save Changes' : 'Create Form'}
-                            </Button>
+                            <div className="flex items-center gap-4">
+                                <FormField
+                                    control={form.control}
+                                    name="autoSignup"
+                                    render={({ field }) => (
+                                        <FormItem className="flex flex-row items-center gap-2 space-y-0">
+                                            <FormControl>
+                                                <Switch
+                                                    checked={field.value}
+                                                    onCheckedChange={field.onChange}
+                                                />
+                                            </FormControl>
+                                            <FormLabel>Enable Auto-Signup</FormLabel>
+                                        </FormItem>
+                                    )}
+                                />
+                                <Button type="submit" disabled={isSubmitting}>
+                                    {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                                    {formId ? 'Save Changes' : 'Create Form'}
+                                </Button>
+                            </div>
                         </div>
                         {form.formState.errors.fields && <p className="text-sm text-destructive">{form.formState.errors.fields.message || form.formState.errors.fields.root?.message}</p>}
                     </form>
