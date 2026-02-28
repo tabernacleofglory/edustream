@@ -14,15 +14,13 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import LiveEventsList from '@/components/live-events-list';
-import { createLiveEvent, goLiveWithGloryLive, deleteLiveEvent as deleteEvent } from '@/lib/live-events';
+import { createLiveEvent, goLiveWithGloryLive, deleteLiveEvent as deleteEvent, updateLiveEvent } from '@/lib/live-events';
 import { useToast } from '@/hooks/use-toast';
-import { collection, onSnapshot, orderBy, query, updateDoc, doc } from 'firebase/firestore';
+import { collection, onSnapshot, orderBy, query, updateDoc, doc, getDocs } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
-import type { LiveEvent } from '@/lib/types';
+import type { LiveEvent, Ladder } from '@/lib/types';
 import Image from 'next/image';
-import { Calendar as CalendarIcon, UploadCloud, Link as LinkIcon, Copy, Check, Plus, Settings2 } from 'lucide-react';
-import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
-import { Calendar } from '@/components/ui/calendar';
+import { Calendar as CalendarIcon, UploadCloud, Link as LinkIcon, Copy, Check, Plus, Settings2, ChevronDown, X } from 'lucide-react';
 import { format } from 'date-fns';
 import { cn } from '@/lib/utils';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
@@ -32,13 +30,16 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
+import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuCheckboxItem } from '@/components/ui/dropdown-menu';
+import { Badge } from '@/components/ui/badge';
 
 const LivePage = () => {
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [startTime, setStartTime] = useState<Date | undefined>(new Date());
   const [imageUrl, setImageUrl] = useState<string | null>(null);
-  const [eventType, setEventType] = useState<'one-time' | 'recurring'>('one-time');
+  const [platform, setPlatform] = useState<'gloryLive' | 'external'>('gloryLive');
+  const [externalLink, setExternalLink] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [events, setEvents] = useState<LiveEvent[]>([]);
   const [loading, setLoading] = useState(true);
@@ -52,6 +53,9 @@ const LivePage = () => {
   const [isGloryLiveModalOpen, setIsGloryLiveModalOpen] = useState(false);
   const [copiedLink, setCopiedLink] = useState<'broadcast' | 'view' | null>(null);
   const [vdoNinjaRoomId, setVdoNinjaRoomId] = useState('');
+  const [ladders, setLadders] = useState<Ladder[]>([]);
+  const [selectedLadderIds, setSelectedLadderIds] = useState<string[]>([]);
+  const [editingEvent, setEditingEvent] = useState<LiveEvent | null>(null);
 
 
   useEffect(() => {
@@ -76,6 +80,11 @@ const LivePage = () => {
       toast({ variant: 'destructive', title: "Error", description: "Could not fetch live events." });
       setLoading(false);
     });
+    
+    const laddersQuery = query(collection(db, "courseLevels"), orderBy("order"));
+    getDocs(laddersQuery).then(snapshot => {
+        setLadders(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Ladder)));
+    });
 
     return () => unsubscribe();
   }, [toast]);
@@ -84,6 +93,13 @@ const LivePage = () => {
     setIsSubmitting(true);
     try {
         const result = await goLiveWithGloryLive(eventId, vdoNinjaRoomId);
+        
+        const event = events.find(e => e.id === eventId);
+        if (event?.platform === 'external') {
+            toast({ title: 'Success', description: 'Event has been set to live.' });
+            return;
+        }
+
         if (result.success && result.roomId) {
             const broadcastUrl = `${window.location.origin}/admin/glory-live/${result.roomId}?password=${result.password}`;
             const viewUrl = `${window.location.origin}/live/${result.roomId}`;
@@ -91,7 +107,11 @@ const LivePage = () => {
             setGloryLiveLinks({ broadcastUrl, viewUrl });
             setIsGloryLiveModalOpen(true);
             toast({ title: 'Success', description: 'Your Glory Live room is ready!' });
-        } else {
+        } else if (result.success) {
+            // This case handles external events that are just marked as live
+            toast({ title: 'Success', description: 'Event status updated to live.' });
+        }
+        else {
             throw new Error(result.message || 'Failed to start live stream.');
         }
     } catch (err: any) {
@@ -104,13 +124,10 @@ const LivePage = () => {
   const handleEndLive = async (eventId: string) => {
     setIsSubmitting(true);
     try {
-      const eventToEnd = events.find(e => e.id === eventId);
-      const newStatus = eventToEnd?.eventType === 'recurring' ? 'upcoming' : 'ended';
-
       await updateDoc(doc(db, 'liveEvents', eventId), {
-        status: newStatus,
-        gloryLiveRoomId: null, // Explicitly clear the room ID
-        gloryLiveRoomPassword: null, // Explicitly clear the password
+        status: 'ended',
+        gloryLiveRoomId: null,
+        gloryLiveRoomPassword: null,
       });
       toast({ title: 'Success', description: 'The live event has been ended.' });
     } catch (err: any) {
@@ -134,11 +151,45 @@ const LivePage = () => {
     setTitle(event.title + ' (Copy)');
     setDescription(event.description);
     setImageUrl(event.imageUrl || null);
-    setEventType('one-time');
+    setPlatform(event.platform);
+    setExternalLink(event.externalLink || '');
+    setSelectedLadderIds(event.ladderIds || []);
     setStartTime(new Date()); // Reset to now
+    setEditingEvent(null);
+    setIsCreateSheetOpen(true);
+  }
+  
+  const handleEdit = (event: LiveEvent) => {
+    setEditingEvent(event);
+    setTitle(event.title);
+    setDescription(event.description);
+    setStartTime(new Date(event.startTime));
+    setImageUrl(event.imageUrl || null);
+    setPlatform(event.platform);
+    setExternalLink(event.externalLink || '');
+    setVdoNinjaRoomId(event.vdoNinjaRoomId || '');
+    setSelectedLadderIds(event.ladderIds || []);
     setIsCreateSheetOpen(true);
   }
 
+  const resetFormState = () => {
+    setTitle('');
+    setDescription('');
+    setStartTime(new Date());
+    setImageUrl(null);
+    setPlatform('gloryLive');
+    setExternalLink('');
+    setVdoNinjaRoomId('');
+    setSelectedLadderIds([]);
+    setEditingEvent(null);
+  };
+
+  const handleSheetOpenChange = (open: boolean) => {
+    setIsCreateSheetOpen(open);
+    if (!open) {
+      resetFormState();
+    }
+  };
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
@@ -146,20 +197,26 @@ const LivePage = () => {
       toast({ variant: 'destructive', title: "Error", description: "Title, description, and start time are required." });
       return;
     }
+    if (platform === 'external' && !externalLink.trim()) {
+      toast({ variant: 'destructive', title: "Error", description: "External link is required for this platform type." });
+      return;
+    }
     setIsSubmitting(true);
     try {
-      await createLiveEvent({ title, description, startTime, imageUrl: imageUrl || '', eventType, vdoNinjaRoomId: vdoNinjaRoomId || undefined });
-      setTitle('');
-      setDescription('');
-      setStartTime(new Date());
-      setImageUrl(null);
-      setEventType('one-time');
-      setVdoNinjaRoomId('');
-      toast({ title: "Success", description: "Live event created successfully." });
-      setIsCreateSheetOpen(false);
+      const eventPayload = { title, description, startTime, imageUrl: imageUrl || '', platform, externalLink: externalLink || undefined, ladderIds: selectedLadderIds };
+      if (editingEvent) {
+          await updateLiveEvent(editingEvent.id, eventPayload);
+          toast({ title: "Success", description: "Live event updated successfully." });
+      } else {
+          await createLiveEvent({ ...eventPayload, vdoNinjaRoomId: vdoNinjaRoomId || undefined });
+          toast({ title: "Success", description: "Live event created successfully." });
+      }
+
+      handleSheetOpenChange(false);
+
     } catch (err: any) {
-      console.error('Error creating live event:', err);
-      toast({ variant: 'destructive', title: "Error", description: err.message || "Failed to create live event." });
+      console.error('Error saving live event:', err);
+      toast({ variant: 'destructive', title: "Error", description: err.message || "Failed to save live event." });
     } finally {
       setIsSubmitting(false);
     }
@@ -175,6 +232,15 @@ const LivePage = () => {
     setCopiedLink(type);
     setTimeout(() => setCopiedLink(null), 2000);
   }
+  
+  const handleLadderSelect = (ladderId: string) => {
+    setSelectedLadderIds(prev =>
+      prev.includes(ladderId)
+        ? prev.filter(id => id !== ladderId)
+        : [...prev, ladderId]
+    );
+  };
+
 
   return (
     <div className="container mx-auto p-4">
@@ -186,7 +252,7 @@ const LivePage = () => {
                 Here are your upcoming and past live events.
               </CardDescription>
             </div>
-             <Sheet open={isCreateSheetOpen} onOpenChange={setIsCreateSheetOpen}>
+             <Sheet open={isCreateSheetOpen} onOpenChange={handleSheetOpenChange}>
               <SheetTrigger asChild>
                 <Button>
                   <Plus className="mr-2 h-4 w-4" />
@@ -196,9 +262,9 @@ const LivePage = () => {
               <SheetContent className="w-full sm:max-w-md">
                 <ScrollArea className="h-full w-full pr-6 -mr-6">
                 <SheetHeader>
-                  <SheetTitle>Create a New Live Event</SheetTitle>
+                  <SheetTitle>{editingEvent ? 'Edit Live Event' : 'Create a New Live Event'}</SheetTitle>
                   <SheetDescription>
-                    Fill in the details to schedule a new live event.
+                    {editingEvent ? 'Update the details for your live event.' : 'Fill in the details to schedule a new live event.'}
                   </SheetDescription>
                 </SheetHeader>
                 <form onSubmit={handleSubmit}>
@@ -210,7 +276,7 @@ const LivePage = () => {
                             onClick={() => setIsImageLibraryOpen(true)}
                         >
                             {imageUrl ? (
-                                <Image src={imageUrl} alt="Event Thumbnail" layout="fill" objectFit="cover" className="rounded-lg" />
+                                <Image src={imageUrl} alt="Event Thumbnail" fill style={{objectFit:"cover"}} className="rounded-lg" />
                             ) : (
                                 <div className="text-center text-muted-foreground">
                                     <UploadCloud className="mx-auto h-8 w-8" />
@@ -239,59 +305,99 @@ const LivePage = () => {
                           required
                         />
                       </div>
-                      <div className="space-y-2">
-                          <Label htmlFor="eventType">Event Type</Label>
-                          <Select value={eventType} onValueChange={(value: 'one-time' | 'recurring') => setEventType(value)}>
-                              <SelectTrigger id="eventType">
-                                  <SelectValue placeholder="Select event type" />
+                       <div className="space-y-2">
+                          <Label htmlFor="platform">Event Platform</Label>
+                          <Select value={platform} onValueChange={(value: 'gloryLive' | 'external') => setPlatform(value)}>
+                              <SelectTrigger id="platform">
+                                  <SelectValue placeholder="Select platform" />
                               </SelectTrigger>
                               <SelectContent>
-                                  <SelectItem value="one-time" translate="no">One-Time Event</SelectItem>
-                                  <SelectItem value="recurring" translate="no">Recurring Event</SelectItem>
+                                  <SelectItem value="gloryLive">Glory Live</SelectItem>
+                                  <SelectItem value="external">External Link (Zoom, Meet, etc.)</SelectItem>
                               </SelectContent>
                           </Select>
                       </div>
+                      {platform === 'external' && (
+                        <div className="space-y-2">
+                          <Label htmlFor="externalLink">External Meeting Link</Label>
+                          <Input
+                            id="externalLink"
+                            value={externalLink}
+                            onChange={(e) => setExternalLink(e.target.value)}
+                            placeholder="https://zoom.us/j/..."
+                            required={platform === 'external'}
+                          />
+                        </div>
+                      )}
+                      <div className="space-y-2">
+                        <Label>Restrict to Ladders (Optional)</Label>
+                        <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                                <Button variant="outline" className="w-full justify-between">
+                                    <span>{selectedLadderIds.length > 0 ? `${selectedLadderIds.length} selected` : "All Ladders"}</span>
+                                    <ChevronDown className="h-4 w-4" />
+                                </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent className="w-[--radix-dropdown-menu-trigger-width]">
+                                {ladders.map(ladder => (
+                                    <DropdownMenuCheckboxItem
+                                        key={ladder.id}
+                                        checked={selectedLadderIds.includes(ladder.id)}
+                                        onCheckedChange={() => handleLadderSelect(ladder.id)}
+                                    >
+                                        {ladder.name}
+                                    </DropdownMenuCheckboxItem>
+                                ))}
+                            </DropdownMenuContent>
+                        </DropdownMenu>
+                        <div className="flex flex-wrap gap-1 pt-1">
+                            {selectedLadderIds.map(id => {
+                                const ladder = ladders.find(l => l.id === id);
+                                return (
+                                    <Badge key={id} variant="secondary">
+                                        {ladder?.name}
+                                        <button type="button" className="ml-1" onClick={() => handleLadderSelect(id)}>
+                                            <X className="h-3 w-3" />
+                                        </button>
+                                    </Badge>
+                                );
+                            })}
+                        </div>
+                        <p className="text-xs text-muted-foreground">If no ladders are selected, the event will be visible to everyone.</p>
+                      </div>
                       <div className="space-y-2">
                         <Label htmlFor="start-time">Event Start Time</Label>
-                        {isClient && (
-                          <Popover>
-                            <PopoverTrigger asChild>
-                              <Button
-                                variant={"outline"}
-                                className={cn(
-                                  "w-full justify-start text-left font-normal",
-                                  !startTime && "text-muted-foreground"
-                                )}
-                              >
-                                <CalendarIcon className="mr-2 h-4 w-4" />
-                                {startTime ? format(startTime, "PPP HH:mm") : <span>Pick a date and time</span>}
-                              </Button>
-                            </PopoverTrigger>
-                            <PopoverContent className="w-auto p-0">
-                              <Calendar
-                                mode="single"
-                                selected={startTime}
-                                onSelect={setStartTime}
-                                initialFocus
-                              />
-                              <div className="p-3 border-t border-border">
-                                  <Label>Time</Label>
-                                  <Input 
-                                      type="time" 
-                                      step="60"
-                                      value={startTime ? format(startTime, "HH:mm") : ""}
-                                      onChange={(e) => {
-                                          const newTime = e.target.value;
-                                          const [hours, minutes] = newTime.split(':').map(Number);
-                                          const newDate = startTime ? new Date(startTime) : new Date();
-                                          newDate.setHours(hours, minutes);
-                                          setStartTime(newDate);
-                                      }}
-                                  />
-                              </div>
-                            </PopoverContent>
-                          </Popover>
-                        )}
+                        <div className="flex gap-2">
+                            <Input
+                                type="date"
+                                value={startTime ? format(startTime, 'yyyy-MM-dd') : ''}
+                                onChange={(e) => {
+                                    const dateVal = e.target.value;
+                                    if (!dateVal) {
+                                        setStartTime(undefined);
+                                        return;
+                                    }
+                                    const [y, m, d] = dateVal.split('-').map(Number);
+                                    const newDate = startTime ? new Date(startTime) : new Date();
+                                    newDate.setFullYear(y, m - 1, d);
+                                    setStartTime(newDate);
+                                }}
+                                className="flex-1"
+                            />
+                            <Input
+                                type="time"
+                                value={startTime ? format(startTime, 'HH:mm') : ''}
+                                onChange={(e) => {
+                                    const timeVal = e.target.value;
+                                    if (!timeVal) return;
+                                    const [hours, minutes] = timeVal.split(':').map(Number);
+                                    const newDate = startTime ? new Date(startTime) : new Date();
+                                    newDate.setHours(hours, minutes);
+                                    setStartTime(newDate);
+                                }}
+                                className="w-[120px]"
+                            />
+                        </div>
                       </div>
                        <Collapsible>
                             <CollapsibleTrigger asChild>
@@ -308,15 +414,16 @@ const LivePage = () => {
                                         value={vdoNinjaRoomId}
                                         onChange={(e) => setVdoNinjaRoomId(e.target.value)}
                                         placeholder="e.g., my-special-event"
+                                        disabled={!!editingEvent}
                                     />
-                                    <p className="text-xs text-muted-foreground">If left blank, a room ID will be generated from the title.</p>
+                                    <p className="text-xs text-muted-foreground">If left blank, a room ID will be generated from the title. Cannot be changed after creation.</p>
                                 </div>
                             </CollapsibleContent>
                         </Collapsible>
                     </div>
                     <CardFooter className="px-0">
                       <Button type="submit" disabled={isSubmitting} className="w-full">
-                        {isSubmitting ? 'Creating...' : 'Create Event'}
+                        {isSubmitting ? 'Saving...' : editingEvent ? 'Save Changes' : 'Create Event'}
                       </Button>
                     </CardFooter>
                 </form>
@@ -333,6 +440,7 @@ const LivePage = () => {
             onEndLive={handleEndLive}
             onDelete={handleDelete}
             onDuplicate={handleDuplicate}
+            onEdit={handleEdit}
           />
         </CardContent>
       </Card>

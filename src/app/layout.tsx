@@ -1,13 +1,8 @@
-
 import type { Metadata } from "next";
 import { Inter, Space_Grotesk, Dancing_Script, Great_Vibes, Source_Serif_4 } from "next/font/google";
 import "./globals.css";
 import { getSiteSettings } from "@/lib/data";
 import { Providers } from "@/components/providers";
-
-// This tells Next.js to always re-evaluate this page and not cache it.
-export const revalidate = 0;
-export const dynamic = 'force-dynamic';
 
 const inter = Inter({
   subsets: ["latin"],
@@ -59,7 +54,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en" className={`${inter.variable} ${spaceGrotesk.variable} ${dancingScript.variable} ${greatVibes.variable} ${sourceSerif.variable}`} suppressHydrationWarning translate="no">
+    <html lang="en" className={`${inter.variable} ${spaceGrotesk.variable} ${dancingScript.variable} ${greatVibes.variable} ${sourceSerif.variable}`} suppressHydrationWarning>
       <body>
         <Providers>
             {children}

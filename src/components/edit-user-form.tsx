@@ -1,9 +1,8 @@
 
-
 "use client";
 
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
-import { useForm, Controller } from "react-hook-form";
+import { useForm, Controller, SubmitHandler } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { Button } from "./ui/button";
@@ -31,6 +30,7 @@ import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { Textarea } from "./ui/textarea";
 import PhoneInput from 'react-phone-number-input';
 import 'react-phone-number-input/style.css';
+import allLanguagesList from "@/lib/languages.json";
 
 
 const profileSchema = z.object({
@@ -42,8 +42,10 @@ const profileSchema = z.object({
   facilitatorName: z.string().optional(),
   campus: z.string().optional(),
   classLadderId: z.string().optional(),
+  side: z.string().optional(),
   role: z.string().optional(),
   membershipStatus: z.string().optional(),
+  graduationStatus: z.string().optional(),
   charge: z.string().optional(),
   gender: z.string().optional(),
   ageRange: z.string().optional(),
@@ -57,6 +59,14 @@ const profileSchema = z.object({
   language: z.string().optional(),
   isBaptized: z.enum(['true', 'false']).optional(),
   denomination: z.string().optional(),
+}).refine(data => {
+    if (data.isInHpGroup === 'true') {
+        return !!data.hpNumber && !!data.facilitatorName;
+    }
+    return true;
+}, {
+    message: "HP Number and Facilitator's Name are required if in a prayer group.",
+    path: ['hpNumber'] // Or facilitatorName
 });
 
 type ProfileFormValues = z.infer<typeof profileSchema>;
@@ -64,6 +74,7 @@ type ProfileFormValues = z.infer<typeof profileSchema>;
 interface StoredItem {
     id: string;
     name: string;
+    status?: string;
 }
 
 interface Campus {
@@ -75,6 +86,12 @@ interface EditUserFormProps {
     userToEdit: User;
     onUserUpdated: () => void;
 }
+
+const cleanNativeName = (name: string) => {
+    if (!name) return "";
+    const firstPart = name.split(/[;,]/)[0].trim();
+    return firstPart.charAt(0).toUpperCase() + firstPart.slice(1);
+};
 
 export default function EditUserForm({ userToEdit, onUserUpdated }: EditUserFormProps) {
   const { user: currentUser, refreshUser } = useAuth();
@@ -95,7 +112,7 @@ export default function EditUserForm({ userToEdit, onUserUpdated }: EditUserForm
   const [ministries, setMinistries] = useState<StoredItem[]>([]);
   const [availableLanguages, setAvailableLanguages] = useState<StoredItem[]>([]);
   
-  const [isCampusDialogOpen, setIsCampusDialogOpen] = useState(false);
+  const [isCampusDialogOpen] = useState(false);
   const [newCampusName, setNewCampusName] = useState("");
   const [isChargeDialogOpen, setIsChargeDialogOpen] = useState(false);
   const [newChargeName, setNewChargeName] = useState("");
@@ -125,8 +142,10 @@ export default function EditUserForm({ userToEdit, onUserUpdated }: EditUserForm
         facilitatorName: userToEdit.facilitatorName || "",
         campus: userToEdit.campus || "",
         classLadderId: userToEdit.classLadderId || "",
+        side: userToEdit.side || "hp",
         role: userToEdit.role || "user",
         membershipStatus: userToEdit.membershipStatus || "free",
+        graduationStatus: userToEdit.graduationStatus || "Not Started",
         charge: userToEdit.charge || "",
         gender: userToEdit.gender || "",
         ageRange: userToEdit.ageRange || "",
@@ -145,6 +164,23 @@ export default function EditUserForm({ userToEdit, onUserUpdated }: EditUserForm
   
   const isInHpGroupValue = watch('isInHpGroup');
   const isBaptizedValue = watch('isBaptized');
+  
+   useEffect(() => {
+    if (isBaptizedValue === 'false') {
+        setValue('denomination', 'Other');
+    }
+  }, [isBaptizedValue, setValue]);
+  
+  useEffect(() => {
+    if (isInHpGroupValue === 'true') {
+        setValue('hpAvailabilityDay', undefined, { shouldValidate: true });
+        setValue('hpAvailabilityTime', undefined, { shouldValidate: true });
+    } else if (isInHpGroupValue === 'false') {
+        setValue('hpNumber', undefined, { shouldValidate: true });
+        setValue('facilitatorName', undefined, { shouldValidate: true });
+    }
+  }, [isInHpGroupValue, setValue]);
+
 
   const fetchItems = useCallback(async (collectionName: string, setter: React.Dispatch<React.SetStateAction<any[]>>, orderByField = "name") => {
     try {
@@ -183,6 +219,7 @@ export default function EditUserForm({ userToEdit, onUserUpdated }: EditUserForm
         });
     }, [fetchCampuses, fetchItems, db]);
 
+
   const roleHierarchy: Record<string, string[]> = {
     developer: ['developer', 'admin', 'moderator', 'team', 'user'],
     admin: ['admin', 'moderator', 'team', 'user'],
@@ -213,20 +250,20 @@ export default function EditUserForm({ userToEdit, onUserUpdated }: EditUserForm
       const userDocRef = doc(db, "users", userToEdit.uid);
       const selectedLadder = ladders.find(l => l.id === data.classLadderId);
       
-      const firestoreData: Partial<User> = {
+      const firestoreData: { [key: string]: any } = {
         displayName: `${data.firstName} ${data.lastName}`.trim(),
         fullName: `${data.firstName} ${data.lastName}`.trim(),
         firstName: data.firstName,
         lastName: data.lastName,
         email: data.email,
-        phoneNumber: data.phoneNumber,
-        hpNumber: data.hpNumber,
-        facilitatorName: data.facilitatorName,
+        phoneNumber: data.phoneNumber || null,
         campus: data.campus,
         classLadder: selectedLadder ? selectedLadder.name : '',
         classLadderId: data.classLadderId,
-        role: data.role?.toLowerCase() as User['role'],
+        side: data.side,
+        role: data.role?.toLowerCase(),
         membershipStatus: data.membershipStatus,
+        graduationStatus: data.graduationStatus,
         charge: data.charge,
         gender: data.gender,
         ageRange: data.ageRange,
@@ -235,12 +272,21 @@ export default function EditUserForm({ userToEdit, onUserUpdated }: EditUserForm
         bio: data.bio,
         isInHpGroup: data.isInHpGroup === 'true',
         isBaptized: data.isBaptized === 'true',
-        denomination: data.isBaptized === 'true' ? data.denomination : undefined,
-        hpAvailabilityDay: data.hpAvailabilityDay,
-        hpAvailabilityTime: data.hpAvailabilityTime,
-        locationPreference: data.locationPreference as 'Onsite' | 'Online',
+        denomination: data.isBaptized === 'false' ? 'Other' : data.denomination || 'Other',
+        hpNumber: data.isInHpGroup === 'true' ? data.hpNumber : null,
+        facilitatorName: data.isInHpGroup === 'true' ? data.facilitatorName : null,
+        hpAvailabilityDay: data.isInHpGroup !== 'true' ? data.hpAvailabilityDay : null,
+        hpAvailabilityTime: data.isInHpGroup !== 'true' ? data.hpAvailabilityTime : null,
+        locationPreference: data.locationPreference,
         language: data.language,
       };
+
+      // Clean out any remaining undefined properties before sending to Firestore
+      Object.keys(firestoreData).forEach(key => {
+        if (firestoreData[key] === undefined) {
+            firestoreData[key] = null;
+        }
+      });
 
       await updateDoc(userDocRef, firestoreData);
 
@@ -309,6 +355,63 @@ export default function EditUserForm({ userToEdit, onUserUpdated }: EditUserForm
     const initials = names.map(n => n[0]).join('');
     return initials.toUpperCase();
   }
+
+  const handleAddCampus = async () => {
+      if (!newCampusName.trim()) return;
+      try {
+          const docRef = await addDoc(collection(db, "Campus"), {
+              "Campus Name": newCampusName.trim(),
+              createdAt: serverTimestamp(),
+          });
+          const newCampus = { id: docRef.id, "Campus Name": newCampusName.trim() };
+          setCampuses([...campuses, newCampus]);
+          setValue('campus', newCampus["Campus Name"], { shouldValidate: true });
+          setNewCampusName("");
+          toast({ title: "Campus Added" });
+      } catch (error) {
+          toast({ variant: "destructive", title: "Error adding campus" });
+      }
+  };
+
+  const handleRemoveCampus = async (campusId: string, campusName: string) => {
+      if (campusName === 'All Campuses') {
+           toast({ variant: 'destructive', title: 'Action Not Allowed', description: '"All Campuses" cannot be deleted.' });
+          return;
+      }
+      try {
+          await deleteDoc(doc(db, "Campus", campusId));
+          const updatedCampuses = campuses.filter(c => c.id !== campusId);
+          setCampuses(updatedCampuses);
+          toast({ title: "Campus Removed" });
+      } catch (error) {
+          toast({ variant: "destructive", title: "Error removing campus" });
+      }
+  };
+
+  const handleAddCharge = async () => {
+      if (!newChargeName.trim()) return;
+      try {
+          const docRef = await addDoc(collection(db, "charges"), { name: newChargeName.trim() });
+          const newItem = { id: docRef.id, name: newChargeName.trim() };
+          setCharges(prev => [...prev, newItem].sort((a,b) => a.name.localeCompare(b.name)));
+          setValue('charge', newItem.name, { shouldValidate: true });
+          setNewChargeName("");
+          toast({ title: "Charge Added" });
+      } catch (error) {
+          toast({ variant: "destructive", title: "Error adding charge" });
+      }
+  };
+
+  const handleRemoveCharge = async (itemId: string) => {
+      try {
+          await deleteDoc(doc(db, "charges", itemId));
+          const updatedItems = charges.filter(item => item.id !== itemId);
+          setCharges(updatedItems);
+          toast({ title: "Charge Removed" });
+      } catch (error) {
+          toast({ variant: "destructive", title: "Error removing charge" });
+      }
+  };
 
   const isCurrentUserAdmin = currentUser?.role === 'admin' || currentUser?.role === 'developer';
 
@@ -413,41 +516,51 @@ export default function EditUserForm({ userToEdit, onUserUpdated }: EditUserForm
                     )}
                 />
             </div>
-            <div className="space-y-2">
-                <Label htmlFor="hpNumber">HP Number</Label>
-                <Input id="hpNumber" {...register("hpNumber")} />
-                {errors.hpNumber && <p className="text-sm text-destructive">{errors.hpNumber.message}</p>}
-            </div>
-            <div className="space-y-2">
-                <Label htmlFor="facilitatorName">Facilitator's Full Name</Label>
-                <Input id="facilitatorName" {...register("facilitatorName")} />
-                 {errors.facilitatorName && <p className="text-sm text-destructive">{errors.facilitatorName.message}</p>}
-            </div>
-            <div className="space-y-2">
-                <Label>HP Availability Day</Label>
-                <Controller
-                    name="hpAvailabilityDay"
-                    control={control}
-                    render={({ field }) => (
-                        <Select onValueChange={field.onChange} value={field.value} disabled={isSubmitting}>
-                            <SelectTrigger><SelectValue placeholder="Select a day" /></SelectTrigger>
-                            <SelectContent>
-                                <SelectItem value="Monday">Monday</SelectItem>
-                                <SelectItem value="Tuesday">Tuesday</SelectItem>
-                                <SelectItem value="Wednesday">Wednesday</SelectItem>
-                                <SelectItem value="Thursday">Thursday</SelectItem>
-                                <SelectItem value="Friday">Friday</SelectItem>
-                                <SelectItem value="Saturday">Saturday</SelectItem>
-                                <SelectItem value="Sunday">Sunday</SelectItem>
-                            </SelectContent>
-                        </Select>
-                    )}
-                />
-            </div>
-            <div className="space-y-2">
-            <Label>HP Availability Time</Label>
-            <Input type="time" {...register("hpAvailabilityTime")} disabled={isSubmitting} />
-            </div>
+            {isInHpGroupValue === 'true' ? (
+                <>
+                    <div className="space-y-2">
+                        <Label htmlFor="hpNumber">HP Number</Label>
+                        <Input id="hpNumber" {...register("hpNumber")} />
+                        {errors.hpNumber && <p className="text-sm text-destructive">{errors.hpNumber.message}</p>}
+                    </div>
+                    <div className="space-y-2">
+                        <Label htmlFor="facilitatorName">Facilitator's Full Name</Label>
+                        <Input id="facilitatorName" {...register("facilitatorName")} />
+                         {errors.facilitatorName && <p className="text-sm text-destructive">{errors.facilitatorName.message}</p>}
+                    </div>
+                </>
+            ) : (
+                 <>
+                    <div className="space-y-2">
+                        <Label>HP Availability Day</Label>
+                        <Controller
+                            name="hpAvailabilityDay"
+                            control={control}
+                            render={({ field }) => (
+                                <Select onValueChange={field.onChange} value={field.value} disabled={isSubmitting}>
+                                    <SelectTrigger><SelectValue placeholder="Select a day" /></SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="Monday">Monday</SelectItem>
+                                        <SelectItem value="Tuesday">Tuesday</SelectItem>
+                                        <SelectItem value="Wednesday">Wednesday</SelectItem>
+                                        <SelectItem value="Thursday">Thursday</SelectItem>
+                                        <SelectItem value="Friday">Friday</SelectItem>
+                                        <SelectItem value="Saturday">Saturday</SelectItem>
+                                        <SelectItem value="Sunday">Sunday</SelectItem>
+                                    </SelectContent>
+                                </Select>
+                            )}
+                        />
+                         {errors.hpAvailabilityDay && <p className="text-sm text-destructive">{errors.hpAvailabilityDay.message}</p>}
+                    </div>
+                    <div className="space-y-2">
+                    <Label>HP Availability Time</Label>
+                    <Input type="time" {...register("hpAvailabilityTime")} disabled={isSubmitting} />
+                    {errors.hpAvailabilityTime && <p className="text-sm text-destructive">{errors.hpAvailabilityTime.message}</p>}
+                    </div>
+                </>
+            )}
+
             <div className="space-y-2">
                  <Label>Are you baptized?</Label>
                 <Controller
@@ -474,12 +587,13 @@ export default function EditUserForm({ userToEdit, onUserUpdated }: EditUserForm
                             <SelectTrigger><SelectValue placeholder="Select denomination" /></SelectTrigger>
                             <SelectContent>
                                 {[ "Apostolic", "Baptist", "Pentecostal", "Protestant", "Catholic", "Evangelical",
-                                   "Methodist", "Lutheran", "Presbyterian", "Anglican", "Other"
+                                    "Methodist", "Lutheran", "Presbyterian", "Anglican", "Other"
                                 ].map(d => <SelectItem key={d} value={d}>{d}</SelectItem>)}
                             </SelectContent>
                         </Select>
                     )}
                 />
+                {errors.denomination && <p className="text-sm text-destructive">{errors.denomination.message}</p>}
             </div>
             <div className="space-y-2">
                 <Label>Campus</Label>
@@ -526,9 +640,13 @@ export default function EditUserForm({ userToEdit, onUserUpdated }: EditUserForm
                         <Select onValueChange={field.onChange} value={field.value}>
                             <SelectTrigger><SelectValue placeholder="Select language" /></SelectTrigger>
                             <SelectContent>
-                                {availableLanguages.map((lang) => (
-                                    <SelectItem key={lang.id} value={lang.name}>{lang.name}</SelectItem>
-                                ))}
+                                {availableLanguages.map((lang) => {
+                                    const langInfo = allLanguagesList.find(l => l.code === lang.id);
+                                    const displayName = langInfo ? cleanNativeName(langInfo.nativeName) : lang.name;
+                                    return (
+                                        <SelectItem key={lang.id} value={lang.name}>{displayName}</SelectItem>
+                                    );
+                                })}
                             </SelectContent>
                         </Select>
                     )}
@@ -579,8 +697,24 @@ export default function EditUserForm({ userToEdit, onUserUpdated }: EditUserForm
                             <SelectTrigger><SelectValue placeholder="Select a ladder..." /></SelectTrigger>
                             <SelectContent>
                                 {ladders.map((ladder) => (
-                                    <SelectItem key={ladder.id} value={ladder.id}>{ladder.name} {ladder.side !== 'none' && `(${ladder.side})`}</SelectItem>
+                                    <SelectItem key={ladder.id} value={ladder.id}>{ladder.name} {ladder.side !== 'hp' && `(${ladder.side})`}</SelectItem>
                                 ))}
+                            </SelectContent>
+                        </Select>
+                    )}
+                />
+            </div>
+            <div className="space-y-2">
+                <Label>Side</Label>
+                <Controller
+                    name="side"
+                    control={control}
+                    render={({ field }) => (
+                        <Select onValueChange={field.onChange} value={field.value}>
+                            <SelectTrigger><SelectValue placeholder="Select a side" /></SelectTrigger>
+                            <SelectContent>
+                                <SelectItem value="ministry">Ministry</SelectItem>
+                                <SelectItem value="hp">HP</SelectItem>
                             </SelectContent>
                         </Select>
                     )}
@@ -635,6 +769,24 @@ export default function EditUserForm({ userToEdit, onUserUpdated }: EditUserForm
                                 {statuses.map((status) => (
                                     <SelectItem key={status.id} value={status.name}>{status.name}</SelectItem>
                                 ))}
+                            </SelectContent>
+                        </Select>
+                    )}
+                />
+            </div>
+            <div className="space-y-2">
+                <Label>Graduation Status</Label>
+                <Controller
+                    name="graduationStatus"
+                    control={control}
+                    render={({ field }) => (
+                        <Select onValueChange={field.onChange} value={field.value} disabled={isSubmitting}>
+                            <SelectTrigger><SelectValue placeholder="Select status" /></SelectTrigger>
+                            <SelectContent>
+                                <SelectItem value="Not Started">Not Started</SelectItem>
+                                <SelectItem value="In Progress">In Progress</SelectItem>
+                                <SelectItem value="Eligible">Eligible</SelectItem>
+                                <SelectItem value="Graduated">Graduated</SelectItem>
                             </SelectContent>
                         </Select>
                     )}

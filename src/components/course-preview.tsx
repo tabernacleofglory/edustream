@@ -16,6 +16,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, Di
 import CertificatePrint from "./certificate-print";
 import { useAuth } from "@/hooks/use-auth";
 import { Tooltip, TooltipProvider, TooltipContent, TooltipTrigger } from "./ui/tooltip";
+import { useI18n } from "@/hooks/use-i18n";
 
 interface CoursePreviewProps {
   course: Course & { isLocked?: boolean; prerequisiteCourse?: { id: string; title: string } };
@@ -34,6 +35,7 @@ export default function CoursePreview({
   const [isLoading, setIsLoading] = useState(true);
   const router = useRouter();
   const { user } = useAuth();
+  const { t } = useI18n();
   const db = getFirebaseFirestore();
 
   const isLocked = course.isLocked && !isEnrolled;
@@ -99,7 +101,7 @@ export default function CoursePreview({
     if (isCompleted) {
        return (
         <Button onClick={handlePrimaryAction} className="w-full" size="lg" disabled={!firstVideoId}>
-            Review Course
+            {t('course.action.review', 'Review Course')}
         </Button>
       );
     }
@@ -112,15 +114,15 @@ export default function CoursePreview({
               <div className="w-full">
                 <Button disabled className="w-full" size="lg">
                   <Lock className="mr-2 h-4 w-4" />
-                  Locked
+                  {t('course.status.locked', 'Locked')}
                 </Button>
               </div>
             </TooltipTrigger>
             <TooltipContent>
               <p>
                 {course.prerequisiteCourse?.title
-                  ? `Complete "${course.prerequisiteCourse.title}" to unlock this course.`
-                  : "This course is in a higher ladder and is locked for now."}
+                  ? t('course.tooltip.prereq', 'Complete "{{title}}" to unlock.').replace('{{title}}', course.prerequisiteCourse.title)
+                  : t('course.tooltip.higher_ladder', 'This is in a higher ladder and locked for now.')}
               </p>
             </TooltipContent>
           </Tooltip>
@@ -135,7 +137,7 @@ export default function CoursePreview({
         size="lg"
         disabled={isEnrolled && !firstVideoId}
       >
-        {isEnrolled ? "Go to Course" : "Enroll Now"}
+        {isEnrolled ? t('course.action.go_to', 'Go to Course') : t('course.action.enroll', 'Enroll Now')}
       </Button>
     );
   };
@@ -161,7 +163,7 @@ export default function CoursePreview({
 
         <ScrollArea className="flex-grow px-6 -mx-6">
           <div className="px-6">
-            <h3 className="font-semibold mb-2">Lessons in this course</h3>
+            <h3 className="font-semibold mb-2">{t('course.preview.lessons_title', 'Lessons in this course')}</h3>
             <div className="space-y-2">
               {isLoading ? (
                 <div className="space-y-2">
@@ -199,7 +201,7 @@ export default function CoursePreview({
                   })}
                 </div>
               ) : (
-                <p className="text-muted-foreground text-sm">No lessons available yet.</p>
+                <p className="text-muted-foreground text-sm">{t('course.preview.no_lessons', 'No lessons available yet.')}</p>
               )}
             </div>
           </div>

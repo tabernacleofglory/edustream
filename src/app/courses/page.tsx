@@ -6,16 +6,14 @@ import Link from "next/link";
 import { CourseCard } from "@/components/course-card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Search, Plus, Edit, Filter } from "lucide-react";
+import { Search, Plus, Edit } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
 import type { Course } from "@/lib/types";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useProcessedCourses } from "@/hooks/useProcessedCourses";
 import { useRouter } from "next/navigation";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Badge } from "@/components/ui/badge";
-import { useIsMobile } from "@/hooks/use-is-mobile";
-import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem, DropdownMenuCheckboxItem } from "@/components/ui/dropdown-menu";
+import { useI18n } from "@/hooks/use-i18n";
 
 interface CourseWithStatus extends Course {
   isEnrolled?: boolean;
@@ -24,11 +22,11 @@ interface CourseWithStatus extends Course {
 
 export default function AllCoursesPage() {
   const { user, isCurrentUserAdmin, loading: authLoading } = useAuth();
+  const { t } = useI18n();
   const { processedCourses, allLadders, loading: coursesLoading, refresh } = useProcessedCourses();
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedLadderId, setSelectedLadderId] = useState<string>('all');
   const router = useRouter();
-  const isMobile = useIsMobile();
 
   const loading = authLoading || coursesLoading;
 
@@ -46,8 +44,8 @@ export default function AllCoursesPage() {
   }, [loading, user, allLadders]);
 
   const filteredAndSortedCourses = useMemo(() => {
-    let courses = processedCourses;
-    
+    let courses = [...processedCourses];
+
     if (selectedLadderId !== 'all') {
       courses = courses.filter(course => course.ladderIds?.includes(selectedLadderId));
     }
@@ -99,14 +97,14 @@ export default function AllCoursesPage() {
                 courses: groups[selectedLadderId]
             }];
         }
-        return []; // Return empty if no courses match the selected ladder
+        return [];
     }
 
     return Object.keys(groups).map(ladderId => {
         const ladder = allLadders.find(l => l.id === ladderId);
         return {
             ladderId,
-            ladderName: ladder?.name || 'Uncategorized',
+            ladderName: ladder?.name || t('courses.uncategorized', 'Uncategorized'),
             order: ladder?.order ?? Infinity,
             courses: groups[ladderId]
         }
@@ -119,12 +117,7 @@ export default function AllCoursesPage() {
         return a.order - b.order;
     });
 
-  }, [filteredAndSortedCourses, allLadders, user, selectedLadderId]);
-
-
-  const onCourseUpdated = () => {
-    refresh();
-  }
+  }, [filteredAndSortedCourses, allLadders, user, selectedLadderId, t]);
 
   return (
     <div className="container mx-auto px-4 sm:px-6 lg:px-8">
@@ -132,16 +125,16 @@ export default function AllCoursesPage() {
         <div className="flex flex-col sm:flex-row justify-between items-start gap-4">
           <div>
             <h4 className="font-headline text-3xl font-bold md:text-4xl">
-              COURSES
+              {t('courses.title', 'COURSES')}
             </h4>
             <p className="text-muted-foreground">
-              Expand your knowledge with our extensive library.
+              {t('courses.subtitle', 'Expand your knowledge with our extensive library.')}
             </p>
           </div>
           {isCurrentUserAdmin && (
              <Button onClick={() => router.push('/admin/courses?add=true')}>
                 <Plus className="mr-2 h-4 w-4" />
-                Add Course
+                {t('courses.add_button', 'Add Course')}
               </Button>
           )}
         </div>
@@ -150,7 +143,7 @@ export default function AllCoursesPage() {
           <div className="relative flex-1">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground" />
             <Input
-              placeholder="Search by course title..."
+              placeholder={t('courses.search_placeholder', 'Search by course title...')}
               className="pl-10"
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
@@ -161,10 +154,10 @@ export default function AllCoursesPage() {
             onValueChange={setSelectedLadderId}
           >
             <SelectTrigger className="w-full md:w-[280px]">
-              <SelectValue placeholder="Filter by Class Ladder" />
+              <SelectValue placeholder={t('courses.filter.ladders_placeholder', 'Filter by Class Ladder')} />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="all">All Class Ladders</SelectItem>
+              <SelectItem value="all">{t('courses.filter.all_ladders', 'All Class Ladders')}</SelectItem>
               {allLadders.map(ladder => (
                 <SelectItem key={ladder.id} value={ladder.id}>{ladder.name} {ladder.side !== 'none' && `(${ladder.side})`}</SelectItem>
               ))}
@@ -208,7 +201,7 @@ export default function AllCoursesPage() {
                                 <Button asChild size="sm" className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity z-10 text-white bg-gradient-to-r from-pink-500 to-orange-400 hover:from-pink-600 hover:to-orange-500">
                                     <Link href={`/admin/courses?editCourseId=${course.id}`}>
                                     <Edit className="mr-2 h-4 w-4" />
-                                    Edit
+                                    {t('course.action.edit', 'Edit')}
                                     </Link>
                                 </Button>
                                 )}
@@ -219,7 +212,7 @@ export default function AllCoursesPage() {
                 ))
             ) : (
                 <div className="text-center py-16 text-muted-foreground">
-                    <p>No courses match your current filters.</p>
+                    <p>{t('courses.empty_state', 'No courses match your current filters.')}</p>
                 </div>
             )}
         </div>

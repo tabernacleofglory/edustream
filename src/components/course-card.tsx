@@ -15,7 +15,6 @@ import { useToast } from "@/hooks/use-toast";
 import { getFirebaseFirestore } from "@/lib/firebase";
 import {
   doc,
-  setDoc,
   updateDoc,
   getDoc,
   deleteDoc,
@@ -50,6 +49,7 @@ import { Progress } from "./ui/progress";
 import { unenrollUserFromCourse } from "@/lib/user-actions";
 import { Avatar, AvatarFallback, AvatarImage } from "./ui/avatar";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "./ui/tooltip";
+import { useI18n } from "@/hooks/use-i18n";
 
 interface CourseCardProps {
   course: Course & {
@@ -79,6 +79,7 @@ export function CourseCard({
   showEnroll = false,
 }: CourseCardProps) {
   const { user, loading: authLoading, refreshUser } = useAuth();
+  const { t } = useI18n();
   const router = useRouter();
   const { toast } = useToast();
   const [isEnrolling, setIsEnrolling] = useState(false);
@@ -114,7 +115,6 @@ export function CourseCard({
         return;
       }
 
-      // Firestore 'in' queries max 10 IDs. Chunk the array.
       const ids = course.videos as string[];
       const chunkSize = 10;
       const publishedIds = new Set<string>();
@@ -131,13 +131,10 @@ export function CourseCard({
       }
 
       setPublishedVideoCount(publishedIds.size);
-
-      // pick first course.videos item that is published
       const first = ids.find((id) => publishedIds.has(id)) || null;
       setFirstPublishedVideoId(first);
     };
 
-    // LEGAL enrollment count read: read from the course doc, not from enrollments query
     const fetchEnrollmentCount = async () => {
       const courseRef = doc(db, "courses", course.id);
       const snap = await getDoc(courseRef);
@@ -169,8 +166,8 @@ export function CourseCard({
         variant: "destructive",
         title: "Locked",
         description: prereq
-          ? `Complete "${prereq}" to unlock this course.`
-          : "This course is in a higher ladder and isn’t available yet.",
+          ? t('course.tooltip.prereq', 'Complete "{{title}}" to unlock.').replace('{{title}}', prereq)
+          : t('course.tooltip.higher_ladder', 'This is in a higher ladder and locked for now.'),
       });
       return;
     }
@@ -187,28 +184,20 @@ export function CourseCard({
       const enrollmentRef = doc(db, "enrollments", enrollmentId);
       const courseRef = doc(db, "courses", course.id);
 
-      // Client-side transaction that matches Firestore Rules (+1 only, single-field update)
       await runTransaction(db, async (tx) => {
         const existing = await tx.get(enrollmentRef);
-        if (existing.exists()) {
-          // already enrolled -> idempotent
-          return;
-        }
+        if (existing.exists()) return;
 
-        // Create enrollment doc (ID must match payload per rules)
         tx.set(enrollmentRef, {
           userId: uid,
           courseId: course.id,
           enrolledAt: serverTimestamp(),
         });
 
-        // Increment the course's enrollmentCount by +1 (only field changed)
         tx.update(courseRef, { enrollmentCount: increment(1) });
       });
 
-      // Update local UI count optimistically
       setEnrollmentCount((n) => n + 1);
-
       toast({ title: "Enrolled", description: `You can now start ${course.title}.` });
 
       const videoIdToRedirect = course.lastWatchedVideoId || firstPublishedVideoId;
@@ -239,7 +228,6 @@ export function CourseCard({
     const result = await unenrollUserFromCourse(user.uid, course.id);
     if (result.success) {
       toast({ title: "Successfully unenrolled" });
-      // reflect count locally; rules allow -1 too
       setEnrollmentCount((n) => Math.max(0, n - 1));
       onChange?.();
     } else {
@@ -259,7 +247,7 @@ export function CourseCard({
       return (
         <Button onClick={handleEnroll} disabled={authLoading || isEnrolling || (!firstPublishedVideoId && !course.lastWatchedVideoId)} className="w-full">
           {isEnrolling ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-          Enroll Now
+          {t('course.action.enroll', 'Enroll Now')}
         </Button>
       );
     }
@@ -271,15 +259,15 @@ export function CourseCard({
               <div className="w-full">
                 <Button disabled className="w-full">
                   <Lock className="mr-2 h-4 w-4" />
-                  Locked
+                  {t('course.status.locked', 'Locked')}
                 </Button>
               </div>
             </TooltipTrigger>
             <TooltipContent>
               <p>
                 {course.prerequisiteCourse?.title
-                  ? `Complete "${course.prerequisiteCourse.title}" to unlock.`
-                  : "This is in a higher ladder and locked for now."}
+                  ? t('course.tooltip.prereq', 'Complete "{{title}}" to unlock.').replace('{{title}}', course.prerequisiteCourse.title)
+                  : t('course.tooltip.higher_ladder', 'This is in a higher ladder and locked for now.')}
               </p>
             </TooltipContent>
           </Tooltip>
@@ -289,7 +277,7 @@ export function CourseCard({
     return (
       <Button onClick={handleEnroll} disabled={authLoading || isEnrolling || (!firstPublishedVideoId && !course.lastWatchedVideoId)} className="w-full">
         {isEnrolling ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-        Enroll Now
+        {t('course.action.enroll', 'Enroll Now')}
       </Button>
     );
   };
@@ -311,7 +299,6 @@ export function CourseCard({
                     alt={course.title || "Course thumbnail"}
                     fill
                     style={{ objectFit: "cover" }}
-                    data-ai-hint={`${Array.isArray(course.Category) ? course.Category.join(", ") : course.Category} course`}
                   />
                   {isLocked && (
                     <div className="absolute inset-0 bg-black/60 flex items-center justify-center">
@@ -321,7 +308,7 @@ export function CourseCard({
                   {isCompleted && (
                     <div className="absolute top-2 left-2 bg-green-500 text-white text-xs font-bold px-2 py-1 rounded-full flex items-center gap-1">
                       <CheckCircle className="h-4 w-4" />
-                      <span>Completed</span>
+                      <span>{t('course.status.completed', 'Completed')}</span>
                     </div>
                   )}
                   <div className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity">
@@ -334,7 +321,7 @@ export function CourseCard({
                       }}
                     >
                       <Eye className="mr-2 h-4 w-4" />
-                      Preview
+                      {t('course.action.preview', 'Preview')}
                     </Button>
                   </div>
                   {isAdminView && (
@@ -370,16 +357,16 @@ export function CourseCard({
                 <div className="flex flex-wrap items-center text-sm text-muted-foreground gap-x-4 gap-y-1">
                   <div className="flex items-center gap-1.5">
                     <Clock className="w-4 h-4" />
-                    <span>{publishedVideoCount} lessons</span>
+                    <span>{publishedVideoCount} {t('course.info.lessons', 'lessons')}</span>
                   </div>
                   <div className="flex items-center gap-1.5">
                     <Users className="w-4 h-4" />
-                    <span>{enrollmentCount} enrolled</span>
+                    <span>{enrollmentCount} {t('course.info.enrolled', 'enrolled')}</span>
                   </div>
                   {isAdminView && course.order !== undefined && (
                     <div className="flex items-center gap-1.5">
                       <Hash className="w-4 h-4" />
-                      <span>Order: {course.order}</span>
+                      <span>{t('course.info.order', 'Order')}: {course.order}</span>
                     </div>
                   )}
                   {speaker && (
@@ -397,30 +384,30 @@ export function CourseCard({
                   <div className="flex w-full gap-2">
                     <Button size="sm" variant="outline" className="flex-1" onClick={(e) => { e.stopPropagation(); onEdit(); }}>
                       <Edit className="mr-2 h-4 w-4" />
-                      Edit
+                      {t('course.action.edit', 'Edit')}
                     </Button>
                     <Button size="sm" variant="outline" className="flex-1" onClick={(e) => { e.stopPropagation(); onDuplicate?.(); }}>
                       <Copy className="mr-2 h-4 w-4" />
-                      Duplicate
+                      {t('course.action.duplicate', 'Duplicate')}
                     </Button>
                     <AlertDialog>
                       <AlertDialogTrigger asChild>
                         <Button size="sm" variant="destructive" className="flex-1" onClick={(e) => e.stopPropagation()}>
                           <Trash2 className="mr-2 h-4 w-4" />
-                          Delete
+                          {t('course.action.delete', 'Delete')}
                         </Button>
                       </AlertDialogTrigger>
                       <AlertDialogContent onClick={(e) => e.stopPropagation()}>
                         <AlertDialogHeader>
-                          <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
+                          <AlertDialogTitle>{t('course.alert.delete_title', 'Are you absolutely sure?')}</AlertDialogTitle>
                           <AlertDialogDescription>
-                            This action cannot be undone. This will permanently delete the course "{course.title}".
+                            {t('course.alert.delete_desc', 'This action cannot be undone. This will permanently delete the course "{{title}}".').replace('{{title}}', course.title)}
                           </AlertDialogDescription>
                         </AlertDialogHeader>
                         <AlertDialogFooter>
-                          <AlertDialogCancel>Cancel</AlertDialogCancel>
+                          <AlertDialogCancel onClick={(e) => e.stopPropagation()}>{t('course.alert.cancel', 'Cancel')}</AlertDialogCancel>
                           <AlertDialogAction onClick={(e) => { e.stopPropagation(); onDelete?.(); }}>
-                            Delete
+                            {t('course.alert.delete_confirm', 'Delete')}
                           </AlertDialogAction>
                         </AlertDialogFooter>
                       </AlertDialogContent>
@@ -441,7 +428,7 @@ export function CourseCard({
                 ) : isInProgress ? (
                   <div className="w-full">
                     <div className="flex justify-between items-center mb-2">
-                      <span className="text-sm text-muted-foreground">Progress</span>
+                      <span className="text-sm text-muted-foreground">{t('course.label.progress', 'Progress')}</span>
                       <span className="text-sm font-bold">{progressPercentage}%</span>
                     </div>
                     <Progress value={progressPercentage} className="w-full h-2 [&>div]:bg-gradient-to-r from-pink-500 to-orange-400" />
@@ -449,28 +436,9 @@ export function CourseCard({
                       <Button asChild className="flex-1" disabled={!canResume}>
                         <Link href={resumeLink}>
                           <PlayCircle className="mr-2 h-4 w-4" />
-                          Resume
+                          {t('course.action.resume', 'Resume')}
                         </Link>
                       </Button>
-                      <AlertDialog>
-                        <AlertDialogTrigger asChild>
-                          <Button variant="outline" size="icon" disabled={isUnenrolling}>
-                            {isUnenrolling ? <Loader2 className="h-4 w-4 animate-spin" /> : <UserMinus className="h-4 w-4" />}
-                          </Button>
-                        </AlertDialogTrigger>
-                        <AlertDialogContent>
-                          <AlertDialogHeader>
-                            <AlertDialogTitle>Un-enroll from course?</AlertDialogTitle>
-                            <AlertDialogDescription>
-                              Are you sure you want to un-enroll from "{course.title}"? Your progress will be saved if you enroll again later.
-                            </AlertDialogDescription>
-                          </AlertDialogHeader>
-                          <AlertDialogFooter>
-                            <AlertDialogCancel>Cancel</AlertDialogCancel>
-                            <AlertDialogAction onClick={handleUnenroll}>Un-enroll</AlertDialogAction>
-                          </AlertDialogFooter>
-                        </AlertDialogContent>
-                      </AlertDialog>
                     </div>
                   </div>
                 ) : null}

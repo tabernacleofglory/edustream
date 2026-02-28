@@ -1,4 +1,3 @@
-
 "use client";
 
 import { useState, useMemo, useEffect } from 'react';
@@ -25,6 +24,7 @@ import { getSiteSettings } from '@/lib/data';
 interface GroupedCertificate extends CourseGroup {
     isCompleted: boolean;
     courses: Course[];
+    completedAt?: string;
 }
 
 const CertificateCard = ({ item, settings }: { item: GroupedCertificate | CourseWithStatus, settings: SiteSettings | null }) => {
@@ -33,14 +33,14 @@ const CertificateCard = ({ item, settings }: { item: GroupedCertificate | Course
     const isGroup = 'courseIds' in item;
 
     const handleShareLinkedIn = () => {
-        const certUrl = `${window.location.origin}/certificate/${item.id}`; // Needs adjustment for groups
+        const certUrl = `${window.location.origin}/certificate/${item.id}`; 
         
         const linkedInUrl = `https://www.linkedin.com/profile/add?startTask=CERTIFICATION_NAME&name=${encodeURIComponent(item.title)}&organizationName=${encodeURIComponent("Glory Training Hub")}&certUrl=${encodeURIComponent(certUrl)}`;
         window.open(linkedInUrl, '_blank');
     };
     
     const handleCopyLink = () => {
-        const certUrl = `${window.location.origin}/certificate/${item.id}`; // Needs adjustment for groups
+        const certUrl = `${window.location.origin}/certificate/${item.id}`;
         navigator.clipboard.writeText(certUrl);
         toast({ title: 'Link Copied!', description: 'The public link to your certificate has been copied.' });
     };
@@ -48,7 +48,7 @@ const CertificateCard = ({ item, settings }: { item: GroupedCertificate | Course
     const certificateCourse = isGroup ? { ...item.courses[0], title: item.title, id: item.id } : item;
     const certificateTemplateUrl = item.certificateTemplateUrl;
     const logoUrl = isGroup ? (item as GroupedCertificate).courses[0]?.logoUrl : (item as CourseWithStatus).logoUrl;
-
+    const completionDate = item.completedAt || null;
 
     return (
         <Card className="flex flex-col">
@@ -81,6 +81,7 @@ const CertificateCard = ({ item, settings }: { item: GroupedCertificate | Course
                         <CertificatePrint 
                             userName={user?.displayName || "Student"} 
                             course={certificateCourse} 
+                            completionDate={completionDate}
                             templateUrl={certificateTemplateUrl}
                             logoUrl={logoUrl}
                             settings={settings}
@@ -156,13 +157,23 @@ export default function MyCertificatesPage() {
             const completedCourseIds = new Set(processedCourses.filter(c => c.isCompleted).map(c => c.id));
 
             const groupedCerts = courseGroups.map(group => {
-                const coursesInGroup = group.courseIds.map(id => processedCourses.find(c => c.id === id)).filter(Boolean) as Course[];
+                const coursesInGroup = group.courseIds.map(id => processedCourses.find(c => c.id === id)).filter(Boolean) as CourseWithStatus[];
                 const allInGroupCompleted = group.courseIds.every(id => completedCourseIds.has(id));
+                
+                let maxCompletedAt: string | undefined;
+                if (allInGroupCompleted) {
+                    const dates = coursesInGroup.map(c => c.completedAt).filter(Boolean) as string[];
+                    if (dates.length > 0) {
+                        maxCompletedAt = dates.sort((a, b) => new Date(b).getTime() - new Date(a).getTime())[0];
+                    }
+                }
+
                 return {
                     ...group,
                     isCompleted: allInGroupCompleted,
-                    courses: coursesInGroup
-                };
+                    courses: coursesInGroup,
+                    completedAt: maxCompletedAt
+                } as GroupedCertificate;
             }).filter(group => group.isCompleted);
             
             setGroupedCertificates(groupedCerts);

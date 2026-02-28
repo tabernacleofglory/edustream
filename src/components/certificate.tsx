@@ -5,11 +5,12 @@ import { cn } from "@/lib/utils";
 import type { SiteSettings } from "@/lib/data";
 import Image from "next/image";
 import DynamicIcon from "./dynamic-icon";
+import { useMemo } from "react";
 
 interface CertificateProps {
   userName: string;
   courseName?: string;
-  completionDate?: string | Date;
+  completionDate?: string | Date | null;
   templateUrl?: string;
   logoUrl?: string;
   settings?: Partial<SiteSettings> | null;
@@ -30,9 +31,13 @@ export default function Certificate({
 
   const finalLogoUrl = logoUrl || settings?.cert_defaultLogoUrl;
 
-  const rawDate = completionDate ? new Date(completionDate) : new Date();
-  const validDate = !isNaN(rawDate.getTime()) ? rawDate : new Date();
-  const formattedDate = format(validDate, "MMMM d, yyyy");
+  const validDate = useMemo(() => {
+    if (!completionDate) return null;
+    const d = new Date(completionDate);
+    return !isNaN(d.getTime()) ? d : null;
+  }, [completionDate]);
+
+  const formattedDate = validDate ? format(validDate, "MMMM d, yyyy") : "";
 
   const getValue = (key: keyof SiteSettings, defaultValue: any) => {
     return settings?.[key] ?? defaultValue;
@@ -130,7 +135,7 @@ export default function Certificate({
       </div>
 
       {/* Completion date (standalone line) */}
-      {getValue("cert_show_completionDate", true) && (
+      {(getValue("cert_show_completionDate", true) && formattedDate) && (
         <div className="absolute w-full bottom-[19.5%]">
           <p
             style={{
@@ -157,7 +162,7 @@ export default function Certificate({
         >
           <div className="grid grid-cols-2 gap-4 items-end text-center mx-auto max-w-sm">
             <div className="border-b border-black/80 pb-1">
-              {getValue("cert_show_date", true) && (
+              {(getValue("cert_show_date", true) && formattedDate) && (
                 <p style={{ fontSize: `${getValue("cert_date_size", 0.9)}cqi` }}>
                   {formattedDate}
                 </p>

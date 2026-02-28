@@ -9,17 +9,23 @@ export const createLiveEvent = async (
   eventData: Omit<LiveEvent, 'id' | 'status'>
 ): Promise<LiveEvent> => {
   try {
-    const docRef = await db.collection('liveEvents').add({
-      ...eventData,
-      status: 'upcoming',
-      startTime: eventData.startTime, 
-    });
+    const startTimeAsDate = new Date(eventData.startTime);
 
-    return {
-      id: docRef.id,
+    const dataToSave = {
       ...eventData,
+      status: 'upcoming' as 'upcoming',
+      startTime: startTimeAsDate, // Store as a Timestamp
+      platform: eventData.platform || 'gloryLive',
+    };
+    
+    const docRef = await db.collection('liveEvents').add(dataToSave);
+
+    // Reconstruct the event object to match the client-side type, converting Timestamp back to ISO string
+    return {
+      ...(eventData as any), // Cast to any to handle type mismatch during creation
+      id: docRef.id,
       status: 'upcoming',
-      startTime: (eventData.startTime as Date).toISOString(),
+      startTime: startTimeAsDate.toISOString(),
     };
   } catch (error) {
     console.error("Error creating live event document: ", error);
@@ -41,6 +47,12 @@ export const goLiveWithGloryLive = async (eventId: string, vdoNinjaRoomId?: stri
         }
 
         const eventData = eventDoc.data() as LiveEvent;
+
+        if (eventData.platform === 'external') {
+            await eventRef.update({ status: 'live' });
+            return { success: true, message: "Event status set to live." };
+        }
+
         const roomId = vdoNinjaRoomId || eventData.title.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '');
         const password = generatePassword();
 
@@ -62,17 +74,21 @@ export const updateLiveEvent = async (
   eventData: Partial<Omit<LiveEvent, 'id'>>
 ): Promise<LiveEvent> => {
   try {
+    const dataToUpdate: Record<string, any> = { ...eventData };
+    if (eventData.startTime) {
+      dataToUpdate.startTime = new Date(eventData.startTime);
+    }
     const eventRef = db.collection('liveEvents').doc(eventId);
-    await eventRef.update(eventData);
+    await eventRef.update(dataToUpdate);
     
     const updatedDoc = await eventRef.get();
-    const data = updatedDoc.data() as LiveEvent;
+    const data = updatedDoc.data()!;
 
     return {
       id: eventId,
       ...data,
       startTime: (data.startTime as any).toDate().toISOString(),
-    };
+    } as LiveEvent;
 
 
   } catch (error) {

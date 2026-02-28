@@ -9,7 +9,8 @@ import { Printer, Download, Mail, Loader2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import html2canvas from 'html2canvas';
 import { useAuth } from "@/hooks/use-auth";
-import { getFunctions, httpsCallable } from "firebase/functions";
+import { getFirebaseFirestore } from "@/lib/firebase";
+import { collection, addDoc } from "firebase/firestore";
 import {
   Dialog,
   DialogContent,
@@ -38,6 +39,7 @@ export default function CertificatePrint({ userName, course, completionDate, tem
     const [isEmailing, setIsEmailing] = useState(false);
     const [email, setEmail] = useState(user?.email || '');
     const [isEmailDialogOpen, setIsEmailDialogOpen] = useState(false);
+    const db = getFirebaseFirestore();
 
     const handlePrint = () => {
         window.print();
@@ -71,26 +73,29 @@ export default function CertificatePrint({ userName, course, completionDate, tem
         }
         setIsEmailing(true);
         try {
-            const functions = getFunctions();
-            const sendCertificateEmail = httpsCallable(functions, 'sendCertificateEmail');
             const certificateUrl = `${window.location.origin}/certificate/${course.id}`;
             
-            const result = await sendCertificateEmail({
-                email,
-                userName,
-                courseName: course.title,
-                certificateUrl,
+            // Write to the 'mail' collection to trigger the extension
+            await addDoc(collection(db, 'mail'), {
+                to: [email],
+                message: {
+                    subject: `Your Certificate for ${course.title}`,
+                    html: `
+                        <h1>Congratulations, ${userName}!</h1>
+                        <p>You have successfully completed the course: <strong>${course.title}</strong>.</p>
+                        <p>You can view and download your certificate of completion here:</p>
+                        <a href="${certificateUrl}" style="padding: 10px 15px; background-color: #007bff; color: white; text-decoration: none; border-radius: 5px;">View Certificate</a>
+                        <br/><br/>
+                        <p>Thank you for your dedication and hard work!</p>
+                    `
+                }
             });
 
-            if ((result.data as any).success) {
-                toast({ title: 'Email Sent!', description: `Certificate sent to ${email}.` });
-                setIsEmailDialogOpen(false);
-            } else {
-                throw new Error('Function returned an error.');
-            }
+            toast({ title: 'Email Queued!', description: `Certificate has been added to the email queue for ${email}.` });
+            setIsEmailDialogOpen(false);
         } catch (error) {
-            console.error('Error sending certificate email:', error);
-            toast({ variant: 'destructive', title: 'Failed to send email.' });
+            console.error('Error queueing certificate email:', error);
+            toast({ variant: 'destructive', title: 'Failed to queue email.' });
         } finally {
             setIsEmailing(false);
         }

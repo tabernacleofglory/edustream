@@ -5,7 +5,7 @@ import { useState, useEffect, useCallback } from "react";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/use-auth";
 import { db } from "@/lib/firebase";
-import { collection, addDoc, serverTimestamp, getDocs, query, doc, updateDoc, deleteDoc, orderBy, setDoc } from "firebase/firestore";
+import { collection, addDoc, serverTimestamp, getDocs, query, doc, updateDoc, deleteDoc, orderBy, setDoc, where } from "firebase/firestore";
 import allLanguages from "@/lib/languages.json";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -20,6 +20,14 @@ interface StoredLanguage {
     name: string; // The full name (e.g., "English")
     status: 'published' | 'private';
 }
+
+const cleanNativeName = (name: string) => {
+    if (!name) return "";
+    // Take the first part before comma or semicolon
+    const firstPart = name.split(/[;,]/)[0].trim();
+    // Capitalize first letter
+    return firstPart.charAt(0).toUpperCase() + firstPart.slice(1);
+};
 
 export default function LanguagesPage() {
   const { hasPermission } = useAuth();
@@ -43,7 +51,7 @@ export default function LanguagesPage() {
     } finally {
         setLoading(false);
     }
-  }, [toast]);
+  }, [toast, db]);
   
   useEffect(() => {
     if (canManage) {
@@ -119,8 +127,8 @@ export default function LanguagesPage() {
                         return (
                             <div key={lang.code} className="flex items-center justify-between gap-4 rounded-lg border p-4">
                                 <div>
-                                    <p className="font-medium">{lang.name}</p>
-                                    <p className="text-sm text-muted-foreground">{lang.nativeName}</p>
+                                    <p className="font-medium">{cleanNativeName(lang.nativeName)}</p>
+                                    <p className="text-sm text-muted-foreground">{lang.name}</p>
                                 </div>
                                 <div className="flex items-center gap-2">
                                     <Switch

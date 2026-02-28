@@ -4,7 +4,11 @@
 import { useState, useEffect, useMemo, useCallback } from "react";
 import {
   collection, addDoc, query, onSnapshot, orderBy, serverTimestamp,
-  doc, deleteDoc, updateDoc, arrayUnion, arrayRemove
+  doc, deleteDoc, updateDoc, arrayUnion, arrayRemove, where, getDocs, limit, startAfter,
+  getDocs as getDocsFirestore, // aliased to avoid confusion with component
+  QueryDocumentSnapshot,
+  collectionGroup,
+  getCountFromServer,
 } from "firebase/firestore";
 import { useAuth } from "@/hooks/use-auth";
 import { getFirebaseFirestore } from "@/lib/firebase";
@@ -18,10 +22,10 @@ import { cn } from "@/lib/utils";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import EmojiPicker, { EmojiClickData } from "emoji-picker-react";
 import type { Comment } from '@/lib/types';
-import { useIsMobile } from "@/hooks/use-is-mobile";
 import { Card, CardContent } from "../ui/card";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogTrigger } from "../ui/dialog";
 
+const COMMENTS_PER_PAGE = 5;
 
 const getInitials = (name?: string | null) => {
     if (!name) return "U";
@@ -320,6 +324,11 @@ export default function CommentSection({ videoId }: { videoId: string }) {
   const { user } = useAuth();
   const [comments, setComments] = useState<Comment[]>([]);
   const [pinnedComment, setPinnedComment] = useState<Comment | null>(null);
+  const [lastVisible, setLastVisible] = useState<QueryDocumentSnapshot | null>(null);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [hasMore, setHasMore] = useState(true);
+  const [totalComments, setTotalComments] = useState(0);
+
   const { toast } = useToast();
   const db = getFirebaseFirestore();
 
@@ -330,24 +339,48 @@ export default function CommentSection({ videoId }: { videoId: string }) {
     if (!videoId) return;
 
     const commentsColRef = collection(db, "Contents", videoId, "comments");
-    const q = query(commentsColRef, orderBy("createdAt", "desc"));
 
-    const unsubscribe = onSnapshot(q, (querySnapshot) => {
-      let commentsData: Comment[] = [];
-      let pinned: Comment | null = null;
-      querySnapshot.forEach((doc) => {
-        const comment = { id: doc.id, ...doc.data() } as Comment;
-        if (comment.isPinned) {
-          pinned = comment;
-        }
-        commentsData.push(comment);
-      });
-      setComments(commentsData);
-      setPinnedComment(pinned);
+    const unsubCount = onSnapshot(commentsColRef, (snap) => setTotalComments(snap.size));
+
+    const pinnedQuery = query(commentsColRef, where("isPinned", "==", true), limit(1));
+    const unsubPinned = onSnapshot(pinnedQuery, (snap) => {
+        setPinnedComment(snap.empty ? null : { id: snap.docs[0].id, ...snap.docs[0].data() } as Comment);
     });
 
-    return () => unsubscribe();
+    const initialQuery = query(commentsColRef, orderBy("createdAt", "desc"), limit(COMMENTS_PER_PAGE));
+    const unsubInitial = onSnapshot(initialQuery, (snapshot) => {
+        const commentsData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Comment));
+        setComments(commentsData);
+        setLastVisible(snapshot.docs[snapshot.docs.length - 1]);
+        setHasMore(snapshot.docs.length === COMMENTS_PER_PAGE);
+    });
+
+    return () => {
+      unsubCount();
+      unsubPinned();
+      unsubInitial();
+    };
   }, [videoId, db]);
+
+  const loadMoreComments = async () => {
+    if (!lastVisible || !hasMore) return;
+    setLoadingMore(true);
+
+    const commentsColRef = collection(db, "Contents", videoId, "comments");
+    const q = query(commentsColRef, orderBy("createdAt", "desc"), startAfter(lastVisible), limit(COMMENTS_PER_PAGE));
+    
+    try {
+        const snapshot = await getDocsFirestore(q);
+        const newComments = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Comment));
+        setComments(prev => [...prev, ...newComments]);
+        setLastVisible(snapshot.docs[snapshot.docs.length - 1]);
+        setHasMore(snapshot.docs.length === COMMENTS_PER_PAGE);
+    } catch (error) {
+        toast({ variant: 'destructive', title: 'Failed to load more comments.' });
+    } finally {
+        setLoadingMore(false);
+    }
+  };
 
   const handleTogglePin = async (comment: Comment) => {
     if (!isModerator) return;
@@ -387,22 +420,29 @@ export default function CommentSection({ videoId }: { videoId: string }) {
         sortComments(comment.replies);
     });
     
-    return topLevelComments.sort((a,b) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0));
-
+    // The main list is already sorted by desc from firestore
+    return topLevelComments;
   }, [comments]);
 
+
   return (
-    <div className="mt-6 border-t pt-6">
-      <h2 className="font-semibold text-lg flex items-center gap-2 mb-4">
-        <MessageCircle />
-        Live Chat ({comments.length})
-      </h2>
+    <div className="mt-6">
       <div className="space-y-4">
         {pinnedComment && <SingleComment comment={pinnedComment} replies={[]} isPinned onDelete={handleDeleteComment} onPin={handleTogglePin} isModerator={isModerator} isAdmin={isAdmin} videoId={videoId}/>}
         {commentTree.map(comment => (
             comment.id !== pinnedComment?.id && <SingleComment key={comment.id} comment={comment} replies={comment.replies} onDelete={handleDeleteComment} onPin={handleTogglePin} isModerator={isModerator} isAdmin={isAdmin} videoId={videoId}/>
         ))}
+         {hasMore && (
+            <div className="text-center">
+                <Button onClick={loadMoreComments} disabled={loadingMore} variant="outline">
+                    {loadingMore && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                    Load More Comments
+                </Button>
+            </div>
+        )}
       </div>
     </div>
   );
 }
+
+    

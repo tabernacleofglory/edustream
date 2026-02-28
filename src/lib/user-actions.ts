@@ -121,8 +121,9 @@ export async function requestPromotion(
 
 /**
  * UNENROLL USER FROM COURSE
- * - Updates enrollment doc to remove completedAt timestamp
- * - This effectively marks the course as "in-progress" again.
+ * - Deletes the enrollment document
+ * - Deletes the user's progress document for that course
+ * - Decrements the course's enrollmentCount
  */
 export async function unenrollUserFromCourse(
   userId: string,
@@ -131,18 +132,52 @@ export async function unenrollUserFromCourse(
   try {
     const enrollmentId = `${userId}_${courseId}`;
     const enrollmentRef = db.doc(`enrollments/${enrollmentId}`);
+    const courseRef = db.doc(`courses/${courseId}`);
+    const progressRef = db.doc(`userVideoProgress/${userId}_${courseId}`);
+    const quizResultsQuery = db.collection('userQuizResults').where('userId', '==', userId).where('courseId', '==', courseId);
+    const formSubmissionsQuery = db.collectionGroup('submissions').where('userId', '==', userId).where('courseId', '==', courseId);
 
-    const enrollmentDoc = await enrollmentRef.get();
-    if (!enrollmentDoc.exists) {
-        return { success: false, message: "User is not enrolled in this course." };
-    }
+    // Fetch documents to be deleted before the transaction starts
+    const quizResultsSnapshot = await quizResultsQuery.get();
+    const formSubmissionsSnapshot = await formSubmissionsQuery.get();
 
-    // Set completedAt to null to mark as incomplete.
-    await enrollmentRef.update({
-        completedAt: null,
+    await db.runTransaction(async (transaction) => {
+      // --- ALL READS FIRST ---
+      const enrollmentDoc = await transaction.get(enrollmentRef);
+      const progressDoc = await transaction.get(progressRef);
+      const courseDoc = await transaction.get(courseRef);
+
+      // --- WRITES AFTER ALL READS ---
+      if (!enrollmentDoc.exists) {
+        // If there's no enrollment, there's nothing to do.
+        return;
+      }
+
+      // 1. Delete the enrollment document
+      transaction.delete(enrollmentRef);
+      
+      // 2. Delete userVideoProgress for that course
+      if (progressDoc.exists) {
+        transaction.delete(progressRef);
+      }
+      
+      // 3. Delete quiz results for that course and user
+      quizResultsSnapshot.forEach(doc => {
+          transaction.delete(doc.ref);
+      });
+
+      // 4. Delete form submissions for that course and user
+      formSubmissionsSnapshot.forEach(doc => {
+          transaction.delete(doc.ref);
+      });
+
+      // 5. Decrement the course's enrollmentCount, ensuring it doesn't go below zero
+      if(courseDoc.exists) {
+         transaction.update(courseRef, { enrollmentCount: FieldValue.increment(-1) });
+      }
     });
     
-    return { success: true, message: 'Successfully unenrolled from the course.' };
+    return { success: true, message: 'Successfully unenrolled from the course and all related progress was deleted.' };
   } catch (error: any) {
     console.error('Error unenrolling user:', error);
     const message = error.message || 'An unexpected error occurred.';

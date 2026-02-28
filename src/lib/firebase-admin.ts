@@ -8,10 +8,7 @@ if (process.env.FIREBASE_SERVICE_ACCOUNT_KEY && !admin.apps.length) {
     );
     try {
         admin.initializeApp({
-            credential: admin.credential.cert(serviceAccount),
-            projectId: 'edustream-5t6z4',
-            storageBucket: "edustream-5t6z4.appspot.com",
-            databaseURL: "https://edustream-5t6z4.firebaseio.com"
+            credential: admin.credential.cert(serviceAccount)
         });
         console.log("Firebase Admin SDK initialized with service account.");
     } catch (error: any) {
@@ -21,11 +18,7 @@ if (process.env.FIREBASE_SERVICE_ACCOUNT_KEY && !admin.apps.length) {
     try {
         // When deployed in a Google Cloud environment like App Hosting,
         // initializeApp() automatically uses Application Default Credentials.
-        admin.initializeApp({
-            projectId: 'edustream-5t6z4',
-            storageBucket: "edustream-5t6z4.appspot.com",
-            databaseURL: "https://edustream-5t6z4.firebaseio.com"
-        });
+        admin.initializeApp();
         console.log("Firebase Admin SDK initialized successfully with Application Default Credentials.");
     } catch (error: any) {
         console.error("Firebase Admin SDK default initialization error:", error.message);

@@ -1,8 +1,7 @@
 
-
 "use client";
 
-import { useState, useEffect, useMemo, Suspense } from "react";
+import { useState, useEffect, useMemo, useCallback, Suspense } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { db, getFirebaseFirestore } from "@/lib/firebase";
 import { collection, query, onSnapshot, orderBy, doc, getDoc, writeBatch, updateDoc, where, increment, getDocs } from "firebase/firestore";
@@ -35,7 +34,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, Di
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 
 
-import type { CustomForm, FormFieldConfig, User } from "@/lib/types";
+import type { CustomForm, FormFieldConfig, User, Ladder } from "@/lib/types";
 import { getFirebaseFunctions } from "@/lib/firebase";
 import { httpsCallable } from "firebase/functions";
 import { cn } from "@/lib/utils";
@@ -162,6 +161,7 @@ function FormResponsesComponent() {
 
   const [form, setForm] = useState<CustomForm | null>(null);
   const [submissions, setSubmissions] = useState<Submission[]>([]);
+  const [ladders, setLadders] = useState<Ladder[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
@@ -187,6 +187,11 @@ function FormResponsesComponent() {
         }
     });
 
+    const laddersQuery = query(collection(db, "courseLevels"), orderBy("order"));
+    getDocs(laddersQuery).then(laddersSnap => {
+        setLadders(laddersSnap.docs.map(d => ({ id: d.id, ...d.data() } as Ladder)));
+    });
+
     const submissionsRef = collection(db, "forms", formId, "submissions");
     const submissionsQuery = query(submissionsRef, orderBy("submittedAt", "desc"));
     const unsubSubmissions = onSnapshot(submissionsQuery, (snapshot) => {
@@ -204,6 +209,22 @@ function FormResponsesComponent() {
         unsubSubmissions();
     };
   }, [formId, toast, db]);
+
+  const resolveValue = useCallback((val: any, field: any) => {
+    if (val == null) return "N/A";
+    
+    // Resolve Ladder IDs
+    if (field.dataSource === 'ladders') {
+        if (Array.isArray(val)) {
+            return val.map(id => ladders.find(l => l.id === id)?.name || id).join(", ");
+        }
+        return ladders.find(l => l.id === val)?.name || val;
+    }
+
+    if (Array.isArray(val)) return val.join(", ");
+    if (typeof val === "object") return JSON.stringify(val);
+    return String(val);
+  }, [ladders]);
 
   const visibleFields = useMemo(() => {
     const fields = form?.fields?.filter((f: any) => f?.visible) ?? [];
@@ -233,9 +254,10 @@ function FormResponsesComponent() {
     }
     const rows = sortedSubs.map((sub) => {
         const row: Record<string, any> = { "Submission Date": formatWhen(sub.submittedAt, sub.createdAt) };
+        const submissionData = sub.data.data || sub.data;
         visibleFields.forEach((f: any) => {
-            const val = sub.data?.[f.fieldId];
-            row[f.label] = val == null ? "" : Array.isArray(val) ? val.join(", ") : typeof val === "object" ? JSON.stringify(val) : String(val);
+            const v = submissionData?.[f.fieldId];
+            row[f.label] = resolveValue(v, f);
         });
         return row;
     });
@@ -330,6 +352,23 @@ function FormResponsesComponent() {
           userProfileUpdates[castField.userProfileField] = submission.data[castField.fieldId];
         }
       });
+      
+      if (userProfileUpdates.classLadderId) {
+          // Try to find by ID first
+          let ladder = ladders.find(l => l.id === userProfileUpdates.classLadderId);
+          // If not found, try to find by name (to handle old bad data)
+          if (!ladder) {
+              ladder = ladders.find(l => l.name === userProfileUpdates.classLadderId);
+          }
+          
+          if (ladder) {
+              // Always save the correct ID and name
+              userProfileUpdates.classLadderId = ladder.id;
+              userProfileUpdates.classLadder = ladder.name;
+          } else {
+              console.error(`Could not find ladder name for ID: ${userProfileUpdates.classLadderId}. The ladder name will not be updated.`);
+          }
+      }
 
       if (Object.keys(userProfileUpdates).length > 0) {
         const userRef = doc(db, "users", submission.userId!);
@@ -505,7 +544,7 @@ function FormResponsesComponent() {
                                         <TableCell className="text-xs font-mono">{sub.userId || 'N/A'}</TableCell>
                                         {visibleFields.map((f: any, index: number) => {
                                             const val = sub.data?.[f.fieldId];
-                                            const display = val == null ? "N/A" : Array.isArray(val) ? val.join(", ") : typeof val === "object" ? JSON.stringify(val) : String(val);
+                                            const display = resolveValue(val, f);
                                             return <TableCell key={`${sub.id}_${f.fieldId}-${index}`}>{display}</TableCell>;
                                         })}
                                     </TableRow>
@@ -566,4 +605,3 @@ export default function FormResponsesPage() {
         </Suspense>
     );
 }
-

@@ -1,5 +1,3 @@
-
-
 "use client"
 
 import { useForm, useFieldArray, SubmitHandler, Controller } from 'react-hook-form';
@@ -46,6 +44,7 @@ import { RadioGroup, RadioGroupItem } from './ui/radio-group';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from './ui/tabs';
 import QuizLibrary from './quiz-library';
 import FormLibrary from './form-library';
+import allLanguagesList from "@/lib/languages.json";
 
 
 const attendanceLinkSchema = z.object({
@@ -70,6 +69,7 @@ const courseSchema = z.object({
   language: z.string().min(1, "Language is required"),
   Category: z.array(z.string()).min(1, "At least one Category is required"),
   ladderIds: z.array(z.string()).min(1, "At least one Class Ladder is required"),
+  ministryIds: z.array(z.string()).optional(),
   speakerId: z.string().optional(),
   thumbnailFile: z.any().optional(),
   videos: z.array(z.object({
@@ -89,6 +89,11 @@ const courseSchema = z.object({
   order: z.number().optional(),
   certificateEnabled: z.boolean().optional(),
   badgeEnabled: z.boolean().optional(),
+  contentItems: z.array(z.object({
+    order: z.number(),
+    type: z.enum(['video', 'quiz', 'form']),
+    contentId: z.string(),
+  })).optional(),
 });
 
 type CourseFormValues = z.infer<typeof courseSchema>;
@@ -108,6 +113,12 @@ interface CertificateTemplate {
     title: string;
     url: string;
 }
+
+const cleanNativeName = (name: string) => {
+    if (!name) return "";
+    const firstPart = name.split(/[;,]/)[0].trim();
+    return firstPart.charAt(0).toUpperCase() + firstPart.slice(1);
+};
 
 const SpeakerManager = ({ speakers, onSpeakersUpdate }: { speakers: Speaker[], onSpeakersUpdate: () => void }) => {
     const { toast } = useToast();
@@ -233,6 +244,7 @@ export default function AddCourseForm({ allCourses, onCourseUpdated }: AddCourse
 
     const [levels, setLevels] = useState<Ladder[]>([]);
     const [speakers, setSpeakers] = useState<Speaker[]>([]);
+    const [ministries, setMinistries] = useState<StoredItem[]>([]);
     const [isSpeakerManagerOpen, setIsSpeakerManagerOpen] = useState(false);
     const [libraryVideos, setLibraryVideos] = useState<VideoType[]>([]);
     const [isQuizLibraryOpen, setIsQuizLibraryOpen] = useState(false);
@@ -269,6 +281,7 @@ export default function AddCourseForm({ allCourses, onCourseUpdated }: AddCourse
         fetchItems('courseLevels', setLevels, 'order');
         fetchItems('speakers', setSpeakers, 'name');
         fetchItems('languages', setLanguages, 'name');
+        fetchItems('ministries', setMinistries, 'name');
     }, [fetchItems]);
     
      const fetchLibraryVideos = useCallback(async () => {
@@ -330,6 +343,7 @@ export default function AddCourseForm({ allCourses, onCourseUpdated }: AddCourse
             language: '',
             Category: [],
             ladderIds: [],
+            ministryIds: [],
             speakerId: '',
             videos: [],
             attendanceLinks: [],
@@ -427,6 +441,7 @@ export default function AddCourseForm({ allCourses, onCourseUpdated }: AddCourse
                   language: courseData.language || '',
                   Category: Array.isArray(courseData.Category) ? courseData.Category : (courseData.Category ? [courseData.Category] : []),
                   ladderIds: courseData.ladderIds || [],
+                  ministryIds: courseData.ministryIds || [],
                   speakerId: courseData.speakerId || '',
                   thumbnailFile: courseData['Image ID'],
                   videos: videoDetails,
@@ -640,6 +655,17 @@ export default function AddCourseForm({ allCourses, onCourseUpdated }: AddCourse
             const ladderNames = data.ladderIds.map(id => levels.find(l => l.id === id)?.name).filter(Boolean) as string[];
             const resourceUrls = data.resources?.map(r => r.url).filter(Boolean) as string[] || [];
 
+            const contentItems: { order: number; type: 'video' | 'quiz' | 'form'; contentId: string }[] = [];
+            let currentOrder = 0;
+            data.videos?.forEach(video => {
+                contentItems.push({ order: currentOrder++, type: 'video', contentId: video.id });
+            });
+            data.quizIds?.forEach(quizId => {
+                contentItems.push({ order: currentOrder++, type: 'quiz', contentId: quizId });
+            });
+            if (data.formId) {
+                contentItems.push({ order: currentOrder++, type: 'form', contentId: data.formId });
+            }
 
             const courseData: Partial<Course> = {
                 title: data.title,
@@ -648,6 +674,7 @@ export default function AddCourseForm({ allCourses, onCourseUpdated }: AddCourse
                 Category: data.Category,
                 ladders: ladderNames,
                 ladderIds: data.ladderIds,
+                ministryIds: data.ministryIds,
                 speakerId: data.speakerId,
                 "Image ID": courseThumbnailUrl,
                 videos: videoIds,
@@ -664,6 +691,7 @@ export default function AddCourseForm({ allCourses, onCourseUpdated }: AddCourse
                 order: orderValue,
                 certificateEnabled: data.certificateEnabled,
                 badgeEnabled: data.badgeEnabled,
+                contentItems: contentItems,
             };
 
             if (isActuallyEditing) {
@@ -790,11 +818,15 @@ export default function AddCourseForm({ allCourses, onCourseUpdated }: AddCourse
                                           <SelectValue placeholder="Select a language" />
                                         </SelectTrigger>
                                         <SelectContent>
-                                          {languages.map((lang) => (
-                                            <SelectItem key={lang.id} value={lang.name}>
-                                              {lang.name}
-                                            </SelectItem>
-                                          ))}
+                                          {languages.map((lang) => {
+                                            const langInfo = allLanguagesList.find(l => l.code === lang.id);
+                                            const displayName = langInfo ? cleanNativeName(langInfo.nativeName) : lang.name;
+                                            return (
+                                              <SelectItem key={lang.id} value={lang.name}>
+                                                {displayName}
+                                              </SelectItem>
+                                            );
+                                          })}
                                         </SelectContent>
                                       </Select>
                                     )}
@@ -909,6 +941,52 @@ export default function AddCourseForm({ allCourses, onCourseUpdated }: AddCourse
                                         )}
                                     />
                                     {errors.ladderIds && <p className="text-sm text-destructive">{errors.ladderIds.message}</p>}
+                                </div>
+                                <div>
+                                    <Label>Ministries (Optional)</Label>
+                                    <Controller
+                                        name="ministryIds"
+                                        control={control}
+                                        render={({ field }) => (
+                                            <>
+                                                <DropdownMenu>
+                                                    <DropdownMenuTrigger asChild>
+                                                        <Button variant="outline" className="w-full justify-start">Select Ministries</Button>
+                                                    </DropdownMenuTrigger>
+                                                    <DropdownMenuContent className="w-[--radix-dropdown-menu-trigger-width]">
+                                                        {ministries.map((ministry) => (
+                                                            <DropdownMenuCheckboxItem
+                                                                key={ministry.id}
+                                                                checked={field.value?.includes(ministry.id)}
+                                                                onCheckedChange={(checked) => {
+                                                                    const newValue = checked
+                                                                        ? [...(field.value || []), ministry.id]
+                                                                        : (field.value || []).filter((id) => id !== ministry.id);
+                                                                    field.onChange(newValue);
+                                                                }}
+                                                            >
+                                                                {ministry.name}
+                                                            </DropdownMenuCheckboxItem>
+                                                        ))}
+                                                    </DropdownMenuContent>
+                                                </DropdownMenu>
+                                                <div className="mt-2 flex flex-wrap gap-2">
+                                                    {field.value?.map(id => {
+                                                        const ministry = ministries.find(m => m.id === id);
+                                                        return ministry ? (
+                                                            <Badge key={id} variant="secondary">
+                                                                {ministry.name}
+                                                                <button type="button" onClick={() => field.onChange(field.value?.filter(ministryId => ministryId !== id))} className="ml-1 rounded-full p-0.5 hover:bg-background/50">
+                                                                    <X className="h-3 w-3" />
+                                                                </button>
+                                                            </Badge>
+                                                        ) : null
+                                                    })}
+                                                </div>
+                                            </>
+                                        )}
+                                    />
+                                    {errors.ministryIds && <p className="text-sm text-destructive">{errors.ministryIds.message}</p>}
                                 </div>
                                 <div className="space-y-2">
                                     <Label htmlFor="speakerId">Speaker</Label>

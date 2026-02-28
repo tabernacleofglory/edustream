@@ -6,7 +6,7 @@ import type { LiveEvent } from '@/lib/types';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Calendar, Clock, Tv, Copy, Check, Share2, Loader2, PlayCircle, StopCircle, RefreshCw, Mic, Eye, Trash2 } from 'lucide-react';
+import { Calendar, Clock, Tv, Copy, Check, Share2, Loader2, PlayCircle, StopCircle, RefreshCw, Mic, Eye, Trash2, Link as LinkIcon, Edit } from 'lucide-react';
 import { format } from 'date-fns';
 import { useToast } from '@/hooks/use-toast';
 import {
@@ -39,9 +39,10 @@ interface LiveEventsListProps {
   onEndLive: (eventId: string) => void;
   onDelete: (eventId: string) => void;
   onDuplicate: (event: LiveEvent) => void;
+  onEdit: (event: LiveEvent) => void;
 }
 
-export default function LiveEventsList({ events, loading, isAdmin, onGoLive, onEndLive, onDelete, onDuplicate }: LiveEventsListProps) {
+export default function LiveEventsList({ events, loading, isAdmin, onGoLive, onEndLive, onDelete, onDuplicate, onEdit }: LiveEventsListProps) {
   const { toast } = useToast();
   const [isProcessing, setIsProcessing] = useState<string | null>(null);
   const [sharingEvent, setSharingEvent] = useState<LiveEvent | null>(null);
@@ -77,9 +78,10 @@ export default function LiveEventsList({ events, loading, isAdmin, onGoLive, onE
 
     switch (event.status) {
       case 'live':
-         if (!event.gloryLiveRoomId) {
+        if (event.platform === 'gloryLive') {
+          if (!event.gloryLiveRoomId) {
             actionButtons.push(<Button key="preparing" disabled className="flex-1"><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Preparing...</Button>);
-        } else {
+          } else {
             actionButtons.push(
                 <Button asChild key="moderate" className="flex-1" variant="secondary">
                     <Link href={`/admin/glory-live/${event.gloryLiveRoomId}?password=${event.gloryLiveRoomPassword}`} target="_blank">
@@ -92,12 +94,28 @@ export default function LiveEventsList({ events, loading, isAdmin, onGoLive, onE
                         <Eye className="mr-2 h-4 w-4" />
                         View
                     </Link>
-                </Button>,
-                 <Button key="end" onClick={() => handleEndLiveClick(event.id)} disabled={isThisEventProcessing} className="flex-1" variant="destructive">
-                    {isThisEventProcessing ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <StopCircle className="mr-2 h-4 w-4" />}
-                    End
                 </Button>
             );
+          }
+        } else { // external
+           actionButtons.push(
+                <Button asChild key="view-external" className="flex-1">
+                    <a href={event.externalLink} target="_blank" rel="noopener noreferrer">
+                        <Eye className="mr-2 h-4 w-4" />
+                        Join External Meeting
+                    </a>
+                </Button>
+            );
+        }
+        
+        actionButtons.push(
+            <Button key="end" onClick={() => handleEndLiveClick(event.id)} disabled={isThisEventProcessing} className="flex-1" variant="destructive">
+                {isThisEventProcessing ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <StopCircle className="mr-2 h-4 w-4" />}
+                End
+            </Button>
+        );
+
+        if (event.platform === 'gloryLive' || event.platform === 'external') {
             utilityButtons.push(
                 <Button key="share" onClick={() => handleShare(event)} variant="outline" size="icon">
                     <Share2 className="h-4 w-4" />
@@ -105,14 +123,18 @@ export default function LiveEventsList({ events, loading, isAdmin, onGoLive, onE
             );
         }
         break;
+
       case 'upcoming':
         actionButtons.push(
           <Button key="go-live" onClick={() => handleGoLiveClick(event)} disabled={isThisEventProcessing} className="flex-1">
             {isThisEventProcessing ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <PlayCircle className="mr-2 h-4 w-4" />}
-            Go Live
+            {event.platform === 'gloryLive' ? 'Go Live' : 'Start Event'}
           </Button>
         );
         utilityButtons.push(
+            <Button key="edit" variant="outline" size="icon" onClick={() => onEdit(event)} disabled={isThisEventProcessing}>
+                <Edit className="h-4 w-4" />
+            </Button>,
             <AlertDialog key="delete-alert">
               <AlertDialogTrigger asChild>
                 <Button variant="outline" size="icon" disabled={isThisEventProcessing}>
@@ -135,21 +157,14 @@ export default function LiveEventsList({ events, loading, isAdmin, onGoLive, onE
         );
         break;
       case 'ended':
-         if (event.eventType === 'recurring') {
-            actionButtons.push(
-                <Button key="go-live-again" onClick={() => handleGoLiveClick(event)} disabled={isThisEventProcessing} className="flex-1">
-                    {isThisEventProcessing ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <PlayCircle className="mr-2 h-4 w-4" />}
-                    Go Live Again
-                </Button>
-            );
-         } else {
-            actionButtons.push(<Button key="ended" disabled className="flex-1">Ended</Button>);
-            utilityButtons.push(
-                <Button key="duplicate" variant="outline" size="icon" onClick={() => onDuplicate(event)} disabled={isThisEventProcessing}>
-                    <Copy className="h-4 w-4" />
-                </Button>
-            );
-         }
+         utilityButtons.push(
+            <Button key="edit-ended" variant="outline" size="icon" onClick={() => onEdit(event)} disabled={isThisEventProcessing}>
+                <Edit className="h-4 w-4" />
+            </Button>,
+            <Button key="duplicate" variant="outline" size="icon" onClick={() => onDuplicate(event)} disabled={isThisEventProcessing}>
+                <Copy className="h-4 w-4" />
+            </Button>
+        );
          utilityButtons.push(
             <AlertDialog key="delete-alert-ended">
               <AlertDialogTrigger asChild>
@@ -190,7 +205,13 @@ export default function LiveEventsList({ events, loading, isAdmin, onGoLive, onE
 
   const generateShareMessage = (event: LiveEvent) => {
     const eventTime = format(new Date(event.startTime), "MMM d, yyyy 'at' p");
-    const link = `${window.location.origin}/live/${event.gloryLiveRoomId || ''}`;
+    let link = '';
+    if (event.platform === 'gloryLive' && event.gloryLiveRoomId) {
+        link = `${window.location.origin}/live/${event.gloryLiveRoomId}`;
+    } else if (event.platform === 'external' && event.externalLink) {
+        link = event.externalLink;
+    }
+
     return `
 🎉 You're invited to a Glory Event! 🎉
 
@@ -203,7 +224,6 @@ Join us live here: ${link}
   };
 
   const handleCopyToClipboard = (text: string) => {
-    if (!sharingEvent?.gloryLiveRoomId) return;
     navigator.clipboard.writeText(text);
     setCopied(true);
     toast({ title: "Copied to clipboard!" });
@@ -223,12 +243,16 @@ Join us live here: ${link}
               <CardHeader>
                 <div className="flex justify-between items-start">
                     <CardTitle>{event.title}</CardTitle>
-                    <Badge variant={event.eventType === 'recurring' ? 'default' : 'outline'} className="capitalize">
-                        {event.eventType === 'recurring' && <RefreshCw className="mr-2 h-3 w-3" />}
-                        {event.eventType || 'one-time'}
+                    <Badge variant={event.platform === 'gloryLive' ? 'default' : 'outline'} className="capitalize">
+                        {event.platform === 'gloryLive' ? 'Glory Live' : 'External'}
                     </Badge>
                 </div>
                 <CardDescription>{event.description}</CardDescription>
+                <div className="mt-1">
+                    <Badge variant={event.status === 'live' ? 'destructive' : 'secondary'} className="capitalize">
+                        <Tv className="mr-1 h-3 w-3" />{event.status}
+                    </Badge>
+                </div>
               </CardHeader>
               <CardContent className="space-y-2 text-sm">
                 <div className="flex items-center">
@@ -238,12 +262,6 @@ Join us live here: ${link}
                 <div className="flex items-center">
                   <Clock className="mr-2 h-4 w-4" />
                   <span>{format(new Date(event.startTime), 'p')}</span>
-                </div>
-                <div className="flex items-center">
-                    <Tv className="mr-2 h-4 w-4" />
-                    <Badge variant={event.status === 'live' ? 'destructive' : 'secondary'} className="capitalize">
-                        {event.status}
-                    </Badge>
                 </div>
               </CardContent>
               {isAdmin && (
@@ -273,7 +291,7 @@ Join us live here: ${link}
                         rows={8}
                         className="bg-muted"
                     />
-                    <Button onClick={() => handleCopyToClipboard(generateShareMessage(sharingEvent))} className="w-full" disabled={!sharingEvent.gloryLiveRoomId}>
+                    <Button onClick={() => handleCopyToClipboard(generateShareMessage(sharingEvent))} className="w-full">
                         {copied ? <Check className="mr-2 h-4 w-4" /> : <Copy className="mr-2 h-4 w-4" />}
                         {copied ? 'Copied!' : 'Copy Message'}
                     </Button>

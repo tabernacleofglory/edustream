@@ -1,5 +1,4 @@
 
-
 export interface User {
   id: string;
   uid: string;
@@ -16,8 +15,10 @@ export interface User {
   ministry?: string;
   charge?: string;
   membershipStatus?: string;
+  graduationStatus?: string;
   classLadder?: string;
   classLadderId?: string;
+  side?: 'ministry' | 'hp' | 'none';
   bio?: string;
   postCount?: number;
   commentCount?: number;
@@ -76,6 +77,7 @@ export interface Course {
   tags: string[];
   ladders: string[];
   ladderIds: string[];
+  ministryIds?: string[];
   creatorId: string;
   speakerId?: string;
   enrollmentCount?: number;
@@ -96,6 +98,11 @@ export interface Course {
   language?: string;
   certificateEnabled?: boolean;
   badgeEnabled?: boolean;
+  contentItems?: {
+    order: number;
+    type: 'video' | 'quiz' | 'form';
+    contentId: string;
+  }[];
 }
 
 export interface CourseGroup {
@@ -199,6 +206,10 @@ export interface Post {
     repostOf?: string;
     originalAuthorName?: string;
     originalContent?: string;
+    originalLinks?: { url: string, label: string }[];
+    originalAttachments?: { url: string, type: 'image' | 'document', name: string }[];
+    links?: { url: string, label: string }[];
+    attachments?: { url: string, type: 'image' | 'document', name: string }[];
     isPinned?: boolean;
     repostCount?: number;
     shareCount?: number;
@@ -235,10 +246,12 @@ export interface LiveEvent {
   startTime: string;
   status: 'upcoming' | 'live' | 'ended';
   imageUrl?: string;
+  platform: 'gloryLive' | 'external';
+  externalLink?: string;
   gloryLiveRoomId?: string;
   gloryLiveRoomPassword?: string;
-  eventType?: 'one-time' | 'recurring';
   vdoNinjaRoomId?: string;
+  ladderIds?: string[];
 }
 
 export interface Permission {
@@ -302,6 +315,8 @@ export interface CustomForm {
     createdAt: any;
     createdBy: string;
     autoSignup?: boolean;
+    emailConfirmationEnabled?: boolean;
+    emailTemplateId?: string;
 }
 
 export interface FormFieldConfig {
@@ -309,12 +324,44 @@ export interface FormFieldConfig {
     label: string;
     visible: boolean;
     required: boolean;
-    type?: 'text' | 'email' | 'phone' | 'textarea' | 'select' | 'multiple-choice' | 'multiple-select' | 'password';
+    type?: 'text' | 'email' | 'phone' | 'textarea' | 'select' | 'multiple-choice' | 'multiple-select' | 'password' | 'date' | 'address';
     options?: string[];
-    dataSource?: 'manual' | 'campuses';
+    dataSource?: 'manual' | 'campuses' | 'ladders' | 'ministries' | 'charges' | 'roles' | 'languages' | 'genders' | 'ageRanges' | 'locationPreferences' | 'hpAvailabilityDays' | 'maritalStatuses';
     dataSourceOptions?: {
         ladders?: string[];
+        campuses?: string[];
     };
+    userProfileField?: string;
+    conditionalLogic?: {
+        fieldId: string;
+        operator: 'is' | 'isNot' | 'contains' | 'doesNotContain' | 'isNotEmpty';
+        value?: string;
+    };
+}
+
+export interface EmailTemplate {
+  id: string;
+  name: string;
+  subject: string;
+  body: string;
+  createdAt: any;
+  fromEmail?: string;
+}
+
+export interface EmailLayoutSettings {
+    headerGradientStart: string;
+    headerGradientEnd: string;
+    headerLogoUrl: string;
+    headerTitle: string;
+    headerSlogan: string;
+    footerText: string;
+    buttonColor: string;
+    buttonTextColor: string;
+    bodyBgColor: string;
+    cardBgColor: string;
+    preHeaderText?: string;
+    buttonText?: string;
+    buttonUrl?: string;
 }
 
 export interface SiteSettings {
@@ -376,4 +423,5 @@ export interface SiteSettings {
     cert_spacing_completionText_courseName?: number;
     cert_spacing_courseName_signatures?: number;
     quiz_pass_threshold?: number;
+    emailLayout?: EmailLayoutSettings;
 }

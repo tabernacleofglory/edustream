@@ -1,4 +1,5 @@
 
+
 "use client";
 
 import { useState, useEffect, useMemo, useRef } from 'react';
@@ -13,7 +14,7 @@ import { Alert, AlertDescription, AlertTitle } from './ui/alert';
 import { CheckCircle2, XCircle, Trophy, FileQuestion, Loader2, Repeat, Clock } from 'lucide-react';
 import { useAuth } from '@/hooks/use-auth';
 import type { Quiz as QuizData, UserQuizResult, QuizQuestion, SiteSettings } from '@/lib/types';
-import { collection, addDoc, serverTimestamp, doc, getDoc } from 'firebase/firestore';
+import { collection, addDoc, serverTimestamp, doc, getDoc, setDoc } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { useToast } from '@/hooks/use-toast';
 import Confetti from 'react-confetti';
@@ -176,6 +177,11 @@ export default function QuizPanel({ quizData, courseId, onQuizComplete }: QuizPa
             } as Omit<UserQuizResult, 'id'| 'answers'> & { answers: any });
 
             if (hasPassed) {
+                // Also update global progress
+                const globalProgressRef = doc(db, 'userContentProgress', user.uid);
+                await setDoc(globalProgressRef, {
+                    completedItems: { [quizData.id]: serverTimestamp() }
+                }, { merge: true });
                 onQuizComplete();
             }
              toast({ title: "Quiz Submitted", description: `You scored ${calculatedScore.toFixed(0)}%.` });
@@ -370,3 +376,5 @@ export default function QuizPanel({ quizData, courseId, onQuizComplete }: QuizPa
     </div>
   );
 }
+
+    

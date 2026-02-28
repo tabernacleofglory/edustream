@@ -1,4 +1,5 @@
 
+
 "use client";
 
 import { useEffect, useState, Suspense } from "react";
@@ -65,8 +66,10 @@ function AdminCoursesPageContent() {
   const [loading, setLoading] = useState(true);
   const [categories, setCategories] = useState<string[]>([]);
   const [ladders, setLadders] = useState<Ladder[]>([]);
+  const [ministries, setMinistries] = useState<{ id: string; name: string }[]>([]);
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [selectedLadderId, setSelectedLadderId] = useState<string | null>(null);
+  const [selectedMinistryId, setSelectedMinistryId] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState("");
   const [isSheetOpen, setIsSheetOpen] = useState(false);
   const { toast } = useToast();
@@ -108,6 +111,11 @@ function AdminCoursesPageContent() {
       const laddersList = laddersSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Ladder));
       setLadders(laddersList);
 
+      const ministriesQuery = query(collection(db, "ministries"), orderBy("name"));
+      const ministriesSnapshot = await getDocs(ministriesQuery);
+      const ministriesList = ministriesSnapshot.docs.map(doc => ({ id: doc.id, name: doc.data().name as string }));
+      setMinistries(ministriesList);
+
       await fetchAllCourses();
 
       setLoading(false);
@@ -129,13 +137,17 @@ function AdminCoursesPageContent() {
     if (selectedLadderId) {
       courses = courses.filter(course => course.ladderIds?.includes(selectedLadderId));
     }
+    
+    if (selectedMinistryId) {
+        courses = courses.filter(course => course.ministryIds?.includes(selectedMinistryId));
+    }
 
     if (searchTerm) {
       courses = courses.filter(course => course.title.toLowerCase().includes(searchTerm.toLowerCase()));
     }
 
     setFilteredCourses(courses);
-  }, [selectedCategory, selectedLadderId, searchTerm, allCourses]);
+  }, [selectedCategory, selectedLadderId, selectedMinistryId, searchTerm, allCourses]);
 
   const handleCategoryClick = (category: string | null) => {
     setSelectedCategory(category);
@@ -273,6 +285,20 @@ function AdminCoursesPageContent() {
                     )}
                 </div>
             )}
+            <Select
+                value={selectedMinistryId || "all"}
+                onValueChange={(value) => setSelectedMinistryId(value === "all" ? null : value)}
+            >
+                <SelectTrigger className="w-full md:w-auto flex-grow md:flex-grow-0 md:w-[200px]">
+                    <SelectValue placeholder="All Ministries" />
+                </SelectTrigger>
+                <SelectContent>
+                    <SelectItem value="all">All Ministries</SelectItem>
+                    {ministries.map(ministry => (
+                        <SelectItem key={ministry.id} value={ministry.id}>{ministry.name}</SelectItem>
+                    ))}
+                </SelectContent>
+            </Select>
             <div className="flex items-center gap-2 overflow-x-auto pb-2 no-scrollbar">
               <Button
                   variant={selectedCategory === null ? 'default' : 'outline'}

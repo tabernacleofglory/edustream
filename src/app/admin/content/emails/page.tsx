@@ -1,7 +1,6 @@
-
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/use-auth";
 import { db } from "@/lib/firebase";
@@ -46,8 +45,15 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { Plus, Edit, Trash2, Mail, Eye } from "lucide-react";
+import { Plus, Edit, Trash2, Mail, Eye, Bold, Italic, List, Loader2, Code2, FileText } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
+import remarkBreaks from "remark-breaks";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { Badge } from "@/components/ui/badge";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import type { CustomForm } from "@/lib/types";
 
 interface EmailTemplate {
   id: string;
@@ -56,6 +62,20 @@ interface EmailTemplate {
   body: string;
   createdAt: any;
 }
+
+const PLACEHOLDERS = [
+  { label: "Full Name / Nom Complet", value: "{{userName}}" },
+  { label: "First Name / Prénom", value: "{{firstName}}" },
+  { label: "Last Name / Nom", value: "{{lastName}}" },
+  { label: "Email / Email", value: "{{email}}" },
+  { label: "Phone / Téléphone", value: "{{phoneNumber}}" },
+  { label: "Campus", value: "{{campus}}" },
+  { label: "HP Number / Numéro HP", value: "{{hpNumber}}" },
+  { label: "HP Facilitator / Facilitateur HP", value: "{{facilitatorName}}" },
+  { label: "Ladder / Echelle", value: "{{classLadder}}" },
+  { label: "Ministry / Ministère", value: "{{ministry}}" },
+  { label: "Charge", value: "{{charge}}" },
+];
 
 const TemplateForm = ({
   template,
@@ -69,6 +89,66 @@ const TemplateForm = ({
   const [name, setName] = useState(template?.name || "");
   const [subject, setSubject] = useState(template?.subject || "");
   const [body, setBody] = useState(template?.body || "");
+  const [forms, setForms] = useState<CustomForm[]>([]);
+  const [selectedFormId, setSelectedFormId] = useState<string>("");
+  const bodyRef = useRef<HTMLTextAreaElement>(null);
+
+  useEffect(() => {
+    const fetchForms = async () => {
+        try {
+            const q = query(collection(db, "forms"), orderBy("title"));
+            const snap = await getDocs(q);
+            setForms(snap.docs.map(d => ({ id: d.id, ...d.data() } as CustomForm)));
+        } catch (e) {
+            console.error("Error fetching forms:", e);
+        }
+    };
+    fetchForms();
+  }, []);
+
+  const selectedForm = forms.find(f => f.id === selectedFormId);
+
+  const applyMarkdown = (syntax: 'bold' | 'italic' | 'list') => {
+    const textarea = bodyRef.current;
+    if (!textarea) return;
+
+    const start = textarea.selectionStart;
+    const end = textarea.selectionEnd;
+    const selectedText = textarea.value.substring(start, end);
+    
+    let newText;
+    switch(syntax) {
+        case 'bold':
+            newText = `**${selectedText}**`;
+            break;
+        case 'italic':
+            newText = `*${selectedText}*`;
+            break;
+        case 'list':
+            newText = `\n- ${selectedText.replace(/\n/g, '\n- ')}`;
+            break;
+    }
+
+    const updatedValue = textarea.value.substring(0, start) + newText + textarea.value.substring(end);
+    setBody(updatedValue);
+    textarea.focus();
+  };
+
+  const insertPlaceholder = (value: string) => {
+    const textarea = bodyRef.current;
+    if (!textarea) return;
+
+    const start = textarea.selectionStart;
+    const end = textarea.selectionEnd;
+    const updatedValue = body.substring(0, start) + value + body.substring(end);
+    setBody(updatedValue);
+    
+    // Focus back and set cursor position after the placeholder
+    setTimeout(() => {
+        textarea.focus();
+        textarea.setSelectionRange(start + value.length, start + value.length);
+    }, 0);
+  };
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -76,39 +156,120 @@ const TemplateForm = ({
   };
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-4">
-      <div className="space-y-2">
-        <Label htmlFor="name">Template Name</Label>
-        <Input
-          id="name"
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-          placeholder="e.g., Course Completion"
-          required
-        />
-        <p className="text-xs text-muted-foreground">For internal identification.</p>
-      </div>
-      <div className="space-y-2">
-        <Label htmlFor="subject">Email Subject</Label>
-        <Input
-          id="subject"
-          value={subject}
-          onChange={(e) => setSubject(e.target.value)}
-          placeholder="e.g., Congratulations on completing your course!"
-          required
-        />
-      </div>
-      <div className="space-y-2">
-        <Label htmlFor="body">Email Body (HTML supported)</Label>
-        <Textarea
-          id="body"
-          value={body}
-          onChange={(e) => setBody(e.target.value)}
-          rows={10}
-          placeholder="<p>Hello {{userName}},</p>"
-        />
-      </div>
-      <DialogFooter>
+    <form onSubmit={handleSubmit} className="h-full flex flex-col">
+      <ScrollArea className="flex-grow pr-6 -mr-6">
+        <div className="space-y-4">
+          <div className="space-y-2">
+            <Label htmlFor="name">Template Name</Label>
+            <Input
+              id="name"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder="e.g., Course Completion"
+              required
+            />
+            <p className="text-xs text-muted-foreground">For internal identification.</p>
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="subject">Email Subject</Label>
+            <Input
+              id="subject"
+              value={subject}
+              onChange={(e) => setSubject(e.target.value)}
+              placeholder="e.g., Congratulations on completing your course!"
+              required
+            />
+          </div>
+
+          <div className="space-y-4 border rounded-lg p-4 bg-muted/10">
+            <div className="space-y-2">
+                <Label>User Profile Placeholders</Label>
+                <div className="flex flex-wrap gap-2">
+                    {PLACEHOLDERS.map((ph) => (
+                        <Button 
+                            key={ph.value}
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            className="h-7 text-xs bg-background"
+                            onClick={() => insertPlaceholder(ph.value)}
+                        >
+                            <Code2 className="mr-1 h-3 w-3" />
+                            {ph.label}
+                        </Button>
+                    ))}
+                </div>
+            </div>
+
+            <div className="space-y-2">
+                <Label>Form Field Placeholders</Label>
+                <Select value={selectedFormId} onValueChange={setSelectedFormId}>
+                    <SelectTrigger className="w-full">
+                        <SelectValue placeholder="Select a form to see its fields..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                        {forms.map(f => <SelectItem key={f.id} value={f.id}>{f.title}</SelectItem>)}
+                    </SelectContent>
+                </Select>
+                {selectedForm && (
+                    <div className="flex flex-wrap gap-2 p-3 border rounded-lg bg-muted/30">
+                        <Button 
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            className="h-7 text-xs bg-primary/10 border-primary/20 text-primary"
+                            onClick={() => insertPlaceholder(`{{formTitle:${selectedForm.id}}}`)}
+                        >
+                            <FileText className="mr-1 h-3 w-3" />
+                            Form Name / Nom du Formulaire: {selectedForm.title}
+                        </Button>
+                        {selectedForm.fields.map(field => (
+                            <Button 
+                                key={field.fieldId}
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                className="h-7 text-xs bg-background"
+                                onClick={() => insertPlaceholder(`{{form:${selectedForm.id}:${field.fieldId}}}`)}
+                            >
+                                <FileText className="mr-1 h-3 w-3" />
+                                {field.label}
+                            </Button>
+                        ))}
+                    </div>
+                )}
+            </div>
+            <p className="text-[10px] text-muted-foreground">Click a tag to insert it into the message body. These will be replaced with real data when the email is sent.</p>
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="body">Email Body (Markdown supported)</Label>
+            <Card>
+                <div className="p-2 border-b flex gap-1">
+                    <Button type="button" variant="ghost" size="icon" onClick={() => applyMarkdown('bold')}><Bold className="h-4 w-4" /></Button>
+                    <Button type="button" variant="ghost" size="icon" onClick={() => applyMarkdown('italic')}><Italic className="h-4 w-4" /></Button>
+                    <Button type="button" variant="ghost" size="icon" onClick={() => applyMarkdown('list')}><List className="h-4 w-4" /></Button>
+                </div>
+                <Textarea
+                    id="body"
+                    ref={bodyRef}
+                    value={body}
+                    onChange={(e) => setBody(e.target.value)}
+                    rows={10}
+                    placeholder="Hello {{userName}}, ..."
+                    className="border-0 focus-visible:ring-0 shadow-none min-h-[200px]"
+                />
+                <div className="p-4 border-t bg-muted/50">
+                    <Label className="text-xs">Preview</Label>
+                    <div className="prose dark:prose-invert prose-sm max-w-full prose-p:my-1 prose-headings:mb-2 prose-headings:mt-4">
+                        <ReactMarkdown remarkPlugins={[remarkGfm, remarkBreaks]}>{body}</ReactMarkdown>
+                    </div>
+                </div>
+            </Card>
+          </div>
+        </div>
+      </ScrollArea>
+      <DialogFooter className="pt-6 border-t mt-6 flex-shrink-0">
         <Button type="button" variant="secondary" onClick={onClose}>
           Cancel
         </Button>
@@ -214,14 +375,19 @@ export default function EmailTemplatesPage() {
       </div>
 
       <Card>
-        <CardHeader className="flex flex-row items-center justify-between">
-          <CardTitle>All Templates</CardTitle>
-          {canManage && (
-            <Button onClick={() => handleOpenForm(null)}>
-              <Plus className="mr-2 h-4 w-4" />
-              Create New Template
-            </Button>
-          )}
+        <CardHeader>
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+            <div>
+                <CardTitle>All Templates</CardTitle>
+                <CardDescription>Manage reusable message layouts with dynamic user and form placeholders.</CardDescription>
+            </div>
+            {canManage && (
+                <Button onClick={() => handleOpenForm(null)}>
+                <Plus className="mr-2 h-4 w-4" />
+                Create New Template
+                </Button>
+            )}
+          </div>
         </CardHeader>
         <CardContent>
           <div className="border rounded-lg">
@@ -306,7 +472,7 @@ export default function EmailTemplatesPage() {
       </Card>
       
       <Dialog open={isFormOpen} onOpenChange={setIsFormOpen}>
-        <DialogContent>
+        <DialogContent className="max-w-4xl h-[90vh] flex flex-col">
             <DialogHeader>
                 <DialogTitle>{editingTemplate ? 'Edit Template' : 'Create New Template'}</DialogTitle>
             </DialogHeader>
@@ -315,14 +481,18 @@ export default function EmailTemplatesPage() {
       </Dialog>
       
       <Dialog open={!!previewingTemplate} onOpenChange={() => setPreviewingTemplate(null)}>
-        <DialogContent className="max-w-2xl">
+        <DialogContent className="max-w-4xl h-[80vh] flex flex-col">
             {previewingTemplate && (
                 <>
                 <DialogHeader>
                     <DialogTitle>{previewingTemplate.name}</DialogTitle>
                     <DialogDescription>Subject: {previewingTemplate.subject}</DialogDescription>
                 </DialogHeader>
-                <div className="border rounded-md p-4 max-h-[60vh] overflow-y-auto" dangerouslySetInnerHTML={{ __html: previewingTemplate.body }} />
+                <ScrollArea className="flex-1 p-4 border rounded-md">
+                    <div className="prose dark:prose-invert prose-sm max-w-full prose-p:my-1 prose-headings:mb-2 prose-headings:mt-4">
+                        <ReactMarkdown remarkPlugins={[remarkGfm, remarkBreaks]}>{previewingTemplate.body}</ReactMarkdown>
+                    </div>
+                </ScrollArea>
                 </>
             )}
         </DialogContent>
@@ -330,4 +500,3 @@ export default function EmailTemplatesPage() {
     </div>
   );
 }
-

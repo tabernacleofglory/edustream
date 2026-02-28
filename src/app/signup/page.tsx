@@ -2,7 +2,7 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useState, useCallback } from "react";
 import { 
     createUserWithEmailAndPassword, 
@@ -20,17 +20,16 @@ import { useToast } from "@/hooks/use-toast";
 import { Loader2 } from "lucide-react";
 import { doc, setDoc, getDoc, collection, query, where, getDocs, orderBy, limit, serverTimestamp } from "firebase/firestore";
 import LanguageSwitcher from "@/components/language-switcher";
+import { useI18n } from "@/hooks/use-i18n";
 
 const getDefaultLadderId = async (db: any): Promise<{id: string, name: string} | null> => {
     const laddersRef = collection(db, "courseLevels");
-    // Attempt to find a ladder specifically named "New Member" with a category of "membership"
     const q = query(laddersRef, where("name", "==", "New Member"), where("category", "==", "membership"), limit(1));
     const querySnapshot = await getDocs(q);
     if (!querySnapshot.empty) {
         const doc = querySnapshot.docs[0];
         return { id: doc.id, name: doc.data().name };
     }
-    // Fallback: If "New Member" doesn't exist, get the ladder with the lowest order number.
     const fallbackQuery = query(laddersRef, orderBy("order"), limit(1));
     const fallbackSnapshot = await getDocs(fallbackQuery);
     if(!fallbackSnapshot.empty) {
@@ -42,7 +41,9 @@ const getDefaultLadderId = async (db: any): Promise<{id: string, name: string} |
 
 export default function SignupPage() {
     const router = useRouter();
+    const searchParams = useSearchParams();
     const { toast } = useToast();
+    const { t } = useI18n();
     const [email, setEmail] = useState("");
     const [password, setPassword] = useState("");
     const [isLoading, setIsLoading] = useState(false);
@@ -69,9 +70,9 @@ export default function SignupPage() {
                 classLadder: defaultLadder?.name || 'New Member',
                 createdAt: serverTimestamp(),
             });
-            return true; // Indicates new user
+            return true;
         }
-        return false; // Indicates existing user
+        return false;
     }, [db]);
 
 
@@ -95,7 +96,8 @@ export default function SignupPage() {
                 title: "Account Created!",
                 description: "Welcome! Please complete your profile.",
             });
-             router.push('/settings');
+             const redirect = searchParams.get('redirect');
+             router.push(redirect || '/settings');
         } catch (error: any) {
             toast({
                 variant: "destructive",
@@ -116,19 +118,20 @@ export default function SignupPage() {
             const user = result.user;
 
             const isNewUser = await checkAndCreateUserDoc(user);
+            const redirect = searchParams.get('redirect');
 
             if (isNewUser) {
                  toast({
                     title: "Account Created!",
                     description: "Welcome! Please complete your profile.",
                 });
-                 router.push('/settings');
+                 router.push(redirect || '/settings');
             } else {
                  toast({
                     title: "Signed In!",
                     description: "Welcome back!",
                 });
-                 router.push('/dashboard');
+                 router.push(redirect || '/dashboard');
             }
 
         } catch (error: any) {
@@ -149,9 +152,9 @@ export default function SignupPage() {
           <div className="flex justify-center mb-4">
             <Logo />
           </div>
-          <CardTitle className="text-2xl font-headline">Create an Account</CardTitle>
+          <CardTitle className="text-2xl font-headline">{t('auth.signup.title', 'Create an Account')}</CardTitle>
            <CardDescription>
-             {isGoogleLoading ? 'Creating your account...' : 'Start your learning journey'}
+             {isGoogleLoading ? 'Creating your account...' : t('auth.signup.subtitle', 'Start your learning journey')}
            </CardDescription>
         </CardHeader>
         <CardContent>
@@ -170,7 +173,7 @@ export default function SignupPage() {
                 </div>
                 <Button type="submit" className="w-full" disabled={isLoading || isGoogleLoading}>
                     {isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                    Create account
+                    {t('auth.signup.button', 'Create account')}
                 </Button>
             </form>
           </div>
@@ -180,18 +183,18 @@ export default function SignupPage() {
                 </div>
                 <div className="relative flex justify-center text-xs uppercase">
                     <span className="bg-background px-2 text-muted-foreground">
-                    Or continue with
+                    {t('auth.signup.or', 'Or continue with')}
                     </span>
                 </div>
             </div>
             <Button variant="outline" className="w-full mt-4" onClick={handleGoogleSignup} disabled={isLoading || isGoogleLoading}>
               {isGoogleLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-              Sign up with Google
+              {t('auth.signup.google', 'Sign up with Google')}
             </Button>
           <div className="mt-4 text-center text-sm">
-            Already have an account?{" "}
+            {t('auth.signup.login_prompt', "Already have an account?")}{" "}
             <Link href="/login" className="underline">
-              Log in
+              {t('auth.signup.login_link', 'Log in')}
             </Link>
           </div>
         </CardContent>

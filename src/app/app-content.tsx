@@ -44,18 +44,20 @@ import { Alert, AlertTitle, AlertDescription } from "@/components/ui/alert";
 import { Lock } from 'lucide-react';
 import GlobalSearch from "@/components/global-search";
 import LanguageSwitcher from "@/components/language-switcher";
+import { useI18n } from "@/hooks/use-i18n";
+import MobileNav from "@/components/mobile-nav";
 
 
 const navItems = [
-  { href: "/dashboard", icon: LayoutDashboard, label: "Dashboard", permission: "viewDashboard" },
-  { href: "/courses", icon: BookOpen, label: "All Courses", permission: "viewCoursesPage" },
-  { href: "/ministry-training", icon: Shield, label: "Ministry Training", permission: "viewCoursesPage" },
-  { href: "/my-certificates", icon: Award, label: "My Certificates", permission: "viewDashboard" },
-  { href: "/live", icon: Tv, label: "Live", permission: "viewLivePage" },
-  { href: "/admin/courses/teaching", icon: Play, label: "Teaching", permission: "viewTeachingPage" },
-  { href: "/music", icon: Music, label: "Music", permission: "viewMusicPage" },
-  { href: "/community", icon: MessageSquare, label: "Community", permission: "viewCommunityPage" },
-  { href: "/documentation", icon: BookCopy, label: "Documentation", permission: "viewDocumentationPage" },
+  { href: "/dashboard", icon: LayoutDashboard, labelKey: "nav.dashboard", defaultLabel: "Dashboard", permission: "viewDashboard" },
+  { href: "/courses", icon: BookOpen, labelKey: "nav.courses", defaultLabel: "All Courses", permission: "viewCoursesPage" },
+  { href: "/ministry-training", icon: Shield, labelKey: "nav.ministry_training", defaultLabel: "Ministry Training", permission: "viewCoursesPage" },
+  { href: "/my-certificates", icon: Award, labelKey: "nav.my_certificates", defaultLabel: "My Certificates", permission: "viewDashboard" },
+  { href: "/live", icon: Tv, labelKey: "nav.live", defaultLabel: "Live", permission: "viewLivePage" },
+  { href: "/admin/courses/teaching", icon: Play, labelKey: "nav.teaching", defaultLabel: "Teaching", permission: "viewTeachingPage" },
+  { href: "/music", icon: Music, labelKey: "nav.music", defaultLabel: "Music", permission: "viewMusicPage" },
+  { href: "/community", icon: MessageSquare, labelKey: "nav.community", defaultLabel: "Community", permission: "viewCommunityPage" },
+  { href: "/documentation", icon: BookCopy, labelKey: "nav.documentation", defaultLabel: "Documentation", permission: "viewDocumentationPage" },
 ];
 
 
@@ -68,6 +70,7 @@ const getInitials = (name?: string | null) => {
 
 const UserProfile = () => {
     const { user, hasPermission } = useAuth();
+    const { t } = useI18n();
     const router = useRouter();
     const [userLadder, setUserLadder] = useState<Ladder | null>(null);
     const auth = getFirebaseAuth();
@@ -116,7 +119,7 @@ const UserProfile = () => {
                     </div>
                      {user.ministry && (
                         <p className="text-xs leading-none text-muted-foreground">
-                            Ministry: {user.ministry}
+                            {t('nav.profile.ministry_label', 'Ministry')}: {user.ministry}
                         </p>
                     )}
                   </div>
@@ -125,27 +128,27 @@ const UserProfile = () => {
                 <DropdownMenuItem asChild>
                   <Link href="/dashboard">
                     <LayoutDashboard className="mr-2 h-4 w-4" />
-                    <span>Dashboard</span>
+                    <span>{t('nav.dashboard', 'Dashboard')}</span>
                   </Link>
                 </DropdownMenuItem>
                 <DropdownMenuItem asChild>
                   <Link href="/settings">
                     <Settings className="mr-2 h-4 w-4" />
-                    <span>Settings</span>
+                    <span>{t('nav.settings', 'Settings')}</span>
                   </Link>
                 </DropdownMenuItem>
                 {hasPermission('viewAdminDashboard') && (
                   <DropdownMenuItem asChild>
                     <Link href="/admin/analytics">
                       <UserCog className="mr-2 h-4 w-4" />
-                      <span>Admin Panel</span>
+                      <span>{t('nav.admin_panel', 'Admin Panel')}</span>
                     </Link>
                   </DropdownMenuItem>
                 )}
                 <DropdownMenuSeparator />
                 <DropdownMenuItem onClick={handleLogout}>
                   <LogOut className="mr-2 h-4 w-4" />
-                  <span>Log out</span>
+                  <span>{t('nav.logout', 'Log Out')}</span>
                 </DropdownMenuItem>
               </DropdownMenuContent>
         </DropdownMenu>
@@ -204,6 +207,7 @@ const HeaderContent = () => {
 function AppContentInternal({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const { user, loading, hasPermission, isProfileComplete } = useAuth();
+  const { t } = useI18n();
   const router = useRouter();
   const { currentTrack } = useAudioPlayer();
 
@@ -292,10 +296,10 @@ function AppContentInternal({ children }: { children: React.ReactNode }) {
                         <Link href={item.href}>
                             <SidebarMenuButton
                             isActive={pathname.startsWith(item.href) && (item.href !== '/courses' || pathname === '/courses')}
-                            tooltip={{ children: item.label }}
+                            tooltip={{ children: t(item.labelKey, item.defaultLabel) }}
                             >
                             <item.icon />
-                            {isSidebarOpen && <span>{item.label}</span>}
+                            {isSidebarOpen && <span>{t(item.labelKey, item.defaultLabel)}</span>}
                             </SidebarMenuButton>
                         </Link>
                         </SidebarMenuItem>
@@ -305,23 +309,10 @@ function AppContentInternal({ children }: { children: React.ReactNode }) {
                             <Link href="/admin/analytics">
                                 <SidebarMenuButton
                                     isActive={pathname.startsWith('/admin')}
-                                    tooltip={{ children: 'Admin Panel' }}
+                                    tooltip={{ children: t('nav.admin_panel', 'Admin Panel') }}
                                 >
                                     <Shield />
-                                    {isSidebarOpen && <span>Admin Panel</span>}
-                                </SidebarMenuButton>
-                            </Link>
-                        </SidebarMenuItem>
-                    )}
-                    {!canSeeFullMenu && (
-                         <SidebarMenuItem>
-                            <Link href="/settings">
-                                <SidebarMenuButton
-                                    isActive={pathname.startsWith('/settings')}
-                                    tooltip={{ children: 'Complete Profile' }}
-                                >
-                                    <Settings />
-                                    {isSidebarOpen && <span>Complete Profile</span>}
+                                    {isSidebarOpen && <span>{t('nav.admin_panel', 'Admin Panel')}</span>}
                                 </SidebarMenuButton>
                             </Link>
                         </SidebarMenuItem>
@@ -334,7 +325,7 @@ function AppContentInternal({ children }: { children: React.ReactNode }) {
                 <div className={cn("absolute inset-0 bg-black/50 z-40 md:hidden", isSidebarOpen ? 'block' : 'hidden')} onClick={() => setIsSidebarOpen(false)} />
                 <PanelResizeHandle className={cn("w-px items-center justify-center bg-border", isMobile ? 'hidden' : 'flex')} />
                 <Panel className={cn(isMobile && isSidebarOpen && "pointer-events-none")}>
-                    <div className={cn("flex flex-col h-screen", currentTrack && 'pb-16')}>
+                    <div className={cn("flex flex-col h-screen", (currentTrack || isMobile) && 'pb-16')}>
                         <HeaderContent />
                         <ScrollArea className="flex-1">
                             <main className={cn("flex-1", isVideoPage ? "p-0" : "p-4 md:p-8")}>
@@ -344,6 +335,7 @@ function AppContentInternal({ children }: { children: React.ReactNode }) {
                     </div>
                 </Panel>
             </PanelGroup>
+            <MobileNav onMenuClick={() => setIsSidebarOpen(true)} />
         </SidebarProvider>
   );
 }

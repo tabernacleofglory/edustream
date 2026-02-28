@@ -37,6 +37,22 @@ const getInitials = (name?: string | null) => {
   return name.trim().split(/\s+/).map((n) => n[0]).join("").toUpperCase();
 };
 
+const formatTimeWithHours = (seconds: number) => {
+    if (isNaN(seconds) || seconds < 0) return '0:00';
+    const hours = Math.floor(seconds / 3600);
+    const minutes = Math.floor((seconds % 3600) / 60);
+    const secs = Math.floor(seconds % 60);
+
+    const sStr = secs < 10 ? `0${secs}` : `${secs}`;
+    
+    if (hours > 0) {
+        const mStr = minutes < 10 ? `0${minutes}` : `${minutes}`;
+        return `${hours}:${mStr}:${sStr}`;
+    }
+
+    return `${minutes}:${sStr}`;
+};
+
 const PlaylistAndResources = ({
   course,
   courseVideos,
@@ -279,22 +295,25 @@ export default function UnrestrictedVideoPlayer({
         <div className="lg:px-8 lg:pt-8 flex-shrink-0">
           <div ref={videoContainerRef} className={cn("relative aspect-video w-full overflow-hidden bg-slate-900", isFullScreen ? "rounded-none" : "lg:rounded-lg")}>
           {(isYouTube || isGoogleDrive) ? (
-              <ReactPlayer
-                  ref={reactPlayerRef}
-                  url={currentVideo.url}
-                  playing={isPlaying}
-                  controls={false}
-                  loop={isLooping}
-                  volume={volume}
-                  muted={isMuted}
-                  width="100%"
-                  height="100%"
-                  onPlay={() => setIsPlaying(true)}
-                  onPause={() => setIsPlaying(false)}
-                  onEnded={handleEnded}
-                  onProgress={state => { setProgress(state.played * 100); setCurrentTime(state.playedSeconds); }}
-                  onDuration={setDuration}
-              />
+              <div className="relative w-full h-full">
+                <ReactPlayer
+                    ref={reactPlayerRef}
+                    url={currentVideo.url}
+                    playing={isPlaying}
+                    controls={false}
+                    loop={isLooping}
+                    volume={volume}
+                    muted={isMuted}
+                    width="100%"
+                    height="100%"
+                    onPlay={() => setIsPlaying(true)}
+                    onPause={() => setIsPlaying(false)}
+                    onEnded={handleEnded}
+                    onProgress={state => { setProgress(state.played * 100); setCurrentTime(state.playedSeconds); }}
+                    onDuration={setDuration}
+                />
+                <div className="absolute inset-0 z-10" onClick={togglePlayPause} />
+              </div>
           ) : (
               <video
                   ref={playerRef}
@@ -315,7 +334,8 @@ export default function UnrestrictedVideoPlayer({
           )}
 
           <div
-            className={cn("video-controls absolute bottom-0 left-0 right-0 p-2 md:p-4 bg-gradient-to-t from-black from-10% via-black/70 to-transparent transition-opacity", showControls ? "opacity-100" : "opacity-0")}
+            className={cn("video-controls absolute bottom-0 left-0 right-0 z-20 p-2 md:p-4 bg-gradient-to-t from-black from-10% via-black/70 to-transparent transition-opacity", showControls ? "opacity-100 pointer-events-auto" : "opacity-0 pointer-events-none")}
+            onClick={(e) => e.stopPropagation()}
           >
             <Slider
               value={[progress]}
@@ -352,7 +372,7 @@ export default function UnrestrictedVideoPlayer({
                     </div>
                 </div>
                 <div className="flex items-center text-xs">
-                    {new Date(currentTime * 1000).toISOString().substr(14, 5)} / {new Date(duration * 1000).toISOString().substr(14, 5)}
+                    {formatTimeWithHours(currentTime)} / {formatTimeWithHours(duration)}
                 </div>
                 <div className="flex items-center justify-center gap-1 md:gap-2">
                 <Button variant="ghost" size="icon" onClick={() => setIsLooping(!isLooping)} className={cn("text-white hover:text-white hover:bg-white/20", isLooping && "bg-white/20")}>

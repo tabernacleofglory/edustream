@@ -1,5 +1,4 @@
 
-
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
@@ -19,15 +18,14 @@ import {
   where,
   getDoc,
   updateDoc,
+  setDoc,
 } from "firebase/firestore";
 import { useAuth } from "@/hooks/use-auth";
 import { useDebounce } from 'use-debounce';
 import { 
     GoogleAuthProvider, 
     signInWithPopup, 
-    signInWithEmailAndPassword,
 } from "firebase/auth";
-import { format, isValid } from "date-fns";
 
 import PhoneInput from "react-phone-number-input";
 import "react-phone-number-input/style.css";
@@ -47,14 +45,12 @@ import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Loader2, PartyPopper, User as UserIcon, LogIn, CalendarIcon } from "lucide-react";
+import { Loader2, PartyPopper, User as UserIcon, LogIn } from "lucide-react";
 import type { CustomForm, FormFieldConfig, Ladder } from "@/lib/types";
 import { useToast } from "@/hooks/use-toast";
 import { Skeleton } from "./ui/skeleton";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogTrigger } from './ui/dialog';
 import { Avatar, AvatarFallback, AvatarImage } from './ui/avatar';
-import { Popover, PopoverTrigger, PopoverContent } from "./ui/popover";
-import { Calendar } from "./ui/calendar";
 import { cn } from "@/lib/utils";
 
 
@@ -74,7 +70,7 @@ interface PublicBlankFormProps {
     formConfig: CustomForm;
     courseId?: string; // Optional, for in-course forms
     existingSubmission?: any;
-    onFormComplete?: () => void;
+    onFormComplete?: (submissionId: string) => void;
 }
 
 const getInitials = (name?: string | null) => {
@@ -85,19 +81,8 @@ const getInitials = (name?: string | null) => {
 
 const UserInfoCard = () => {
     const { user, loading, checkAndCreateUserDoc } = useAuth();
-    const [ladders, setLadders] = useState<Ladder[]>([]);
     const [isLoginOpen, setIsLoginOpen] = useState(false);
-    const db = getFirebaseFirestore();
-
-    useEffect(() => {
-        const fetchLadders = async () => {
-            const q = query(collection(db, "courseLevels"), orderBy("order"));
-            const snapshot = await getDocs(q);
-            setLadders(snapshot.docs.map(d => ({id: d.id, ...d.data()} as Ladder)));
-        };
-        fetchLadders();
-    }, [db]);
-
+    
     const handleGoogleLogin = async () => {
         const auth = getFirebaseAuth();
         const provider = new GoogleAuthProvider();
@@ -143,8 +128,6 @@ const UserInfoCard = () => {
         );
     }
     
-    const userLadder = ladders.find(l => l.id === user.classLadderId);
-
     return (
         <Card>
             <CardContent className="p-4 flex items-center gap-4">
@@ -154,7 +137,6 @@ const UserInfoCard = () => {
                 </Avatar>
                 <div className="space-y-1">
                     <p className="font-semibold text-lg">{user.displayName}</p>
-                    <p className="text-sm text-muted-foreground">{userLadder?.name || user.role}</p>
                     <p className="text-xs text-muted-foreground font-mono">{user.uid}</p>
                 </div>
             </CardContent>
@@ -170,6 +152,7 @@ export default function PublicBlankForm({ formConfig, courseId, existingSubmissi
   const [selectOptions, setSelectOptions] = useState<Record<string, Opt[]>>({});
   const db = getFirebaseFirestore();
   const { user } = useAuth();
+  const [ladders, setLadders] = useState<Ladder[]>([]);
 
   const validationSchema = useMemo(() => {
     const shape: Record<string, z.ZodTypeAny> = {};
@@ -179,12 +162,9 @@ export default function PublicBlankForm({ formConfig, courseId, existingSubmissi
       const label = c.label || c.fieldId;
       const type = c.type as string | undefined;
 
-      // Check conditional logic to determine if the field is active
       const isActive = (formValues: any) => {
-        if (!formValues) return true; // Assume active during initial validation setup
-        if (!c.conditionalLogic || !c.conditionalLogic.fieldId) {
-          return true; // No condition, so it's active
-        }
+        if (!formValues) return true;
+        if (!c.conditionalLogic || !c.conditionalLogic.fieldId) return true;
         const { fieldId, operator, value } = c.conditionalLogic;
         const targetValue = formValues[fieldId];
         switch(operator) {
@@ -198,37 +178,24 @@ export default function PublicBlankForm({ formConfig, courseId, existingSubmissi
       };
 
       let schema: z.ZodTypeAny;
-
       if (type === "email") {
         schema = z.string().email("Invalid email address.").optional().or(z.literal(""));
-        if (c.required) {
-          schema = z.string().min(1, `${label} is required.`).email("Invalid email address.");
-        }
+        if (c.required) schema = z.string().min(1, `${label} is required.`).email("Invalid email address.");
       } else if (type === "multiple-select") {
          schema = z.array(z.string());
-         if (c.required) {
-             schema = schema.min(1, `${label} is required.`);
-         } else {
-             schema = schema.optional();
-         }
+         if (c.required) schema = schema.min(1, `${label} is required.`);
+         else schema = schema.optional();
       } else if (type === "date") {
           schema = z.string().optional();
-          if (c.required) {
-              schema = z.string().min(1, `${label} is required.`);
-          }
+          if (c.required) schema = z.string().min(1, `${label} is required.`);
       } else {
         schema = z.any().optional();
-        if (c.required) {
-           schema = z.string().min(1, `${label} is required.`);
-        }
+        if (c.required) schema = z.string().min(1, `${label} is required.`);
       }
 
-      // Wrap with a transform to make it optional if not active
       shape[c.fieldId] = z.lazy(() => 
         z.any().transform((_, ctx) => {
-            if (isActive(ctx.parent as any)) {
-                return schema.parse(_);
-            }
+            if (isActive(ctx.parent as any)) return schema.parse(_);
             return _;
         })
       );
@@ -248,13 +215,11 @@ export default function PublicBlankForm({ formConfig, courseId, existingSubmissi
   }, [formConfig.fields]);
 
   const form = useForm({ resolver: zodResolver(validationSchema), defaultValues });
-
   const watchedData = form.watch();
   const [debouncedData] = useDebounce(watchedData, 1000);
 
   useEffect(() => {
     if (user) {
-        // Pre-fill form with user data for linked fields
         formConfig.fields.forEach(field => {
             const castField = field as any;
             if (castField.userProfileField && (user as any)[castField.userProfileField]) {
@@ -264,21 +229,13 @@ export default function PublicBlankForm({ formConfig, courseId, existingSubmissi
     } else if (!existingSubmission) {
         const savedDraft = localStorage.getItem(`form-draft-${formConfig.id}`);
         if (savedDraft) {
-            try {
-                form.reset(JSON.parse(savedDraft));
-            } catch (e) {
-                console.error("Failed to parse form draft", e);
-            }
+            try { form.reset(JSON.parse(savedDraft)); } catch(e) {}
         }
     }
-
-    if (existingSubmission) {
-        form.reset(existingSubmission.data);
-    }
+    if (existingSubmission) form.reset(existingSubmission.data);
   }, [formConfig.id, form, user, formConfig.fields, existingSubmission]);
 
   useEffect(() => {
-    // Don't save draft if user is logged in or editing
     if (!user && !existingSubmission) {
         localStorage.setItem(`form-draft-${formConfig.id}`, JSON.stringify(debouncedData));
     }
@@ -293,19 +250,16 @@ export default function PublicBlankForm({ formConfig, courseId, existingSubmissi
 
       for (const f of dynamicFields as any[]) {
         const ds = String(f.dataSource || "");
-        let collectionName = "";
-        let fieldName = "name";
-        let orderByField = "name";
-        let useWhere = false;
-
         const customField = customFieldGroups.find(g => g.id === ds);
-
         if (customField) {
             const subFieldsSnap = await getDocs(query(collection(db, "customFields", customField.id, "options"), orderBy("name")));
             options[f.fieldId] = subFieldsSnap.docs.map(d => ({ value: d.data().name, label: d.data().name }));
             continue;
         }
-
+        let collectionName = "";
+        let fieldName = "name";
+        let orderByField = "name";
+        let useWhere = false;
         switch (ds) {
           case "campuses": collectionName = "Campus"; fieldName = "Campus Name"; orderByField="Campus Name"; break;
           case "ladders": collectionName = "courseLevels"; orderByField = "order"; break;
@@ -314,61 +268,45 @@ export default function PublicBlankForm({ formConfig, courseId, existingSubmissi
           case "roles": collectionName = "roles"; break;
           case "languages": collectionName = "languages"; useWhere = true; break;
         }
-        
         if (collectionName) {
-            let q;
-            if (useWhere) {
-                 q = query(collection(db, collectionName), where("status", "==", "published"), orderBy(orderByField));
-            } else {
-                 q = query(collection(db, collectionName), orderBy(orderByField));
-            }
+            let q = useWhere ? query(collection(db, collectionName), where("status", "==", "published"), orderBy(orderByField)) : query(collection(db, collectionName), orderBy(orderByField));
             const snap = await getDocs(q);
-            let data = snap.docs.map((d) => ({ value: d.data()[fieldName], label: d.data()[fieldName], id: d.id }));
-            
-            // If dataSource is 'ladders' and specific ladders are selected in the form builder
-            if (ds === 'ladders' && f.dataSourceOptions?.ladders) {
-                data = data.filter(item => f.dataSourceOptions.ladders.includes(item.id));
-            }
-            
+            let data = ds === 'ladders' ? snap.docs.map(d => ({ value: d.id, label: d.data()[fieldName], id: d.id })) : snap.docs.map(d => ({ value: d.data()[fieldName], label: d.data()[fieldName], id: d.id }));
+            if (ds === 'ladders' && f.dataSourceOptions?.ladders?.length) data = data.filter(item => f.dataSourceOptions.ladders.includes(item.id));
+            if (ds === 'campuses' && f.dataSourceOptions?.campuses?.length) data = data.filter(item => f.dataSourceOptions.campuses.includes(item.id));
+            if (ds === 'campuses') data = data.filter(c => c.label !== "App Campus");
             options[f.fieldId] = data;
-        } else if (ds === 'genders') {
-            options[f.fieldId] = [{ value: "Male", label: "Male" }, { value: "Female", label: "Female" }];
-        } else if (ds === 'ageRanges') {
-            options[f.fieldId] = ["Less than 13", "13-17", "18-24", "25-34", "35-44", "45-54", "55-64", "65+"].map(o => ({ value: o, label: o }));
-        } else if (ds === 'locationPreferences') {
-            options[f.fieldId] = ["Onsite", "Online"].map(o => ({ value: o, label: o }));
-        } else if (ds === 'hpAvailabilityDays') {
-            options[f.fieldId] = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"].map(o => ({ value: o, label: o }));
-        } else if (ds === 'maritalStatuses') {
-            options[f.fieldId] = ["Single", "Married", "Divorced", "Widowed"].map(o => ({ value: o, label: o }));
-        }
+        } else if (ds === 'genders') options[f.fieldId] = [{ value: "Male", label: "Male" }, { value: "Female", label: "Female" }];
+        else if (ds === 'ageRanges') options[f.fieldId] = ["Less than 13", "13-17", "18-24", "25-34", "35-44", "45-54", "55-64", "65+"].map(o => ({ value: o, label: o }));
+        else if (ds === 'locationPreferences') options[f.fieldId] = ["Onsite", "Online"].map(o => ({ value: o, label: o }));
+        else if (ds === 'hpAvailabilityDays') options[f.fieldId] = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"].map(o => ({ value: o, label: o }));
+        else if (ds === 'maritalStatuses') options[f.fieldId] = ["Single", "Married", "Divorced", "Widowed"].map(o => ({ value: o, label: o }));
       }
-
       setSelectOptions(options);
       setLoadingOptions(false);
     };
-    load();
+    const fetchLadders = async () => {
+        const laddersSnap = await getDocs(query(collection(db, "courseLevels"), orderBy("order")));
+        setLadders(laddersSnap.docs.map(d => ({id: d.id, ...d.data()} as Ladder)));
+    };
+    load(); fetchLadders();
   }, [formConfig.fields, db]);
 
   const onSubmit = async (data: any) => {
     setIsSubmitting(true);
     try {
-      const payload: any = {
-        data,
-        submittedAt: serverTimestamp(),
-        formId: formConfig.id,
-      };
-      if (user?.uid) {
-        payload.userId = user.uid;
-      }
-      if (courseId) {
-          payload.courseId = courseId;
-      }
+      const payload: any = { data, submittedAt: serverTimestamp(), formId: formConfig.id };
+      if (user?.uid) payload.userId = user.uid;
+      if (courseId) payload.courseId = courseId;
 
       const submissionRef = collection(db, "forms", formConfig.id, "submissions");
-      await addDoc(submissionRef, payload);
+      const docRef = await addDoc(submissionRef, payload);
 
-      // If a logged-in user submits, update their profile
+      if (user?.uid && courseId) {
+          const globalProgressRef = doc(db, 'userContentProgress', user.uid);
+          await setDoc(globalProgressRef, { completedItems: { [formConfig.id]: serverTimestamp() } }, { merge: true });
+      }
+
       if (user?.uid) {
         const userProfileUpdates: Record<string, any> = {};
         formConfig.fields.forEach(field => {
@@ -377,261 +315,76 @@ export default function PublicBlankForm({ formConfig, courseId, existingSubmissi
                 userProfileUpdates[castField.userProfileField] = data[castField.fieldId];
             }
         });
-        if (Object.keys(userProfileUpdates).length > 0) {
-            await updateDoc(doc(db, 'users', user.uid), userProfileUpdates);
+        if (userProfileUpdates.classLadderId) {
+            const ladder = ladders.find(l => l.id === userProfileUpdates.classLadderId);
+            if (ladder) userProfileUpdates.classLadder = ladder.name;
         }
+        if (Object.keys(userProfileUpdates).length > 0) await updateDoc(doc(db, 'users', user.uid), userProfileUpdates);
       }
-
+      
       setSubmissionSuccess(true);
-      if (!user) {
-        localStorage.removeItem(`form-draft-${formConfig.id}`);
-      }
+      if (!user) localStorage.removeItem(`form-draft-${formConfig.id}`);
       
       try {
         await runTransaction(db, async (tx) => {
           const formRef = doc(db, "forms", formConfig.id);
           const snap = await tx.get(formRef);
-          const curr = (snap.exists() && typeof snap.data()?.submissionCount === "number"
-            ? snap.data()!.submissionCount
-            : 0) as number;
+          const curr = (snap.exists() && typeof snap.data()?.submissionCount === "number" ? snap.data()!.submissionCount : 0) as number;
           tx.update(formRef, { submissionCount: curr + 1 });
         });
-      } catch (bumpErr) {
-        console.warn("Submission saved, but failed to bump submissionCount", bumpErr);
-      }
+      } catch (bumpErr) {}
       
-      onFormComplete?.();
+      onFormComplete?.(docRef.id);
 
-    } catch (e) {
-      console.error(e);
-       toast({ variant: 'destructive', title: 'Submission Failed' });
-    } finally {
-      setIsSubmitting(false);
-    }
+    } catch (e) { toast({ variant: 'destructive', title: 'Submission Failed' }); }
+    finally { setIsSubmitting(false); }
   };
 
   const renderField = (cfg: FormFieldConfig, index: number) => {
     const c = cfg as any;
-
-    // Conditional Logic Check
     if (c.conditionalLogic && c.conditionalLogic.fieldId) {
       const { fieldId, operator, value } = c.conditionalLogic;
       const targetValue = watchedData[fieldId];
       let shouldShow = true;
       switch (operator) {
-        case "is":
-          shouldShow = targetValue === value;
-          break;
-        case "isNot":
-          shouldShow = targetValue !== value;
-          break;
-        case "isNotEmpty":
-          shouldShow = !!targetValue;
-          break;
-        case "contains":
-          shouldShow = String(targetValue || "").includes(String(value));
-          break;
-        case "doesNotContain":
-          shouldShow = !String(targetValue || "").includes(String(value));
-          break;
+        case "is": shouldShow = targetValue === value; break;
+        case "isNot": shouldShow = targetValue !== value; break;
+        case "isNotEmpty": shouldShow = !!targetValue; break;
+        case "contains": shouldShow = String(targetValue || '').includes(String(value)); break;
+        case "doesNotContain": shouldShow = !String(targetValue || '').includes(String(value)); break;
       }
       if (!shouldShow) return null;
     }
-
     const fieldId: string = c.fieldId;
     const required: boolean = !!c.required;
     const type: string = String(c.type || "text");
     const label: string = c.label || "";
     const dataSource: string | undefined = c.dataSource ? String(c.dataSource) : undefined;
     const err = (form.formState.errors as any)[fieldId];
-
-    const getOptions = () => {
-      if (dataSource && dataSource !== "manual" && selectOptions[fieldId]) {
-        return selectOptions[fieldId];
-      }
-      return normalizeOptions(c.options);
-    };
-
-    const opts = getOptions();
+    const opts = (dataSource && dataSource !== "manual" && selectOptions[fieldId]) ? selectOptions[fieldId] : normalizeOptions(c.options);
     
     const fieldComponent = () => {
         switch (type) {
-        case "select":
-            return (
-                <Controller
-                name={fieldId as any}
-                control={form.control}
-                render={({ field }) => (
-                    <Select onValueChange={field.onChange} value={field.value} disabled={loadingOptions}>
-                    <SelectTrigger id={fieldId}>
-                        <SelectValue placeholder={`Select ${label.toLowerCase()}`} />
-                    </SelectTrigger>
-                    <SelectContent>
-                        {opts.map((opt: any, index: number) => (
-                        <SelectItem key={`${opt.value}-${index}`} value={opt.value}>
-                            {opt.label}
-                        </SelectItem>
-                        ))}
-                    </SelectContent>
-                    </Select>
-                )}
-                />
-            );
-
-        case "multiple-choice":
-            return (
-                <Controller
-                name={fieldId as any}
-                control={form.control}
-                render={({ field }) => (
-                    <RadioGroup onValueChange={field.onChange} value={field.value} className="space-y-1">
-                    {opts.map((o, i) => {
-                        const id = `${fieldId}-${i}`;
-                        return (
-                        <div key={`${o.value}-${i}`} className="flex items-center gap-2">
-                            <RadioGroupItem value={o.value} id={id} />
-                            <Label htmlFor={id}>{o.label}</Label>
-                        </div>
-                        );
-                    })}
-                    </RadioGroup>
-                )}
-                />
-            );
-
-        case "multiple-select":
-            return (
-                <Controller
-                name={fieldId as any}
-                control={form.control}
-                render={({ field }) => {
-                    const selected: string[] = Array.isArray(field.value) ? field.value : [];
-                    return (
-                    <div className="space-y-1">
-                        {opts.map((o, i) => {
-                        const id = `${fieldId}-${i}`;
-                        const checked = selected.includes(o.value);
-                        return (
-                            <div key={`${o.value}-${i}`} className="flex items-center gap-2">
-                            <Checkbox
-                                id={id}
-                                checked={checked}
-                                onCheckedChange={(c) => {
-                                const yes = c === true;
-                                const curr = Array.isArray(field.value) ? field.value : [];
-                                field.onChange(yes ? [...curr, o.value] : curr.filter((v: string) => v !== o.value));
-                                }}
-                            />
-                            <Label htmlFor={id}>{o.label}</Label>
-                            </div>
-                        );
-                        })}
-                    </div>
-                    );
-                }}
-                />
-            );
-
-        case "textarea":
-        case "address":
-            return <Textarea id={fieldId} {...form.register(fieldId as any)} />;
-
-        case "phone":
-            return (
-                <Controller
-                name={fieldId as any}
-                control={form.control}
-                render={({ field }) => (
-                    <PhoneInput
-                    id={fieldId}
-                    international
-                    defaultCountry="US"
-                    {...field}
-                    value={field.value ?? undefined}
-                    className="PhoneInputInput"
-                    />
-                )}
-                />
-            );
-        
-        case "date":
-            return (
-                <Controller
-                    name={fieldId as any}
-                    control={form.control}
-                    render={({ field }) => (
-                        <Popover>
-                            <PopoverTrigger asChild>
-                                <Button
-                                    variant={"outline"}
-                                    className={cn("w-full justify-start text-left font-normal", !field.value && "text-muted-foreground")}
-                                >
-                                    <CalendarIcon className="mr-2 h-4 w-4" />
-                                    {field.value && isValid(new Date(field.value)) ? format(new Date(field.value), "PPP") : <span>Pick a date</span>}
-                                </Button>
-                            </PopoverTrigger>
-                            <PopoverContent className="w-auto p-0">
-                                <Calendar
-                                    mode="single"
-                                    selected={field.value ? new Date(field.value) : undefined}
-                                    onSelect={(date) => field.onChange(date ? format(date, 'yyyy-MM-dd') : '')}
-                                    initialFocus
-                                />
-                            </PopoverContent>
-                        </Popover>
-                    )}
-                />
-            );
-
-        case "password":
-            return <Input id={fieldId} type="password" {...form.register(fieldId as any)} />;
-
+        case "select": return <Controller name={fieldId as any} control={form.control} render={({ field }) => ( <Select onValueChange={field.onChange} value={field.value} disabled={loadingOptions}><SelectTrigger id={fieldId}><SelectValue placeholder={`Select ${label.toLowerCase()}`} /></SelectTrigger><SelectContent>{opts.map((opt: any, index: number) => ( <SelectItem key={`${opt.value}-${index}`} value={opt.value}>{opt.label}</SelectItem> ))}</SelectContent></Select> )} />;
+        case "multiple-choice": return <Controller name={fieldId as any} control={form.control} render={({ field }) => ( <RadioGroup onValueChange={field.onChange} value={field.value} className="space-y-1">{opts.map((o, i) => { const id = `${fieldId}-${i}`; return ( <div key={`${o.value}-${i}`} className="flex items-center gap-2"><RadioGroupItem value={o.value} id={id} /><Label htmlFor={id}>{o.label}</Label></div> ); })}</RadioGroup> )} />;
+        case "multiple-select": return <Controller name={fieldId as any} control={form.control} render={({ field }) => { const selected: string[] = Array.isArray(field.value) ? field.value : []; return ( <div className="space-y-1">{opts.map((o, i) => { const id = `${fieldId}-${i}`; const checked = selected.includes(o.value); return ( <div key={`${o.value}-${i}`} className="flex items-center gap-2"><Checkbox id={id} checked={checked} onCheckedChange={(c) => { const yes = c === true; const curr = Array.isArray(field.value) ? field.value : []; field.onChange(yes ? [...curr, o.value] : curr.filter((v: string) => v !== o.value)); }} /><Label htmlFor={id}>{o.label}</Label></div> ); })}</div> ); }} />;
+        case "textarea": case "address": return <Textarea id={fieldId} {...form.register(fieldId as any)} />;
+        case "phone": return <Controller name={fieldId as any} control={form.control} render={({ field }) => ( <PhoneInput id={fieldId} international defaultCountry="US" {...field} value={field.value ?? undefined} className="PhoneInputInput" /> )} />;
+        case "date": return <Input id={fieldId} type="date" {...form.register(fieldId as any)} />;
+        case "password": return <Input id={fieldId} type="password" {...form.register(fieldId as any)} />;
         default: {
-            const inputType =
-            type === "email" ? "email" :
-            type === "url" ? "url" :
-            type === "password" ? "password" :
-            type === "file" || type === "image" || type === "audio" ? "file" :
-            "text";
-
-            const acceptProps =
-            type === "image" ? { accept: "image/*" } :
-            type === "audio" ? { accept: "audio/*" } :
-            {};
-
+            const inputType = type === "email" ? "email" : type === "url" ? "url" : type === "password" ? "password" : type === "file" || type === "image" || type === "audio" ? "file" : "text";
+            const acceptProps = type === "image" ? { accept: "image/*" } : type === "audio" ? { accept: "audio/*" } : {};
             return <Input id={fieldId} type={inputType} {...form.register(fieldId as any)} {...acceptProps} />;
         }
         }
     }
-    
     const isFullWidth = ['textarea', 'address', 'multiple-select', 'multiple-choice'].includes(type);
-
-    return (
-        <div className={`space-y-2 ${isFullWidth ? 'md:col-span-2' : ''}`} key={`${fieldId}-${index}`}>
-             <Label htmlFor={fieldId}>
-              {label} {required && <span className="text-destructive">*</span>}
-            </Label>
-            {fieldComponent()}
-            {err && <p className="text-sm text-destructive">{String(err.message)}</p>}
-        </div>
-    );
+    return ( <div className={`space-y-2 ${isFullWidth ? 'md:col-span-2' : ''}`} key={`${fieldId}-${index}`}><Label htmlFor={fieldId}>{label} {required && <span className="text-destructive">*</span>}</Label>{fieldComponent()}{err && <p className="text-sm text-destructive">{String(err.message)}</p>}</div> );
   };
 
   if (submissionSuccess) {
-    return (
-      <Card className="w-full max-w-lg">
-        <CardHeader className="text-center">
-          <PartyPopper className="mx-auto h-12 w-12 text-green-500" />
-          <CardTitle className="text-2xl">Submission Received!</CardTitle>
-          <CardDescription>Thank you for your submission.</CardDescription>
-        </CardHeader>
-        <CardFooter className="flex-col gap-4">
-          <Button className="w-full" onClick={() => window.location.reload()}>
-            Submit Another Response
-          </Button>
-        </CardFooter>
-      </Card>
-    );
+    return ( <Card className="w-full max-w-lg"><CardHeader className="text-center"><PartyPopper className="mx-auto h-12 w-12 text-green-500" /><CardTitle className="text-2xl">Submission Received!</CardTitle><CardDescription>Thank you for your submission.</CardDescription></CardHeader><CardFooter className="flex-col gap-4"><Button className="w-full" onClick={() => window.location.reload()}>Submit Another Response</Button></CardFooter></Card> );
   }
 
   return (
@@ -643,11 +396,7 @@ export default function PublicBlankForm({ formConfig, courseId, existingSubmissi
           </CardHeader>
           <form onSubmit={form.handleSubmit(onSubmit)}>
             <CardContent className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {loadingOptions ? (
-                <Skeleton className="h-48 w-full md:col-span-2" />
-              ) : (
-                formConfig.fields.map(renderField)
-              )}
+              {loadingOptions ? ( <Skeleton className="h-48 w-full md:col-span-2" /> ) : ( formConfig.fields.map(renderField) )}
             </CardContent>
             <CardFooter>
               <Button type="submit" className="w-full" disabled={isSubmitting || loadingOptions || !!existingSubmission}>

@@ -1,4 +1,3 @@
-
 "use client";
 
 import { useState, useEffect } from 'react';
@@ -12,6 +11,7 @@ import { Skeleton } from './ui/skeleton';
 import { ArrowRight } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import remarkBreaks from 'remark-breaks';
 
 interface Announcement {
     id: string;
@@ -85,8 +85,8 @@ export default function AnnouncementCard() {
                     />
                 </div>
                 <div className="p-6 flex flex-col justify-center">
-                    <div className="prose dark:prose-invert prose-lg mb-4">
-                      <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                    <div className="prose dark:prose-invert md:prose-lg mb-4 prose-p:my-1 prose-headings:mb-2 prose-headings:mt-4">
+                      <ReactMarkdown remarkPlugins={[remarkGfm, remarkBreaks]}>
                         {announcement.description}
                       </ReactMarkdown>
                     </div>

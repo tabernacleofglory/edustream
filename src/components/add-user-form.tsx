@@ -28,6 +28,7 @@ import {
 import { useAuth } from "@/hooks/use-auth";
 import PhoneInput from 'react-phone-number-input';
 import 'react-phone-number-input/style.css';
+import allLanguagesList from "@/lib/languages.json";
 
 
 const addUserSchema = z.object({
@@ -46,6 +47,7 @@ const addUserSchema = z.object({
   facilitatorName: z.string().optional(),
   charge: z.string().optional(),
   classLadderId: z.string().min(1, "Membership ladder is required"),
+  graduationStatus: z.string().optional(),
 }).refine(data => {
     if (data.isInHpGroup === 'true') {
         return !!data.hpNumber && !!data.facilitatorName;
@@ -74,6 +76,12 @@ interface AddUserFormProps {
     onUserAdded: (newUser: User) => void;
     ladders: Ladder[];
 }
+
+const cleanNativeName = (name: string) => {
+    if (!name) return "";
+    const firstPart = name.split(/[;,]/)[0].trim();
+    return firstPart.charAt(0).toUpperCase() + firstPart.slice(1);
+};
 
 const getSecondaryAuth = () => {
     const secondaryAppName = "secondary";
@@ -159,8 +167,20 @@ useEffect(() => {
         facilitatorName: "",
         charge: "",
         classLadderId: defaultLadderId || "",
+        graduationStatus: "Not Started",
     }
   });
+
+   const firstName = watch('firstName');
+   const lastName = watch('lastName');
+   const isInHpGroupValue = watch('isInHpGroup');
+
+   useEffect(() => {
+    const fullName = `${firstName || ''} ${lastName || ''}`.trim();
+    if (isInHpGroupValue === 'true' && fullName) {
+      setValue('facilitatorName', fullName, { shouldValidate: true });
+    }
+   }, [firstName, lastName, isInHpGroupValue, setValue]);
 
    useEffect(() => {
     if (defaultLadderId) {
@@ -235,8 +255,6 @@ useEffect(() => {
         }
     };
 
-    const isInHpGroupValue = watch('isInHpGroup');
-
   const onSubmit = async (data: AddUserFormValues) => {
     setIsSubmitting(true);
     try {
@@ -261,6 +279,7 @@ useEffect(() => {
         email: data.email,
         role: 'user',
         membershipStatus: 'Active',
+        graduationStatus: data.graduationStatus,
         classLadder: selectedLadder ? selectedLadder.name : '',
         classLadderId: data.classLadderId,
         campus: data.campus,
@@ -457,11 +476,15 @@ useEffect(() => {
             <Select onValueChange={field.onChange} value={field.value} disabled={isSubmitting}>
               <SelectTrigger><SelectValue placeholder="Select language" /></SelectTrigger>
               <SelectContent>
-                {availableLanguages.map((lang) => (
-                    <SelectItem key={lang.id} value={lang.name}>
-                        {lang.name}
-                    </SelectItem>
-                ))}
+                {availableLanguages.map((lang) => {
+                    const langInfo = allLanguagesList.find(l => l.code === lang.id);
+                    const displayName = langInfo ? cleanNativeName(langInfo.nativeName) : lang.name;
+                    return (
+                        <SelectItem key={lang.id} value={lang.name}>
+                            {displayName}
+                        </SelectItem>
+                    );
+                })}
               </SelectContent>
             </Select>
           )}
@@ -511,11 +534,6 @@ useEffect(() => {
                     <Label htmlFor="hpNumber">HP Number</Label>
                     <Input id="hpNumber" placeholder="Your HP Number" {...register("hpNumber")} disabled={isSubmitting} />
                     {errors.hpNumber && <p className="text-sm text-destructive">{errors.hpNumber.message}</p>}
-                </div>
-                <div className="space-y-2">
-                    <Label htmlFor="facilitatorName">Facilitator's Full Name</Label>
-                    <Input id="facilitatorName" placeholder="Facilitator's Name" {...register("facilitatorName")} disabled={isSubmitting} />
-                     {errors.facilitatorName && <p className="text-sm text-destructive">{errors.facilitatorName.message}</p>}
                 </div>
             </>
         )}
@@ -598,6 +616,25 @@ useEffect(() => {
             </Dialog>
         </div>
         {errors.charge && <p className="text-sm text-destructive">{errors.charge.message}</p>}
+      </div>
+
+      <div className="space-y-2">
+        <Label>Graduation Status</Label>
+        <Controller
+            name="graduationStatus"
+            control={control}
+            render={({ field }) => (
+                <Select onValueChange={field.onChange} value={field.value} disabled={isSubmitting}>
+                    <SelectTrigger><SelectValue placeholder="Select status" /></SelectTrigger>
+                    <SelectContent>
+                        <SelectItem value="Not Started">Not Started</SelectItem>
+                        <SelectItem value="In Progress">In Progress</SelectItem>
+                        <SelectItem value="Eligible">Eligible</SelectItem>
+                        <SelectItem value="Graduated">Graduated</SelectItem>
+                    </SelectContent>
+                </Select>
+            )}
+        />
       </div>
 
 

@@ -42,10 +42,19 @@ export default function StickyAudioPlayer() {
     }
 
     const formatTime = (seconds: number) => {
-        if (isNaN(seconds) || seconds < 0) return "0:00";
-        const minutes = Math.floor(seconds / 60);
+        if (isNaN(seconds) || seconds < 0) return '0:00';
+        const hours = Math.floor(seconds / 3600);
+        const minutes = Math.floor((seconds % 3600) / 60);
         const secs = Math.floor(seconds % 60);
-        return `${minutes}:${secs < 10 ? "0" : ""}${secs}`;
+
+        const sStr = secs < 10 ? `0${secs}` : `${secs}`;
+        
+        if (hours > 0) {
+            const mStr = minutes < 10 ? `0${minutes}` : `${minutes}`;
+            return `${hours}:${mStr}:${sStr}`;
+        }
+
+        return `${minutes}:${sStr}`;
     };
 
     const handleSeek = (value: number[]) => {
@@ -57,7 +66,7 @@ export default function StickyAudioPlayer() {
     };
 
     return (
-        <div className="fixed bottom-0 left-0 right-0 z-50 bg-background/95 border-t border-border backdrop-blur supports-[backdrop-filter]:bg-background/60">
+        <div className="fixed bottom-16 md:bottom-0 left-0 right-0 z-50 bg-background/95 border-t border-border backdrop-blur supports-[backdrop-filter]:bg-background/60">
             <div className="container mx-auto px-4">
                 <div className="grid grid-cols-3 items-center h-16">
                     <div className="flex items-center gap-3 overflow-hidden">

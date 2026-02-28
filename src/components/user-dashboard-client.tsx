@@ -14,25 +14,17 @@ import {
 } from "@/components/ui/carousel";
 import Link from "next/link";
 import { useIsMobile } from "@/hooks/use-is-mobile";
-import { Line, LineChart, CartesianGrid, XAxis, YAxis, Tooltip, ResponsiveContainer } from "recharts";
-import { ChartConfig, ChartContainer, ChartTooltipContent } from "@/components/ui/chart";
 import { useProcessedCourses } from "@/hooks/useProcessedCourses";
 import { useAuth } from "@/hooks/use-auth";
 import { Button } from "./ui/button";
-import { ArrowRight, Loader2, Send, Trophy } from "lucide-react";
+import { ArrowRight, Loader2, Trophy, AlertCircle } from "lucide-react";
 import { Progress } from "./ui/progress";
 import { useToast } from "@/hooks/use-toast";
 import { requestPromotion } from "@/lib/user-actions";
 import AnnouncementCard from "./announcement-card";
 import VideoAnnouncement from "./video-announcement";
-
-
-const progressChartConfig = {
-    progress: {
-        label: "Progress",
-        color: "hsl(var(--primary))",
-    },
-} satisfies ChartConfig;
+import { useI18n } from "@/hooks/use-i18n";
+import { Alert, AlertDescription, AlertTitle } from "./ui/alert";
 
 function RecommendationsLoading() {
   return (
@@ -60,6 +52,7 @@ function RecommendationsLoading() {
 
 export default function UserDashboardClient() {
   const { user, loading: authLoading } = useAuth();
+  const { t } = useI18n();
   const { processedCourses, allLadders, loading: coursesLoading, refresh } = useProcessedCourses();
   const isMobile = useIsMobile();
   const [promotedToLadder, setPromotedToLadder] = useState<string | null>(null);
@@ -81,17 +74,6 @@ export default function UserDashboardClient() {
   const coursesInProgress = useMemo(() => enrolledCourses.filter(p => !p.isCompleted), [enrolledCourses]);
 
   const completedCourses = useMemo(() => enrolledCourses.filter(p => p.isCompleted), [enrolledCourses]);
-  
-  const coursesForProgressOverview = useMemo(() => {
-    return enrolledCourses
-        .map(p => ({
-            name: p.title,
-            progress: p.totalProgress || 0,
-            courseId: p.id,
-            lastWatchedVideoId: p.lastWatchedVideoId
-        }))
-        .filter(p => p.progress > 0 && p.progress < 100);
-  }, [enrolledCourses]);
   
   const currentLadderDetails = useMemo(() => {
     if (!user || !user.classLadderId) return null;
@@ -143,9 +125,24 @@ export default function UserDashboardClient() {
     }
   };
 
+  const userName = user?.displayName?.split(' ')[0] || "";
 
   return (
     <div className="space-y-8">
+       <div>
+          <h1 className="text-3xl md:text-4xl font-extrabold tracking-tight">
+            {t('dashboard.welcome_back', 'Welcome Back,')} {userName}!
+          </h1>
+       </div>
+
+       <Alert className="border-primary/20 bg-primary/5">
+          <AlertCircle className="h-4 w-4 text-primary" />
+          <AlertTitle className="font-bold">{t('dashboard.notice.title', 'Important Notice')}</AlertTitle>
+          <AlertDescription className="text-sm">
+            {t('dashboard.notice.text', 'To be eligible for graduation, all required courses must be completed, and active participation in a ministry is required.')}
+          </AlertDescription>
+       </Alert>
+
        {promotedToLadder && (
         <Card className="bg-green-50 dark:bg-green-900/30 border-green-200 dark:border-green-800">
             <CardHeader className="text-center">
@@ -166,26 +163,30 @@ export default function UserDashboardClient() {
         {currentLadderDetails && (
              <Card>
                 <CardHeader>
-                    <CardTitle>My Ladder Progress</CardTitle>
-                    <CardDescription>Your progress in the <span className="font-bold">{currentLadderDetails.name}</span> ladder.</CardDescription>
+                    <CardTitle>{t('dashboard.ladder_progress.title', 'My Ladder Progress')}</CardTitle>
+                    <CardDescription>{t('dashboard.ladder_progress.description', `Your progress in the current ladder.`)} ({currentLadderDetails.name})</CardDescription>
                 </CardHeader>
                 <CardContent>
                     {allCoursesInLadderCompleted && nextLadder ? (
                          <div className="text-center p-4 bg-blue-50 dark:bg-blue-900/30 border border-blue-200 dark:border-blue-800 rounded-lg">
                             <Trophy className="mx-auto h-10 w-10 text-blue-600 dark:text-blue-400" />
-                            <h3 className="mt-2 text-lg font-semibold text-blue-800 dark:text-blue-200">Ladder Complete!</h3>
+                            <h3 className="mt-2 text-lg font-semibold text-blue-800 dark:text-blue-200">{t('dashboard.ladder_progress.complete_title', 'Ladder Complete!')}</h3>
                             <p className="mt-1 text-sm text-blue-700 dark:text-blue-300">
-                                You are qualified to become a potential {nextLadder.name}.
+                                {t('dashboard.ladder_progress.complete_desc', `You are qualified to become a potential candidate for the next level.`)}
                             </p>
                             <Button onClick={handleRequestPromotion} disabled={isRequestingPromotion} className="mt-4">
                                 {isRequestingPromotion && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                                Request Promotion
+                                {t('dashboard.ladder_progress.request_button', 'Request Promotion')}
                             </Button>
                         </div>
                     ) : (
                         <div className="space-y-2">
                              <div className="flex justify-between items-center text-sm">
-                                <p className="font-medium text-muted-foreground">{ladderProgress.completed} of {ladderProgress.total} courses completed</p>
+                                <p className="font-medium text-muted-foreground">
+                                    {t('dashboard.ladder_progress.summary', '{{completed}} of {{total}} courses completed')
+                                        .replace('{{completed}}', String(ladderProgress.completed))
+                                        .replace('{{total}}', String(ladderProgress.total))}
+                                </p>
                                 <p className="font-bold">{ladderProgress.percentage}%</p>
                             </div>
                             <Progress value={ladderProgress.percentage} className="h-2" />
@@ -195,43 +196,10 @@ export default function UserDashboardClient() {
             </Card>
         )}
 
-       <Card>
-            <CardHeader>
-                <CardTitle>My Progress Overview</CardTitle>
-                <CardDescription>Your completion percentage for each course you're currently taking.</CardDescription>
-            </CardHeader>
-            <CardContent>
-                {loading ? (
-                    <div className="space-y-4">
-                        <Skeleton className="h-8 w-full" />
-                        <Skeleton className="h-8 w-full" />
-                    </div>
-                ) : coursesForProgressOverview.length > 0 ? (
-                    <div className="space-y-4">
-                        {coursesForProgressOverview.map(course => (
-                            <div key={course.courseId} className="space-y-2">
-                                <Link href={`/courses/${course.courseId}/video/${course.lastWatchedVideoId}`}>
-                                <div className="flex justify-between items-center">
-                                    <p className="font-medium hover:underline">{course.name}</p>
-                                    <p className="text-sm text-muted-foreground">{course.progress}%</p>
-                                </div>
-                                </Link>
-                                <Progress value={course.progress} className="h-2" />
-                            </div>  
-                        ))}
-                    </div>
-                ) : (
-                    <div className="text-center text-muted-foreground py-8">
-                        <p>You have not made progress on any courses yet. <Link href="/courses" className="text-primary underline">Explore courses</Link> to get started!</p>
-                    </div>
-                )}
-            </CardContent>
-        </Card>
-
       {coursesInProgress.length > 0 && (
           <section>
             <h2 className="font-headline text-2xl font-semibold mb-4">
-              Continue Learning
+              {t('dashboard.sections.continue', 'Continue Learning')}
             </h2>
             {loading ? (
                 <Carousel opts={{ align: "start" }} className="w-full">
@@ -267,15 +235,15 @@ export default function UserDashboardClient() {
           <section>
             <div className="flex justify-between items-center mb-4">
               <h2 className="font-headline text-2xl font-semibold">
-                Courses in: {currentLadderDetails.name}
+                {t('dashboard.sections.courses_in', 'Courses in:')} {currentLadderDetails.name}
               </h2>
               <Button asChild variant="outline">
                 <Link href="/courses">
-                  View All <ArrowRight className="ml-2 h-4 w-4" />
+                  {t('dashboard.button.view_all', 'View All')} <ArrowRight className="ml-2 h-4 w-4" />
                 </Link>
               </Button>
             </div>
-            <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-2 xl:grid-cols-3">
+            <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3">
               {coursesInCurrentLadder.map((course) => (
                 <div key={course.id} className="relative group">
                   <CourseCard course={course} onChange={refresh} showEnroll={!user} />
@@ -288,7 +256,7 @@ export default function UserDashboardClient() {
       {completedCourses.length > 0 && (
           <section>
             <h2 className="font-headline text-2xl font-semibold mb-4">
-              Completed Courses
+              {t('dashboard.sections.completed', 'Completed Courses')}
             </h2>
              {loading ? (
                 <Carousel opts={{ align: "start" }} className="w-full">

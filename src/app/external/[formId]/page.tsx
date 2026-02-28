@@ -56,6 +56,7 @@ import {
 import type { CustomForm, FormFieldConfig, User, Ladder } from "@/lib/types";
 import { useToast } from "@/hooks/use-toast";
 import Link from "next/link";
+import { useI18n } from "@/hooks/use-i18n";
 
 import PhoneInput from "react-phone-number-input";
 import "react-phone-number-input/style.css";
@@ -72,6 +73,7 @@ interface Campus {
 
 const DynamicForm = ({ formConfig }: { formConfig: CustomForm }) => {
   const { toast } = useToast();
+  const { t } = useI18n();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submissionSuccess, setSubmissionSuccess] = useState(false);
   const [db] = useState(() => getFirebaseFirestore());
@@ -199,8 +201,8 @@ const DynamicForm = ({ formConfig }: { formConfig: CustomForm }) => {
       }
 
       options["gender"] = [
-        { value: "Male", label: "Male" },
-        { value: "Female", label: "Female" },
+        { value: "Male", label: t('common.gender.male', 'Male') },
+        { value: "Female", label: t('common.gender.female', 'Female') },
       ];
       options["ageRange"] = [
         { value: "Less than 13", label: "Less than 13" },
@@ -213,8 +215,8 @@ const DynamicForm = ({ formConfig }: { formConfig: CustomForm }) => {
         { value: "65+", label: "65+" },
       ];
       options["locationPreference"] = [
-        { value: "Onsite", label: "Onsite" },
-        { value: "Online", label: "Online" },
+        { value: "Onsite", label: t('common.location.onsite', 'Onsite') },
+        { value: "Online", label: t('common.location.online', 'Online') },
       ];
       options["hpAvailabilityDay"] = [
         "Monday",
@@ -235,7 +237,7 @@ const DynamicForm = ({ formConfig }: { formConfig: CustomForm }) => {
       setLoadingOptions(false);
     };
     fetchOptions();
-  }, [db, formConfig.fields]);
+  }, [db, formConfig.fields, t]);
 
   const onSubmit = async (data: any) => {
     setIsSubmitting(true);
@@ -404,8 +406,8 @@ const DynamicForm = ({ formConfig }: { formConfig: CustomForm }) => {
                         <Select onValueChange={field.onChange} value={field.value}>
                             <SelectTrigger><SelectValue placeholder="Select an option" /></SelectTrigger>
                             <SelectContent>
-                                <SelectItem value="true">Yes</SelectItem>
-                                <SelectItem value="false">No</SelectItem>
+                                <SelectItem value="true">{t('common.yes', 'Yes')}</SelectItem>
+                                <SelectItem value="false">{t('common.no', 'No')}</SelectItem>
                             </SelectContent>
                         </Select>
                     )}

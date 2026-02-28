@@ -1,13 +1,11 @@
 
-
 "use client";
 
 import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/use-auth";
 import { db } from "@/lib/firebase";
-import { getFunctions, httpsCallable } from "firebase/functions";
-import { collection, query, where, getDocs, orderBy } from "firebase/firestore";
+import { collection, query, where, getDocs, orderBy, addDoc } from "firebase/firestore";
 import type { User } from "@/lib/types";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -15,9 +13,6 @@ import { Button } from "@/components/ui/button";
 import { Download, Mail, Loader2, Calendar as CalendarIcon, Filter, X as XIcon, Lock, ChevronLeft, ChevronRight, Search } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { format, startOfDay, endOfDay } from "date-fns";
-import { DateRange } from "react-day-picker";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { Calendar } from "@/components/ui/calendar";
 import { cn } from "@/lib/utils";
 import jsPDF from "jspdf";
 import autoTable from 'jspdf-autotable';
@@ -25,6 +20,7 @@ import Papa from "papaparse";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 
 interface HPRequest extends User {
     createdAt: { seconds: number; nanoseconds: number; };
@@ -34,10 +30,9 @@ export default function HPRequestsPage() {
     const [requests, setRequests] = useState<HPRequest[]>([]);
     const [loading, setLoading] = useState(true);
     const [isProcessingEmail, setIsProcessingEmail] = useState<string | null>(null);
-    const [dateRange, setDateRange] = useState<DateRange | undefined>();
+    const [dateRange, setDateRange] = useState<{from?: Date, to?: Date} | undefined>();
     const { user: currentUser, hasPermission, loading: authLoading, canViewAllCampuses } = useAuth();
     const { toast } = useToast();
-    const functions = getFunctions();
     const tableRef = useRef(null);
 
     const [currentPage, setCurrentPage] = useState(1);
@@ -125,12 +120,25 @@ export default function HPRequestsPage() {
         }
         setIsProcessingEmail(request.id);
         try {
-            const sendHpFollowUp = httpsCallable(functions, 'sendHpFollowUp');
-            await sendHpFollowUp({ email: request.email, name: request.displayName });
-            toast({ title: "Follow-up email sent successfully." });
+            // Write to the 'mail' collection to trigger the extension
+            await addDoc(collection(db, 'mail'), {
+                to: [request.email],
+                message: {
+                    subject: "HP Placement Request Received",
+                    html: `
+                        <h1>Hello, ${request.displayName}!</h1>
+                        <p>We are happy to inform you that we have received your request and are beginning the follow-up process to place you in an HP (Prayer Group).</p>
+                        <p>We will be in touch with further updates soon.</p>
+                        <br/>
+                        <p>Thank you!</p>
+                        <p>The Glory Training Hub Team</p>
+                    `
+                }
+            });
+            toast({ title: "Follow-up email queued successfully." });
         } catch (error) {
-            console.error("Error sending follow-up email:", error);
-            toast({ variant: 'destructive', title: "Failed to send email." });
+            console.error("Error queueing follow-up email:", error);
+            toast({ variant: 'destructive', title: "Failed to queue email." });
         } finally {
             setIsProcessingEmail(null);
         }
@@ -234,28 +242,27 @@ export default function HPRequestsPage() {
                                     ))}
                                 </SelectContent>
                             </Select>
-                             <Popover>
-                                <PopoverTrigger asChild>
-                                    <Button id="date" variant={"outline"} className={cn("w-full sm:w-auto justify-start text-left font-normal", !dateRange && "text-muted-foreground")}>
-                                    <CalendarIcon className="mr-2 h-4 w-4" />
-                                    {dateRange?.from ? (
-                                        dateRange.to ? (
-                                        <>
-                                            {format(dateRange.from, "LLL dd, y")} -{" "}
-                                            {format(dateRange.to, "LLL dd, y")}
-                                        </>
-                                        ) : (
-                                        format(dateRange.from, "LLL dd, y")
-                                        )
-                                    ) : (
-                                        <span>Filter by date</span>
-                                    )}
-                                    </Button>
-                                </PopoverTrigger>
-                                <PopoverContent className="w-auto p-0" align="start">
-                                    <Calendar initialFocus mode="range" defaultMonth={dateRange?.from} selected={dateRange} onSelect={setDateRange} numberOfMonths={2} />
-                                </PopoverContent>
-                            </Popover>
+                            <div className="flex items-center gap-2">
+                                <Input
+                                    type="date"
+                                    value={dateRange?.from ? format(dateRange.from, 'yyyy-MM-dd') : ''}
+                                    onChange={(e) => {
+                                        const from = e.target.value ? new Date(e.target.value.replace(/-/g, '/')) : undefined;
+                                        setDateRange((prev) => ({ ...prev, from }));
+                                    }}
+                                    className="w-full sm:w-[150px]"
+                                />
+                                <span className="text-muted-foreground">-</span>
+                                <Input
+                                    type="date"
+                                    value={dateRange?.to ? format(dateRange.to, 'yyyy-MM-dd') : ''}
+                                    onChange={(e) => {
+                                        const to = e.target.value ? new Date(e.target.value.replace(/-/g, '/')) : undefined;
+                                        setDateRange((prev) => ({ ...prev, to }));
+                                    }}
+                                    className="w-full sm:w-[150px]"
+                                />
+                            </div>
                             {dateRange && <Button variant="ghost" size="icon" onClick={() => setDateRange(undefined)}><XIcon className="h-4 w-4" /></Button>}
                             <Button variant="outline" onClick={handleExportCSV}><Download className="mr-2 h-4 w-4" /> CSV</Button>
                             <Button variant="outline" onClick={handleExportPDF}><Download className="mr-2 h-4 w-4" /> PDF</Button>
@@ -349,5 +356,3 @@ export default function HPRequestsPage() {
         </div>
     );
 }
-
-    

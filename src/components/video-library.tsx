@@ -26,9 +26,18 @@ import { format } from 'date-fns';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
 import { Skeleton } from './ui/skeleton';
 import { Slider } from './ui/slider';
+import { cn } from '@/lib/utils';
 
 
 const VideoPlayerPreview = ({ video }: { video: Video }) => {
+    if (!video.url) {
+        return (
+            <div className="flex items-center justify-center h-full bg-black text-white p-4 text-center">
+                <VideoOff className="h-8 w-8 mb-2" />
+                <p>Video source not available for preview.</p>
+            </div>
+        );
+    }
     const isYouTube = video.type === 'youtube' || video.url?.includes('youtube.com') || video.url?.includes('youtu.be');
     const isGoogleDrive = video.type === 'googledrive';
 
@@ -565,3 +574,5 @@ export default function VideoLibrary({ videos: initialVideos = [], isLoading: in
         </>
     );
 }
+
+    

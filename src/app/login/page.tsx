@@ -1,7 +1,8 @@
+
 "use client";
 
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useState, useEffect, useCallback } from "react";
 import { 
     GoogleAuthProvider, 
@@ -26,10 +27,13 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, Di
 import { doc, getDoc, setDoc, collection, query, where, getDocs, orderBy, limit, serverTimestamp } from "firebase/firestore";
 import LanguageSwitcher from "@/components/language-switcher";
 import { useAuth } from "@/hooks/use-auth";
+import { useI18n } from "@/hooks/use-i18n";
 
 export default function LoginPage() {
     const router = useRouter();
+    const searchParams = useSearchParams();
     const { toast } = useToast();
+    const { t } = useI18n();
     const { checkAndCreateUserDoc } = useAuth();
     const [email, setEmail] = useState("");
     const [password, setPassword] = useState("");
@@ -60,7 +64,10 @@ export default function LoginPage() {
                         
                         await checkAndCreateUserDoc(result.user);
                         
-                        router.push('/dashboard');
+                        const redirectUrl = window.localStorage.getItem('redirectAfterSignIn');
+                        window.localStorage.removeItem('redirectAfterSignIn');
+
+                        router.push(redirectUrl || '/dashboard');
                         router.refresh();
                     } catch (error) {
                         setError("The sign-in link is invalid or has expired.");
@@ -81,8 +88,9 @@ export default function LoginPage() {
         setError(null);
         try {
             await signInWithEmailAndPassword(auth, email, password);
-             router.push('/dashboard');
-             router.refresh();
+            const redirect = searchParams.get('redirect');
+            router.push(redirect || '/dashboard');
+            router.refresh();
         } catch (error: any) {
              switch (error.code) {
                 case 'auth/user-not-found':
@@ -114,6 +122,10 @@ export default function LoginPage() {
         try {
             await sendSignInLinkToEmail(auth, email, actionCodeSettings);
             window.localStorage.setItem('emailForSignIn', email);
+            const redirect = searchParams.get('redirect');
+            if (redirect) {
+                window.localStorage.setItem('redirectAfterSignIn', redirect);
+            }
             toast({
                 title: "Check your email",
                 description: `A sign-in link has been sent to ${email}.`,
@@ -135,13 +147,16 @@ export default function LoginPage() {
             const result = await signInWithPopup(auth, provider);
             const isNewUser = await checkAndCreateUserDoc(result.user);
 
+            const redirect = searchParams.get('redirect');
+
             if (isNewUser) {
                 toast({ title: "Welcome!", description: "Your account has been created." });
+                router.push(redirect || '/settings');
             } else {
                  toast({ title: "Welcome back!" });
+                 router.push(redirect || '/dashboard');
             }
 
-            router.push('/dashboard');
             router.refresh();
         } catch (error: any) {
             setError(error.message);
@@ -187,12 +202,12 @@ export default function LoginPage() {
           <div className="flex justify-center mb-4">
             <Logo />
           </div>
-          <CardTitle className="text-2xl font-headline">Welcome Back</CardTitle>
+          <CardTitle className="text-2xl font-headline">{t('auth.login.title', 'Welcome Back')}</CardTitle>
           <CardDescription>
             {isGoogleLoading ? 'Signing you in...' : 
-            loginMethod === 'code' && !codeSent ? 'Enter your email to get a sign-in link.' :
-            loginMethod === 'code' && codeSent ? 'A sign-in link has been sent to your email.' :
-            'Enter your credentials to access your account.'}
+            loginMethod === 'code' && !codeSent ? t('auth.login.subtitle_code', 'Enter your email to get a sign-in link.') :
+            loginMethod === 'code' && codeSent ? t('auth.login.subtitle_sent', 'A sign-in link has been sent to your email.') :
+            t('auth.login.subtitle_password', 'Enter your credentials to access your account.')}
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -231,7 +246,7 @@ export default function LoginPage() {
                             <Dialog open={isResetDialogOpen} onOpenChange={setIsResetDialogOpen}>
                                 <DialogTrigger asChild>
                                     <Button variant="link" type="button" className="ml-auto inline-block text-sm underline">
-                                        Forgot your password?
+                                        {t('auth.login.forgot_password', 'Forgot your password?')}
                                     </Button>
                                 </DialogTrigger>
                                 <DialogContent>
@@ -266,14 +281,14 @@ export default function LoginPage() {
                     )}
                     <Button type="submit" className="w-full" disabled={isLoading || isGoogleLoading}>
                         {isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                        Log in
+                        {t('auth.login.button', 'Log in')}
                     </Button>
                 </form>
             )}
 
             <div className="text-center text-sm">
                 <Button variant="link" onClick={() => { setLoginMethod(loginMethod === 'password' ? 'code' : 'password'); setError(null); }} disabled={isLoading || isGoogleLoading}>
-                    {loginMethod === 'password' ? 'Sign in with a link instead' : 'Sign in with password instead'}
+                    {loginMethod === 'password' ? t('auth.login.switch_code', 'Sign in with a link instead') : t('auth.login.switch_password', 'Sign in with password instead')}
                 </Button>
             </div>
 
@@ -284,19 +299,19 @@ export default function LoginPage() {
                 </div>
                 <div className="relative flex justify-center text-xs uppercase">
                     <span className="bg-background px-2 text-muted-foreground">
-                    Or continue with
+                    {t('auth.signup.or', 'Or continue with')}
                     </span>
                 </div>
             </div>
             <Button variant="outline" className="w-full" onClick={handleGoogleLogin} disabled={isLoading || isGoogleLoading}>
               {isGoogleLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-              Login with Google
+              {t('auth.login.google', 'Login with Google')}
             </Button>
           </div>
           <div className="mt-4 text-center text-sm">
-            Don&apos;t have an account?{" "}
+            {t('auth.login.signup_prompt', "Don't have an account?")}{" "}
             <Link href="/signup" className="underline">
-              Sign up
+              {t('auth.login.signup_link', 'Sign up')}
             </Link>
           </div>
         </CardContent>

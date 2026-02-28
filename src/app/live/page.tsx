@@ -1,28 +1,36 @@
 
 "use client";
 
-import { useState, useEffect } from 'react';
-import { collection, query, where, onSnapshot, orderBy, Timestamp } from 'firebase/firestore';
+import { useState, useEffect, useMemo } from 'react';
+import { collection, query, onSnapshot, orderBy, Timestamp } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import type { LiveEvent } from '@/lib/types';
+import { Button } from '@/components/ui/button';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
-import { Calendar, Clock, Tv, Eye, Lock } from 'lucide-react';
-import { format } from 'date-fns';
+import { Eye, Lock, Tv, Calendar as CalendarIcon, X } from 'lucide-react';
+import { format, isWithinInterval, startOfDay, endOfDay, startOfWeek, endOfWeek } from 'date-fns';
 import Image from 'next/image';
 import Link from 'next/link';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useAuth } from '@/hooks/use-auth';
 import { useRouter } from 'next/navigation';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import { DateRange } from 'react-day-picker';
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { cn } from '@/lib/utils';
 
 export default function LiveEventsPage() {
-    const [liveEvents, setLiveEvents] = useState<LiveEvent[]>([]);
-    const [upcomingEvents, setUpcomingEvents] = useState<LiveEvent[]>([]);
+    const [events, setEvents] = useState<LiveEvent[]>([]);
     const [loading, setLoading] = useState(true);
-    const { hasPermission, loading: authLoading } = useAuth();
+    const { user, hasPermission, loading: authLoading } = useAuth();
     const router = useRouter();
+
+    const [dateRange, setDateRange] = useState<DateRange | undefined>({
+        from: startOfWeek(new Date()),
+        to: endOfWeek(new Date()),
+    });
 
     const canViewPage = hasPermission('viewLivePage');
 
@@ -33,140 +41,158 @@ export default function LiveEventsPage() {
             return;
         }
 
-        const q = query(
-            collection(db, 'liveEvents'), 
-            where('status', 'in', ['live', 'upcoming'])
-        );
-
+        const q = query(collection(db, 'liveEvents'), orderBy('startTime', 'desc'));
         const unsubscribe = onSnapshot(q, (snapshot) => {
-            const events = snapshot.docs.map(doc => {
+            const eventsList = snapshot.docs.map(doc => {
                 const data = doc.data();
-                return { 
-                    id: doc.id, 
+                return {
+                    id: doc.id,
                     ...data,
                     startTime: data.startTime instanceof Timestamp ? data.startTime.toDate().toISOString() : data.startTime,
                 } as LiveEvent
+            }).filter(event => {
+                if (!user) { // Guest user
+                    return !event.ladderIds || event.ladderIds.length === 0;
+                }
+                if (!event.ladderIds || event.ladderIds.length === 0) {
+                    return true;
+                }
+                return event.ladderIds.includes(user.classLadderId || '');
             });
-            
-            const sortedEvents = events.sort((a, b) => new Date(a.startTime).getTime() - new Date(b.startTime).getTime());
-
-            setLiveEvents(sortedEvents.filter(e => e.status === 'live'));
-            setUpcomingEvents(sortedEvents.filter(e => e.status === 'upcoming'));
+            setEvents(eventsList);
             setLoading(false);
         });
 
         return () => unsubscribe();
-    }, [canViewPage, authLoading]);
+    }, [canViewPage, authLoading, user]);
 
+    const filteredEvents = useMemo(() => {
+        if (!dateRange || !dateRange.from) return events;
+        
+        const start = startOfDay(dateRange.from);
+        const end = dateRange.to ? endOfDay(dateRange.to) : endOfDay(dateRange.from);
+        
+        return events.filter(event => {
+            const eventDate = new Date(event.startTime);
+            return isWithinInterval(eventDate, { start, end });
+        });
+    }, [events, dateRange]);
+    
     const handleJoinEvent = (event: LiveEvent) => {
-        if (!event.gloryLiveRoomId) return;
-        router.push(`/live/${event.gloryLiveRoomId}`);
+        if (event.platform === 'gloryLive' && event.gloryLiveRoomId) {
+            router.push(`/live/${event.gloryLiveRoomId}`);
+        } else if (event.platform === 'external' && event.externalLink) {
+            window.open(event.externalLink, '_blank');
+        }
     };
 
-    const EventCard = ({ event }: { event: LiveEvent }) => (
-        <Card>
-            <CardHeader>
-                {event.imageUrl && (
-                    <div className="relative aspect-video w-full mb-4">
-                        <Image src={event.imageUrl} alt={event.title} fill style={{objectFit:"cover"}} className="rounded-t-lg" />
-                    </div>
-                )}
-                <div className="flex justify-between items-center">
-                    <CardTitle>{event.title}</CardTitle>
-                    <Badge variant={event.status === 'live' ? 'destructive' : 'default'} className="capitalize">
-                        <Tv className="mr-2 h-3 w-3" />
-                        {event.status}
-                    </Badge>
-                </div>
-                <CardDescription>{event.description}</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-2 text-sm">
-                 <div className="flex items-center">
-                  <Calendar className="mr-2 h-4 w-4" />
-                  <span>{format(new Date(event.startTime), 'PPP')}</span>
-                </div>
-                <div className="flex items-center">
-                  <Clock className="mr-2 h-4 w-4" />
-                  <span>{format(new Date(event.startTime), 'p')}</span>
-                </div>
-            </CardContent>
-            {event.status === 'live' && event.gloryLiveRoomId && (
-                <CardFooter>
-                    <Button onClick={() => handleJoinEvent(event)} className="w-full">
-                        <Eye className="mr-2 h-4 w-4" />
-                        Join Event
-                    </Button>
-                </CardFooter>
-            )}
-        </Card>
-    );
-
-    const LoadingSkeleton = () => (
-        <Card>
-            <CardHeader>
-                <Skeleton className="h-40 w-full mb-4" />
-                <Skeleton className="h-6 w-3/4" />
-                <Skeleton className="h-4 w-full mt-2" />
-            </CardHeader>
-            <CardContent className="space-y-2">
-                <Skeleton className="h-4 w-1/2" />
-                <Skeleton className="h-4 w-1/2" />
-            </CardContent>
-            <CardFooter>
-                <Skeleton className="h-10 w-full" />
-            </CardFooter>
-        </Card>
-    );
-    
     if (authLoading) {
-        return <div>Loading...</div>; // Or a proper loading skeleton for the whole page
+        return <div className="container mx-auto py-8"><Skeleton className="h-[500px] w-full" /></div>;
     }
 
     if (!canViewPage) {
         return (
-            <Alert variant="destructive">
-                <Lock className="h-4 w-4" />
-                <AlertTitle>Access Denied</AlertTitle>
-                <AlertDescription>You do not have permission to view this page.</AlertDescription>
-            </Alert>
+            <div className="container mx-auto py-8">
+                <Alert variant="destructive">
+                    <Lock className="h-4 w-4" />
+                    <AlertTitle>Access Denied</AlertTitle>
+                    <AlertDescription>You do not have permission to view this page.</AlertDescription>
+                </Alert>
+            </div>
         );
     }
 
     return (
         <div className="container mx-auto py-8">
-            <h1 className="text-3xl font-bold mb-2">Live Events</h1>
-            <p className="text-muted-foreground mb-8">Join our live sessions and engage with the community.</p>
+            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-8 gap-4">
+                <div>
+                    <h1 className="text-3xl font-bold mb-2">Live Events</h1>
+                    <p className="text-muted-foreground">Browse upcoming and live events.</p>
+                </div>
+                 <div className="flex items-center gap-2">
+                    <div className="grid gap-1">
+                        <Label htmlFor="start-date" className="text-xs">Start Date</Label>
+                        <Input
+                            id="start-date"
+                            type="date"
+                            value={dateRange?.from ? format(dateRange.from, 'yyyy-MM-dd') : ''}
+                            onChange={(e) => {
+                                const from = e.target.value ? new Date(e.target.value.replace(/-/g, '/')) : undefined;
+                                setDateRange((prev) => ({ ...prev, from }));
+                            }}
+                            className="w-full sm:w-[150px]"
+                        />
+                    </div>
+                    <div className="grid gap-1">
+                        <Label htmlFor="end-date" className="text-xs">End Date</Label>
+                        <Input
+                            id="end-date"
+                            type="date"
+                            value={dateRange?.to ? format(dateRange.to, 'yyyy-MM-dd') : ''}
+                            onChange={(e) => {
+                                const to = e.target.value ? new Date(e.target.value.replace(/-/g, '/')) : undefined;
+                                setDateRange((prev) => ({ ...prev, to }));
+                            }}
+                            className="w-full sm:w-[150px]"
+                        />
+                    </div>
+                    {(dateRange?.from || dateRange?.to) && (
+                        <Button variant="ghost" size="icon" onClick={() => setDateRange(undefined)} className="self-end">
+                            <X className="h-4 w-4" />
+                        </Button>
+                    )}
+                 </div>
+            </div>
 
-            <section>
-                <h2 className="text-2xl font-semibold mb-4">Happening Now</h2>
-                {loading ? (
-                    <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
-                        <LoadingSkeleton />
-                    </div>
-                ) : liveEvents.length > 0 ? (
-                    <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
-                        {liveEvents.map(event => <EventCard key={event.id} event={event} />)}
-                    </div>
-                ) : (
-                    <p className="text-muted-foreground">No live events are happening right now.</p>
-                )}
-            </section>
-
-            <section className="mt-12">
-                <h2 className="text-2xl font-semibold mb-4">Upcoming Events</h2>
-                 {loading ? (
-                    <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
-                        <LoadingSkeleton />
-                        <LoadingSkeleton />
-                    </div>
-                ) : upcomingEvents.length > 0 ? (
-                    <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
-                        {upcomingEvents.map(event => <EventCard key={event.id} event={event} />)}
-                    </div>
-                ) : (
-                    <p className="text-muted-foreground">No upcoming events scheduled. Check back soon!</p>
-                )}
-            </section>
+            {loading ? (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    {Array.from({ length: 2 }).map((_, i) => <Skeleton key={i} className="h-64 w-full" />)}
+                </div>
+            ) : filteredEvents.length > 0 ? (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    {filteredEvents.map(event => (
+                        <Card key={event.id} className={cn("flex flex-col transition-all hover:shadow-lg", 
+                            event.status === 'live' ? 'bg-destructive/10 border-destructive/20' : 
+                            event.status === 'upcoming' ? 'bg-primary/5' : 'bg-muted/50'
+                        )}>
+                            <CardHeader>
+                                <CardTitle className="text-lg">{event.title}</CardTitle>
+                                <div className="mt-1">
+                                    <Badge variant={event.status === 'live' ? 'destructive' : 'secondary'} className="capitalize">
+                                        <Tv className="mr-1 h-3 w-3" />{event.status}
+                                    </Badge>
+                                </div>
+                                <CardDescription>{format(new Date(event.startTime), 'PPP p')}</CardDescription>
+                            </CardHeader>
+                            <CardContent className="flex-grow">
+                                {event.imageUrl && (
+                                    <div className="relative aspect-video mb-4">
+                                        <Image
+                                            src={event.imageUrl}
+                                            alt={event.title}
+                                            fill
+                                            style={{ objectFit: 'cover' }}
+                                            className="rounded-md"
+                                        />
+                                    </div>
+                                )}
+                                <p className="text-sm text-muted-foreground line-clamp-3">{event.description}</p>
+                            </CardContent>
+                            <CardFooter className="pt-0">
+                                <Button className="w-full" disabled={event.status !== 'live'} onClick={() => handleJoinEvent(event)}>
+                                    <Eye className="mr-2 h-4 w-4" />
+                                    {event.status === 'live' ? 'Join Live' : 'Not Live'}
+                                </Button>
+                            </CardFooter>
+                        </Card>
+                    ))}
+                </div>
+            ) : (
+                 <div className="text-center py-16 text-muted-foreground border-2 border-dashed rounded-lg">
+                    <CalendarIcon className="mx-auto h-12 w-12" />
+                    <p className="mt-4">No events scheduled for the selected date range.</p>
+                </div>
+            )}
         </div>
     );
 }

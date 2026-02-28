@@ -6,7 +6,7 @@ import Link from "next/link";
 import { CourseCard } from "@/components/course-card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Search, Plus, Edit, Filter } from "lucide-react";
+import { Search, Plus, Edit, Filter, Info } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
 import type { Course } from "@/lib/types";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -18,6 +18,9 @@ import { useIsMobile } from "@/hooks/use-is-mobile";
 import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem, DropdownMenuCheckboxItem } from "@/components/ui/dropdown-menu";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Lock } from "lucide-react";
+import { collection, query, orderBy, getDocs } from "firebase/firestore";
+import { db } from "@/lib/firebase";
+
 
 interface CourseWithStatus extends Course {
   isEnrolled?: boolean;
@@ -32,8 +35,42 @@ export default function MinistryTrainingPage() {
   const router = useRouter();
   const isMobile = useIsMobile();
 
+  const [allMinistries, setAllMinistries] = useState<{id: string, name: string}[]>([]);
+  const [selectedMinistry, setSelectedMinistry] = useState<string>('all');
+
   const loading = authLoading || coursesLoading;
   
+  useEffect(() => {
+    const fetchMinistries = async () => {
+      try {
+        const ministriesSnapshot = await getDocs(query(collection(db, "ministries"), orderBy("name")));
+        setAllMinistries(ministriesSnapshot.docs.map(doc => ({ id: doc.id, name: doc.data().name })));
+      } catch (error) {
+        console.error("Error fetching ministries:", error);
+      }
+    };
+    fetchMinistries();
+  }, []);
+
+  // Auto-select user's ministry
+  useEffect(() => {
+    if (user?.ministry && allMinistries.length > 0) {
+      let firstMinistryName: string | undefined;
+      if (typeof user.ministry === 'string') {
+        firstMinistryName = user.ministry.split(',')[0].trim();
+      } else if (Array.isArray(user.ministry) && user.ministry.length > 0) {
+        firstMinistryName = user.ministry[0];
+      }
+
+      if (firstMinistryName) {
+        const userMinistry = allMinistries.find(m => m.name === firstMinistryName);
+        if (userMinistry) {
+          setSelectedMinistry(userMinistry.id);
+        }
+      }
+    }
+  }, [user, allMinistries]);
+
   const ministryLadders = useMemo(() => {
     return allLadders.filter(l => l.side === 'ministry');
   }, [allLadders]);
@@ -72,12 +109,20 @@ export default function MinistryTrainingPage() {
   }, [user, allLadders]);
 
   const filteredAndSortedCourses = useMemo(() => {
+    // Language filtering is now handled internally by useProcessedCourses hook
     let courses = processedCourses.filter(course => 
-        course.ladderIds?.some(id => ministryLadders.some(ml => ml.id === id))
+        (course.ladderIds?.some(id => ministryLadders.some(ml => ml.id === id)))
     );
     
     if (selectedLadderId !== 'all') {
       courses = courses.filter(course => course.ladderIds?.includes(selectedLadderId));
+    }
+
+    if (selectedMinistry !== 'all') {
+        const ministry = allMinistries.find(m => m.id === selectedMinistry);
+        if (ministry) {
+            courses = courses.filter(course => course.ministryIds?.includes(ministry.id));
+        }
     }
     
     if (searchTerm) {
@@ -95,7 +140,7 @@ export default function MinistryTrainingPage() {
     });
 
     return courses;
-  }, [searchTerm, processedCourses, selectedLadderId, ministryLadders]);
+  }, [searchTerm, processedCourses, selectedLadderId, selectedMinistry, ministryLadders, allMinistries]);
   
   const groupedCourses = useMemo(() => {
     const groups: { [key: string]: CourseWithStatus[] } = {};
@@ -145,6 +190,7 @@ export default function MinistryTrainingPage() {
 
   }, [filteredAndSortedCourses, ministryLadders, user, selectedLadderId]);
 
+
   if (isNewMember && !loading) {
     return (
          <div className="container mx-auto px-4 sm:px-6 lg:px-8 py-8">
@@ -184,6 +230,14 @@ export default function MinistryTrainingPage() {
           )}
         </div>
 
+        <Alert>
+          <Info className="h-4 w-4" />
+          <AlertTitle>Ministry-Specific Courses</AlertTitle>
+          <AlertDescription>
+            This page only displays courses that are assigned to a ladder with the "Ministry" side.
+          </AlertDescription>
+        </Alert>
+
         <div className="flex flex-col md:flex-row gap-4">
           <div className="relative flex-1">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground" />
@@ -205,6 +259,20 @@ export default function MinistryTrainingPage() {
               <SelectItem value="all">All Ministry Ladders</SelectItem>
               {ministryLadders.map(ladder => (
                 <SelectItem key={ladder.id} value={ladder.id}>{ladder.name} ({ladder.side})</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <Select
+            value={selectedMinistry}
+            onValueChange={setSelectedMinistry}
+          >
+            <SelectTrigger className="w-full md:w-[280px]">
+              <SelectValue placeholder="All Ministries" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Ministries</SelectItem>
+              {allMinistries.map(ministry => (
+                <SelectItem key={ministry.id} value={ministry.id}>{ministry.name}</SelectItem>
               ))}
             </SelectContent>
           </Select>

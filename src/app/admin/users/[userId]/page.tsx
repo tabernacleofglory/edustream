@@ -4,11 +4,11 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { collection, query, where, doc, getDoc, getDocs, documentId } from 'firebase/firestore';
+import { collection, query, where, doc, getDoc, getDocs, documentId, collectionGroup, Timestamp } from 'firebase/firestore';
 import { useToast } from '@/hooks/use-toast';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Loader2, ArrowLeft, Mail, Edit, Eye, CheckCircle, Circle, Trash, UserMinus } from 'lucide-react';
+import { Loader2, ArrowLeft, Mail, Edit, Eye, CheckCircle, Circle, Trash, UserMinus, RefreshCw } from 'lucide-react';
 import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar';
 import type { Course, User, Enrollment, UserProgress, Ladder, UserLadderProgress, Video } from '@/lib/types';
 import { useAuth } from '@/hooks/use-auth';
@@ -58,6 +58,7 @@ export default function UserProfilePage() {
   const { toast } = useToast();
   const [viewingCourseProgress, setViewingCourseProgress] = useState<CourseProgressDetail | null>(null);
   const [isEditing, setIsEditing] = useState(false);
+  const [isSyncing, setIsSyncing] = useState(false);
   const db = getFirebaseFirestore();
   const functions = getFirebaseFunctions();
 
@@ -65,6 +66,9 @@ export default function UserProfilePage() {
   const [computedCourseProgress, setComputedCourseProgress] = useState<
     { courseId: string; courseTitle: string; totalProgress: number; ladderIds: string[] }[]
   >([]);
+
+  // State for migration stats
+  const [migrationStats, setMigrationStats] = useState({ legacyCount: 0, globalCount: 0, missingCount: 0 });
 
   const fetchUserData = useCallback(async () => {
     if (!userId) {
@@ -95,41 +99,66 @@ export default function UserProfilePage() {
       const enrollmentsQuery = query(collection(db, 'enrollments'), where('userId', '==', userId));
       const onsiteQuery = query(collection(db, 'onsiteCompletions'), where('userId', '==', userId));
       const progressQuery = query(collection(db, 'userVideoProgress'), where('userId', '==', userId));
+      const quizResultsQuery = query(collection(db, 'userQuizResults'), where('userId', '==', userId), where('passed', '==', true));
+      const globalProgressQuery = getDoc(doc(db, "userContentProgress", userId));
+      const formSubmissionsQuery = query(collectionGroup(db, 'submissions'), where('userId', '==', userId));
 
-      const [enrollmentsSnap, onsiteSnap, progressSnap] = await Promise.all([
+
+      const [enrollmentsSnap, onsiteSnap, progressSnap, quizResultsSnap, globalProgressSnap, formSubmissionsSnapshot] = await Promise.all([
         getDocs(enrollmentsQuery),
         getDocs(onsiteQuery),
         getDocs(progressQuery),
+        getDocs(quizResultsQuery),
+        globalProgressQuery,
+        getDocs(formSubmissionsQuery),
       ]);
 
+      // --- Calculate Migration Stats ---
+      const legacyVideoCompletions = new Set<string>();
+      progressSnap.docs.forEach(progressDoc => {
+          (progressDoc.data() as UserProgress).videoProgress?.forEach(vp => {
+              if (vp.completed) legacyVideoCompletions.add(vp.videoId);
+          });
+      });
+      const legacyQuizCompletions = new Set(quizResultsSnap.docs.map(d => d.data().quizId));
+      // For simplicity, we'll focus on videos and quizzes for now. Forms can be added later.
+      const globalCompletedItems = new Set(globalProgressSnap.exists() ? Object.keys(globalProgressSnap.data().completedItems || {}) : []);
+      
+      let missingCount = 0;
+      legacyVideoCompletions.forEach(id => { if (!globalCompletedItems.has(id)) missingCount++; });
+      legacyQuizCompletions.forEach(id => { if (!globalCompletedItems.has(id)) missingCount++; });
+      
+      setMigrationStats({
+          legacyCount: legacyVideoCompletions.size + legacyQuizCompletions.size,
+          globalCount: globalCompletedItems.size,
+          missingCount: missingCount
+      });
+
+
+      // --- Existing Logic for Course Completion ---
       const onlineEnrollments = enrollmentsSnap.docs.map(d => d.data() as Enrollment);
       setEnrollments(onlineEnrollments);
 
       const allCompletedCourseIds = new Set<string>();
-      // onsite completions always count
       onsiteSnap.forEach(d => allCompletedCourseIds.add(d.data().courseId));
 
       const enrolledCourseIds = onlineEnrollments.map(e => e.courseId);
-
-      // If no enrollments, just set and bail
-      if (enrolledCourseIds.length === 0) {
+      if (enrolledCourseIds.length === 0 && onsiteSnap.empty) {
         setComputedCourseProgress([]);
-        setCompletedCourses(allCompletedCourseIds);
-        setUserProgress([]); // keep consistent
-        return;
+        setCompletedCourses(new Set());
+        setUserProgress([]);
+        return; // Early exit
       }
 
-      // Fetch only enrolled courses (chunked for Firestore `in`)
-      const courseIdChunks = chunk(enrolledCourseIds, 10);
+      const allRelevantCourseIds = Array.from(new Set([...enrolledCourseIds, ...Array.from(allCompletedCourseIds)]));
+      const courseIdChunks = chunk(allRelevantCourseIds, 10);
       const courseSnaps = await Promise.all(
         courseIdChunks.map(ids => getDocs(query(collection(db, 'courses'), where(documentId(), 'in', ids))))
       );
       const enrolledCourses = courseSnaps.flatMap(s => s.docs.map(d => ({ id: d.id, ...d.data() } as Course)));
 
-      // Raw progress docs
       const progressDocs = progressSnap.docs.map(d => d.data() as UserProgress);
 
-      // Build map of completed videoIds per course
       const progressByCourse: Record<string, { completedVideos: Set<string> }> = {};
       for (const p of progressDocs) {
         if (!progressByCourse[p.courseId]) progressByCourse[p.courseId] = { completedVideos: new Set() };
@@ -138,14 +167,24 @@ export default function UserProfilePage() {
         });
       }
 
-      // Compute % by videos, respect language like dialog
+      enrolledCourses.forEach(c => {
+          const totalVideos = c.videos?.length || 0;
+          if (totalVideos === 0) { // Auto-complete courses with no videos
+              allCompletedCourseIds.add(c.id);
+              return;
+          }
+          const completed = progressByCourse[c.id]?.completedVideos.size || 0;
+          if (totalVideos > 0 && completed >= totalVideos) {
+              allCompletedCourseIds.add(c.id);
+          }
+      });
+      
       const detailedCourseProgress = enrolledCourses
-        .filter(c => c.language === userData.language) // use freshly loaded userData; avoids render loop
+        .filter(c => c.language === userData.language)
         .map(c => {
           const totalVideos = c.videos?.length || 0;
           const completed = progressByCourse[c.id]?.completedVideos.size || 0;
           const totalProgress = totalVideos > 0 ? Math.round((completed / totalVideos) * 100) : 0;
-          if (totalProgress === 100) allCompletedCourseIds.add(c.id);
           return {
             courseId: c.id,
             courseTitle: c.title,
@@ -157,7 +196,7 @@ export default function UserProfilePage() {
 
       setComputedCourseProgress(detailedCourseProgress);
       setCompletedCourses(allCompletedCourseIds);
-      setUserProgress(progressDocs); // keep raw to power the video-by-video dialog
+      setUserProgress(progressDocs);
 
     } catch (error) {
       toast({ variant: 'destructive', title: 'Failed to load user data.' });
@@ -165,14 +204,12 @@ export default function UserProfilePage() {
     } finally {
       setLoading(false);
     }
-  }, [userId, toast, router, db]); // <-- user REMOVED from deps
+  }, [userId, toast, router, db]);
 
-  // Fetch data independent of permission to avoid the loading deadlock
   useEffect(() => {
     fetchUserData();
   }, [fetchUserData]);
 
-  // Handle permission separately; stop spinner and bounce if not allowed
   useEffect(() => {
     if (canManageUsers === false) {
       setLoading(false);
@@ -205,7 +242,6 @@ export default function UserProfilePage() {
       .filter((lp): lp is UserLadderProgress => lp !== null);
   }, [user, ladders, courses, completedCourses]);
 
-  // Use computed (dialog-parity) progress for enrolled courses
   const enrolledCoursesProgress = useMemo(() => {
     const index = new Map(computedCourseProgress.map(p => [p.courseId, p]));
     return enrollments
@@ -241,7 +277,6 @@ export default function UserProfilePage() {
     });
   }, [enrolledCoursesProgress, ladders]);
 
-  // NEW: Completed courses (onsite OR 100% videos). Group by ladder like above.
   const completedCoursesList = useMemo(() => {
     if (!user) return [];
     const progMap = new Map(computedCourseProgress.map(p => [p.courseId, p.totalProgress]));
@@ -278,10 +313,7 @@ export default function UserProfilePage() {
     const course = courses.find(c => c.id === progressItem.courseId);
     if (!course || !course.videos || course.videos.length === 0) return;
 
-    // Dedupe and remove falsy ids to keep keys stable & unique
     const videoIds = Array.from(new Set((course.videos || []).filter(Boolean)));
-
-    // Fetch videos in chunks of 10 due to Firestore 'in' limit
     const chunks = chunk(videoIds, 10);
     const snaps = await Promise.all(
       chunks.map(ids =>
@@ -289,20 +321,13 @@ export default function UserProfilePage() {
       )
     );
     const allDocs = snaps.flatMap(s => s.docs);
-
     const videoDetailsMap = new Map(allDocs.map(d => [d.id, d.data() as Video]));
-    const videos = videoIds
-      .map(id => videoDetailsMap.get(id))
-      .filter(Boolean) as Video[];
+    const videos = videoIds.map(id => videoDetailsMap.get(id)).filter(Boolean) as Video[];
 
     const progressData = userProgress.find(p => p.courseId === progressItem.courseId);
     if (!progressData) return;
 
-    setViewingCourseProgress({
-      ...progressData,
-      videos,
-      courseTitle: progressItem.courseTitle,
-    });
+    setViewingCourseProgress({ ...progressData, videos, courseTitle: progressItem.courseTitle });
   };
 
   const handleSendResetLink = async () => {
@@ -323,18 +348,34 @@ export default function UserProfilePage() {
     try {
         const deleteUserAccount = httpsCallable(functions, 'deleteUserAccount');
         await deleteUserAccount({ uid: user.id });
-
-        toast({
-            title: "User Deleted",
-            description: `User ${user.displayName} has been removed.`
-        });
+        toast({ title: "User Deleted", description: `User ${user.displayName} has been removed.` });
         router.replace('/admin/users');
     } catch (error: any) {
-        toast({
-            variant: "destructive",
-            title: "Deletion Failed",
-            description: "Could not delete user account. " + error.message
-        });
+        toast({ variant: "destructive", title: "Deletion Failed", description: "Could not delete user account. " + error.message });
+    }
+  };
+  
+   const handleSyncProgress = async () => {
+    if (!user) return;
+    setIsSyncing(true);
+    try {
+        const syncUserGlobalProgress = httpsCallable(functions, 'syncUserGlobalProgress');
+        const result: any = await syncUserGlobalProgress({ userId: user.id });
+        
+        if (result.data.success) {
+            toast({
+                title: 'Sync Complete',
+                description: `${result.data.migratedCount} record(s) were synced to the global progress log.`,
+            });
+            await fetchUserData(); // Refresh all user data to show updated stats
+        } else {
+            throw new Error(result.data.message || 'The sync function failed.');
+        }
+    } catch (error: any) {
+        toast({ variant: 'destructive', title: 'Sync Failed', description: error.message });
+        console.error(error);
+    } finally {
+        setIsSyncing(false);
     }
   };
 
@@ -342,7 +383,7 @@ export default function UserProfilePage() {
       const result = await unenrollUserFromCourse(userId, courseId);
       if (result.success) {
           toast({ title: 'Success', description: result.message });
-          fetchUserData(); // Refresh all user data (keeps parity)
+          fetchUserData();
       } else {
           toast({ variant: 'destructive', title: 'Error', description: result.message });
       }
@@ -367,18 +408,15 @@ export default function UserProfilePage() {
           </Button>
           <div className="flex items-center gap-2">
             <Button variant="outline" onClick={handleSendResetLink}>
-              <Mail className="mr-2 h-4 w-4" />
-              Send Reset Link
+              <Mail className="mr-2 h-4 w-4" /> Send Reset Link
             </Button>
             <Button onClick={() => setIsEditing(true)}>
-              <Edit className="mr-2 h-4 w-4" />
-              Edit User
+              <Edit className="mr-2 h-4 w-4" /> Edit User
             </Button>
              <AlertDialog>
                 <AlertDialogTrigger asChild>
                     <Button variant="destructive">
-                        <Trash className="mr-2 h-4 w-4" />
-                        Delete User
+                        <Trash className="mr-2 h-4 w-4" /> Delete User
                     </Button>
                 </AlertDialogTrigger>
                 <AlertDialogContent>
@@ -437,6 +475,7 @@ export default function UserProfilePage() {
                     ...(user.isBaptized ? [{ label: 'Denomination', value: user.denomination }] : []),
                     { label: 'Ministry', value: user.ministry },
                     { label: 'Charge', value: user.charge },
+                    { label: 'Graduation Status', value: user.graduationStatus || 'Not Started' },
                 ].map(field => (
                   <div key={field.label}>
                     <p className="font-semibold">{field.label}</p>
@@ -456,6 +495,32 @@ export default function UserProfilePage() {
           </Card>
 
           <div className="lg:col-span-2 space-y-8">
+            <Card>
+                <CardHeader>
+                    <CardTitle>Global Progress Sync</CardTitle>
+                    <CardDescription>Sync this user's legacy progress to the new global system.</CardDescription>
+                </CardHeader>
+                <CardContent className="grid grid-cols-3 gap-4 text-center">
+                    <div>
+                        <p className="text-2xl font-bold">{migrationStats.legacyCount}</p>
+                        <p className="text-sm text-muted-foreground">Legacy Records</p>
+                    </div>
+                     <div>
+                        <p className="text-2xl font-bold">{migrationStats.globalCount}</p>
+                        <p className="text-sm text-muted-foreground">Global Records</p>
+                    </div>
+                     <div>
+                        <p className="text-2xl font-bold">{migrationStats.missingCount}</p>
+                        <p className="text-sm text-muted-foreground">Missing Sync</p>
+                    </div>
+                </CardContent>
+                 <CardContent>
+                     <Button onClick={handleSyncProgress} disabled={isSyncing || migrationStats.missingCount === 0} className="w-full">
+                        {isSyncing ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <RefreshCw className="mr-2 h-4 w-4" />}
+                        Sync {migrationStats.missingCount > 0 ? `(${migrationStats.missingCount})` : ''}
+                    </Button>
+                </CardContent>
+            </Card>
             <Card>
               <CardHeader>
                 <CardTitle>Ladder Progress</CardTitle>

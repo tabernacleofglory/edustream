@@ -1,4 +1,3 @@
-
 "use client";
 
 import { useState, useEffect, useMemo, useCallback } from "react";
@@ -27,25 +26,36 @@ import {
   SelectGroup,
   SelectLabel,
 } from "@/components/ui/select";
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetHeader,
+  SheetTitle,
+  SheetTrigger,
+  SheetFooter,
+  SheetClose,
+} from "@/components/ui/sheet";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { collection, getDocs, query, where, orderBy } from "firebase/firestore";
 import { getFirebaseFirestore } from "@/lib/firebase";
-import type { User, Course, UserProgress as UserProgressType, Enrollment, CourseGroup, OnsiteCompletion, Ladder, UserQuizResult, Video } from "@/lib/types";
+import type { User, Course, UserProgress as UserProgressType, Enrollment, CourseGroup, OnsiteCompletion, Ladder, Video } from "@/lib/types";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Download, Calendar as CalendarIcon, X as XIcon, Search, ChevronLeft, ChevronRight, Lock, Eye, ArrowUpDown } from "lucide-react";
+import { Download, Calendar as CalendarIcon, X as XIcon, Search, ChevronLeft, ChevronRight, Lock, Eye, ArrowUpDown, ListFilter } from "lucide-react";
 import Papa from 'papaparse';
 import { format, isValid, startOfDay, endOfDay, startOfWeek, endOfWeek } from "date-fns";
 import { DateRange } from "react-day-picker";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { Calendar } from "@/components/ui/calendar";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
-import { Input } from "@/components/ui/input";
 import { useAuth } from "@/hooks/use-auth";
 import { Progress } from "@/components/ui/progress";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import allLanguagesList from "@/lib/languages.json";
 
 interface Campus {
   id: string;
@@ -63,6 +73,7 @@ interface EnrollmentReportData {
     completedAt?: Date | null;
     totalProgress: number;
     completionType: 'Online' | 'On-site';
+    language: string;
 }
 
 interface ProgressDetail {
@@ -86,6 +97,11 @@ function formatDuration(seconds: number) {
   return result.trim() || "0s";
 }
 
+const cleanNativeName = (name: string) => {
+    if (!name) return "";
+    const firstPart = name.split(/[;,]/)[0].trim();
+    return firstPart.charAt(0).toUpperCase() + firstPart.slice(1);
+};
 
 export default function CourseReportsPage() {
   const { user: currentUser, canViewAllCampuses, hasPermission } = useAuth();
@@ -94,28 +110,41 @@ export default function CourseReportsPage() {
   const [allCourseGroups, setAllCourseGroups] = useState<CourseGroup[]>([]);
   const [allLadders, setAllLadders] = useState<Ladder[]>([]);
   const [allCampuses, setAllCampuses] = useState<Campus[]>([]);
+  const [allLanguages, setAllLanguages] = useState<any[]>([]);
   const [allVideos, setAllVideos] = useState<Video[]>([]);
   const [enrollmentReportData, setEnrollmentReportData] = useState<EnrollmentReportData[]>([]);
   const [userProgressDetails, setUserProgressDetails] = useState<UserProgressType[]>([]);
   const [loading, setLoading] = useState(true);
   const [isClient, setIsClient] = useState(false);
 
+  // Applied Main Report Filters
   const [selectedCourse, setSelectedCourse] = useState<string | "all">("all");
-  const [selectedDetailedCourse, setSelectedDetailedCourse] = useState<string | "all">("all");
   const [selectedCampus, setSelectedCampus] = useState<string | "all">("all");
-  const [selectedDetailedCampus, setSelectedDetailedCampus] = useState<string | "all">("all");
+  const [selectedLanguage, setSelectedLanguage] = useState<string | "all">("all");
   const [selectedCompletionType, setSelectedCompletionType] = useState<'all' | 'Online' | 'On-site'>('all');
   const [completionStatusFilter, setCompletionStatusFilter] = useState<'all' | 'completed' | 'in-progress'>('all');
   const [percentageFilter, setPercentageFilter] = useState<string>('all');
   const [dateRange, setDateRange] = useState<DateRange | undefined>({ from: startOfWeek(new Date()), to: endOfWeek(new Date()) });
+  
+  // Pending Filter states (for the sheet)
+  const [pendingCourse, setPendingCourse] = useState<string | "all">("all");
+  const [pendingCampus, setPendingCampus] = useState<string | "all">("all");
+  const [pendingLanguage, setPendingLanguage] = useState<string | "all">("all");
+  const [pendingCompletionType, setPendingCompletionType] = useState<'all' | 'Online' | 'On-site'>('all');
+  const [pendingStatus, setPendingStatus] = useState<'all' | 'completed' | 'in-progress'>('all');
+  const [pendingPercentage, setPendingPercentage] = useState<string>('all');
+  const [pendingDateRange, setPendingDateRange] = useState<DateRange | undefined>({ from: startOfWeek(new Date()), to: endOfWeek(new Date()) });
+
+  // Detailed Report Section states (remain live)
+  const [selectedDetailedCourse, setSelectedDetailedCourse] = useState<string | "all">("all");
+  const [selectedDetailedCampus, setSelectedDetailedCampus] = useState<string | "all">("all");
   const [detailedReportDateRange, setDetailedReportDateRange] = useState<DateRange | undefined>();
-  const [searchTerm, setSearchTerm] = useState("");
   const [detailedSearchTerm, setDetailedSearchTerm] = useState("");
+  const [searchTerm, setSearchTerm] = useState("");
 
-
+  // Pagination
   const [currentPage, setCurrentPage] = useState(1);
   const [rowsPerPage, setRowsPerPage] = useState(10);
-  
   const [detailedReportPage, setDetailedReportPage] = useState(1);
   const [detailedReportPageSize, setDetailedReportPageSize] = useState(10);
   
@@ -138,7 +167,7 @@ export default function CourseReportsPage() {
     }
     setLoading(true);
     try {
-      const [usersSnap, coursesSnap, groupsSnap, laddersSnap, campusesSnap, enrollmentsSnap, progressSnap, onsiteCompletionsSnap, quizResultsSnap, videosSnap] = await Promise.all([
+      const [usersSnap, coursesSnap, groupsSnap, laddersSnap, campusesSnap, enrollmentsSnap, progressSnap, onsiteCompletionsSnap, languagesSnap] = await Promise.all([
         getDocs(collection(db, 'users')),
         getDocs(query(collection(db, 'courses'), where('status', '==', 'published'))),
         getDocs(collection(db, 'courseGroups')),
@@ -147,8 +176,7 @@ export default function CourseReportsPage() {
         getDocs(query(collection(db, 'enrollments'), orderBy('enrolledAt', 'desc'))),
         getDocs(collection(db, 'userVideoProgress')),
         getDocs(query(collection(db, 'onsiteCompletions'), orderBy('completedAt', 'desc'))),
-        getDocs(collection(db, 'userQuizResults')),
-        getDocs(collection(db, 'Contents')),
+        getDocs(query(collection(db, 'languages'), where('status', '==', 'published'))),
       ]);
 
       const usersList = usersSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as User));
@@ -159,29 +187,18 @@ export default function CourseReportsPage() {
       const enrollmentsList = enrollmentsSnap.docs.map(doc => ({ id: `${doc.data().userId}_${doc.data().courseId}`, ...doc.data() } as Enrollment & { id: string }));
       const progressList = progressSnap.docs.map(doc => doc.data() as UserProgressType);
       const onsiteCompletionsList = onsiteCompletionsSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as OnsiteCompletion & { id: string }));
-      const quizResultsList = quizResultsSnap.docs.map(doc => doc.data() as UserQuizResult);
-      const videosList = videosSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Video));
-
+      const languagesList = languagesSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 
       setAllUsers(usersList);
       setAllCourses(coursesList);
       setAllCourseGroups(groupsList);
       setAllLadders(laddersList);
       setAllCampuses(campusesList);
-      setAllVideos(videosList);
+      setAllLanguages(languagesList);
       setUserProgressDetails(progressList);
 
       const progressMap = new Map<string, UserProgressType>();
       progressList.forEach(p => progressMap.set(`${p.userId}_${p.courseId}`, p));
-
-      const passedQuizzesMap = new Map<string, Set<string>>(); // key: userId_courseId, value: Set<quizId>
-      quizResultsList.forEach(qr => {
-        if(qr.passed) {
-          const key = `${qr.userId}_${qr.courseId}`;
-          if (!passedQuizzesMap.has(key)) passedQuizzesMap.set(key, new Set());
-          passedQuizzesMap.get(key)!.add(qr.quizId);
-        }
-      });
       
       const onlineEnrollments: EnrollmentReportData[] = enrollmentsList.map(enrollment => {
         const user = usersList.find(u => u.id === enrollment.userId);
@@ -189,13 +206,6 @@ export default function CourseReportsPage() {
         const progress = progressMap.get(`${enrollment.userId}_${enrollment.courseId}`);
         const totalVideos = course?.videos?.length || 0;
         const completedVideos = progress?.videoProgress?.filter(v => v.completed).length || 0;
-        const allVideosCompleted = totalVideos > 0 ? completedVideos >= totalVideos : true;
-        
-        const requiredQuizzes = course?.quizIds || [];
-        const passedQuizzes = passedQuizzesMap.get(`${enrollment.userId}_${enrollment.courseId}`) || new Set();
-        const allQuizzesCompleted = requiredQuizzes.length > 0 ? requiredQuizzes.every(qid => passedQuizzes.has(qid)) : true;
-
-        const isCompleted = allVideosCompleted && allQuizzesCompleted;
 
         return {
           id: enrollment.id,
@@ -205,9 +215,10 @@ export default function CourseReportsPage() {
           courseId: enrollment.courseId,
           courseTitle: course?.title || 'Unknown Course',
           enrolledAt: enrollment.enrolledAt.toDate(),
-          completedAt: isCompleted ? (enrollment.completedAt?.toDate() || new Date()) : null,
-          totalProgress: totalVideos > 0 ? Math.round((completedVideos / totalVideos) * 100) : (isCompleted ? 100 : 0),
+          completedAt: enrollment.completedAt?.toDate() || null,
+          totalProgress: totalVideos > 0 ? Math.round((completedVideos / totalVideos) * 100) : 0,
           completionType: 'Online',
+          language: course?.language || 'N/A',
         };
       });
 
@@ -225,6 +236,7 @@ export default function CourseReportsPage() {
           completedAt: completion.completedAt.toDate(),
           totalProgress: 100, 
           completionType: 'On-site',
+          language: course?.language || 'N/A',
         };
       });
 
@@ -244,6 +256,11 @@ export default function CourseReportsPage() {
     fetchAllData();
   }, [fetchAllData]);
 
+  const getNativeName = (dbName: string) => {
+    const lang = allLanguagesList.find(l => l.name === dbName || l.code === dbName);
+    return lang ? cleanNativeName(lang.nativeName) : dbName;
+  }
+
   const filteredEnrollmentData = useMemo(() => {
     return enrollmentReportData.filter(item => {
         const matchesCourse = selectedCourse === 'all' || 
@@ -262,6 +279,7 @@ export default function CourseReportsPage() {
             matchesCampus = userCampus === campusData?.["Campus Name"];
         }
         
+        const matchesLanguage = selectedLanguage === 'all' || item.language === selectedLanguage;
         const matchesCompletionType = selectedCompletionType === 'all' || item.completionType === selectedCompletionType;
         
         const matchesStatus = completionStatusFilter === 'all' ||
@@ -284,78 +302,54 @@ export default function CourseReportsPage() {
             item.userName.toLowerCase().includes(searchTerm.toLowerCase()) ||
             item.courseTitle.toLowerCase().includes(searchTerm.toLowerCase());
 
-        return matchesCourse && matchesCampus && matchesCompletionType && matchesDate && matchesSearch && matchesStatus && matchesPercentage;
+        return matchesCourse && matchesCampus && matchesLanguage && matchesCompletionType && matchesDate && matchesSearch && matchesStatus && matchesPercentage;
     });
-  }, [enrollmentReportData, selectedCourse, selectedCampus, selectedCompletionType, dateRange, searchTerm, allCourseGroups, allCampuses, completionStatusFilter, allUsers, canViewAllCampuses, currentUser, percentageFilter]);
+  }, [enrollmentReportData, selectedCourse, selectedCampus, selectedLanguage, selectedCompletionType, dateRange, searchTerm, allCourseGroups, allCampuses, completionStatusFilter, allUsers, canViewAllCampuses, currentUser, percentageFilter]);
   
   const completionCount = useMemo(() => {
     return filteredEnrollmentData.filter(item => item.completedAt).length;
   }, [filteredEnrollmentData]);
   
-  const ladderCompletionSummary = useMemo(() => {
-    const allUsersWhoCompletedALadder = new Set<string>();
+  const activeFilterCount = useMemo(() => {
+    let count = 0;
+    if (selectedCourse !== 'all') count++;
+    if (selectedCampus !== 'all') count++;
+    if (selectedLanguage !== 'all') count++;
+    if (selectedCompletionType !== 'all') count++;
+    if (completionStatusFilter !== 'all') count++;
+    if (percentageFilter !== 'all') count++;
+    if (dateRange?.from || dateRange?.to) count++;
+    return count;
+  }, [selectedCourse, selectedCampus, selectedLanguage, selectedCompletionType, completionStatusFilter, percentageFilter, dateRange]);
 
-    const summary = allLadders.map(ladder => {
-        const usersWhoCompletedThisLadder = new Set<string>();
-        const onsiteCompletionsForLadder = new Set<string>();
-        const onlineCompletionsForLadder = new Set<string>();
+  const handleApplyFilters = () => {
+    setSelectedCourse(pendingCourse);
+    setSelectedCampus(pendingCampus);
+    setSelectedLanguage(pendingLanguage);
+    setSelectedCompletionType(pendingCompletionType);
+    setCompletionStatusFilter(pendingStatus);
+    setPercentageFilter(pendingPercentage);
+    setDateRange(pendingDateRange);
+  };
 
-        const coursesInLadder = allCourses.filter(c => c.ladderIds?.includes(ladder.id));
-        if (coursesInLadder.length === 0) {
-            return { title: ladder.name, onsiteCompletions: 0, onlineCompletions: 0, fullyCompletedUsers: 0 };
-        }
-
-        const userIdsInvolvedInLadder = new Set<string>(
-            enrollmentReportData
-                .filter(e => coursesInLadder.some(c => c.id === e.courseId))
-                .map(e => e.userId)
-        );
-
-        userIdsInvolvedInLadder.forEach(userId => {
-            const user = allUsers.find(u => u.id === userId);
-            if (!user) return;
-
-            const coursesRequiredForUser = coursesInLadder.filter(c => c.language === user.language);
-            if (coursesRequiredForUser.length === 0) return;
-            
-            const userCompletions = enrollmentReportData.filter(e => e.userId === userId && e.completedAt);
-            const userCompletedCourseIds = new Set(userCompletions.map(e => e.courseId));
-            
-            const hasCompletedAllRequired = coursesRequiredForUser.every(c => userCompletedCourseIds.has(c.id));
-            
-            if (hasCompletedAllRequired) {
-                usersWhoCompletedThisLadder.add(userId);
-                allUsersWhoCompletedALadder.add(userId);
-
-                // Determine if this user's completion of the ladder counts as 'onsite' or 'online'
-                const completionMethodsForLadder = coursesRequiredForUser.map(c => 
-                    userCompletions.find(uc => uc.courseId === c.id)?.completionType
-                );
-
-                if (completionMethodsForLadder.every(type => type === 'On-site')) {
-                    onsiteCompletionsForLadder.add(userId);
-                } else {
-                    onlineCompletionsForLadder.add(userId);
-                }
-            }
-        });
-
-        return {
-            title: ladder.name,
-            onsiteCompletions: onsiteCompletionsForLadder.size,
-            onlineCompletions: onlineCompletionsForLadder.size,
-            fullyCompletedUsers: usersWhoCompletedThisLadder.size,
-        };
-    });
-
-    const grandTotal = {
-      onsiteCompletions: summary.reduce((sum, s) => sum + s.onsiteCompletions, 0),
-      onlineCompletions: summary.reduce((sum, s) => sum + s.onlineCompletions, 0),
-      fullyCompletedUsers: allUsersWhoCompletedALadder.size,
-    };
-
-    return { summary, grandTotal };
-  }, [allLadders, allCourses, enrollmentReportData, allUsers]);
+  const resetFilters = () => {
+    setPendingCourse("all");
+    setPendingCampus("all");
+    setPendingLanguage("all");
+    setPendingCompletionType("all");
+    setPendingStatus("all");
+    setPendingPercentage("all");
+    setPendingDateRange(undefined);
+    
+    setSelectedCourse("all");
+    setSelectedCampus("all");
+    setSelectedLanguage("all");
+    setSelectedCompletionType("all");
+    setCompletionStatusFilter("all");
+    setPercentageFilter("all");
+    setDateRange(undefined);
+    setSearchTerm("");
+  };
 
  const sortedAndFilteredDetailedProgress = useMemo(() => {
     let filtered = [...userProgressDetails];
@@ -369,9 +363,6 @@ export default function CourseReportsPage() {
                    course?.title.toLowerCase().includes(lowercasedSearch);
         });
     }
-
-    // Since we don't have enrollments here directly, we can't filter by date effectively without another join
-    // This part is simplified. For full date filtering, we'd need to cross-reference with enrollments.
 
     if (selectedDetailedCourse !== 'all') {
       filtered = filtered.filter(item => item.courseId === selectedDetailedCourse);
@@ -396,7 +387,6 @@ export default function CourseReportsPage() {
         switch (sortConfig.key) {
           case 'user': valA = userA?.displayName; valB = userB?.displayName; break;
           case 'course': valA = courseA?.title; valB = courseB?.title; break;
-          // Note: Start/Completion dates are not available in userProgressDetails, so sorting by them is removed.
           default: valA = ''; valB = '';
         }
 
@@ -419,7 +409,7 @@ export default function CourseReportsPage() {
   useEffect(() => {
     setCurrentPage(1);
     setDetailedReportPage(1);
-  }, [selectedCourse, selectedCampus, dateRange, searchTerm, rowsPerPage, selectedCompletionType, percentageFilter, detailedSearchTerm, detailedReportDateRange, selectedDetailedCourse, selectedDetailedCampus]);
+  }, [selectedCourse, selectedCampus, selectedLanguage, dateRange, searchTerm, rowsPerPage, selectedCompletionType, percentageFilter, detailedSearchTerm, detailedReportDateRange, selectedDetailedCourse, selectedDetailedCampus]);
 
   const totalPages = Math.ceil(filteredEnrollmentData.length / rowsPerPage);
   const paginatedData = filteredEnrollmentData.slice((currentPage - 1) * rowsPerPage, currentPage * rowsPerPage);
@@ -446,6 +436,7 @@ export default function CourseReportsPage() {
             "Facilitator": user?.facilitatorName || '',
             "Campus": item.userCampus,
             "Course": item.courseTitle,
+            "Language": item.language,
             "Enrollment Date": item.enrolledAt && isValid(item.enrolledAt) ? format(item.enrolledAt, 'yyyy-MM-dd HH:mm') : 'N/A',
             "Completion Date": item.completedAt && isValid(item.completedAt) ? format(item.completedAt, 'yyyy-MM-dd HH:mm') : 'In Progress',
             "Status": item.completedAt ? 'Completed' : 'In Progress',
@@ -519,147 +510,192 @@ export default function CourseReportsPage() {
 
   return (
     <div className="space-y-8">
-       <Card>
-        <CardHeader>
-          <CardTitle>Ladder Completion Report</CardTitle>
-          <CardDescription>A summary of unique users who have completed all required courses in each ladder.</CardDescription>
-        </CardHeader>
-        <CardContent>
-            {loading ? <Skeleton className="h-40 w-full" /> : (
-                 <div className="border rounded-lg overflow-hidden">
-                    <Table>
-                        <TableHeader>
-                            <TableRow>
-                                <TableHead>Ladder</TableHead>
-                                <TableHead className="text-center">On-site Completions</TableHead>
-                                <TableHead className="text-center">Online Completions</TableHead>
-                                <TableHead className="text-center">Total Completed Users</TableHead>
-                            </TableRow>
-                        </TableHeader>
-                        <TableBody>
-                            {ladderCompletionSummary.summary.filter(s => s.fullyCompletedUsers > 0).map(item => (
-                                <TableRow key={item.title}>
-                                    <TableCell className="font-medium">{item.title}</TableCell>
-                                    <TableCell className="text-center">{item.onsiteCompletions}</TableCell>
-                                    <TableCell className="text-center">{item.onlineCompletions}</TableCell>
-                                    <TableCell className="text-center">{item.fullyCompletedUsers}</TableCell>
-                                </TableRow>
-                            ))}
-                            <TableRow className="font-bold bg-muted/50">
-                                <TableCell>Grand Total</TableCell>
-                                <TableCell className="text-center">{ladderCompletionSummary.grandTotal.onsiteCompletions}</TableCell>
-                                <TableCell className="text-center">{ladderCompletionSummary.grandTotal.onlineCompletions}</TableCell>
-                                <TableCell className="text-center">{ladderCompletionSummary.grandTotal.fullyCompletedUsers}</TableCell>
-                            </TableRow>
-                        </TableBody>
-                    </Table>
-                </div>
-            )}
-        </CardContent>
-      </Card>
-
       <Card>
         <CardHeader>
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
             <div>
               <CardTitle>Course Enrollment Report</CardTitle>
               <CardDescription>
-                Found {filteredEnrollmentData.length} enrollments and {completionCount} completions matching your filters.
+                Found {filteredEnrollmentData.length} enrollments and {completionCount} completions matching your applied filters.
               </CardDescription>
             </div>
             <Button onClick={handleExportEnrollmentCSV} variant="outline" disabled={filteredEnrollmentData.length === 0}>
               <Download className="mr-2 h-4 w-4" /> Export CSV
             </Button>
           </div>
-          <div className="flex flex-col sm:flex-row items-center gap-4 mt-4 flex-wrap">
-             <div className="relative flex-grow w-full sm:w-auto">
+          <div className="flex items-center gap-2 mt-4">
+             <div className="relative flex-grow">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                <Input placeholder="Search user or course..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} className="pl-10" />
+                <Input placeholder="Search user or course..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} className="pl-10 h-10" />
             </div>
-            <Select value={selectedCourse} onValueChange={setSelectedCourse}>
-              <SelectTrigger className="w-full sm:w-auto flex-grow">
-                <SelectValue placeholder="Select Course or Learning Path" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Courses & Paths</SelectItem>
-                <SelectGroup>
-                  <SelectLabel>Learning Paths</SelectLabel>
-                  {allCourseGroups.map((group) => (
-                    <SelectItem key={group.id} value={`group_${group.id}`}>{group.title}</SelectItem>
-                  ))}
-                </SelectGroup>
-                <SelectGroup>
-                  <SelectLabel>Courses</SelectLabel>
-                  {allCourses.map((course) => (
-                    <SelectItem key={course.id} value={course.id}>{course.title}</SelectItem>
-                  ))}
-                </SelectGroup>
-              </SelectContent>
-            </Select>
-            <Select value={selectedCampus} onValueChange={setSelectedCampus} disabled={!canViewAllCampuses}>
-              <SelectTrigger className="w-full sm:w-auto flex-grow">
-                <SelectValue placeholder="Select Campus" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Campuses</SelectItem>
-                {allCampuses.map((campus) => (
-                  <SelectItem key={campus.id} value={campus.id}>{campus["Campus Name"]}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <Select value={selectedCompletionType} onValueChange={(value) => setSelectedCompletionType(value as 'all' | 'Online' | 'On-site')}>
-                <SelectTrigger className="w-full sm:w-auto flex-grow">
-                    <SelectValue placeholder="Select Type" />
-                </SelectTrigger>
-                <SelectContent>
-                    <SelectItem value="all">All Types</SelectItem>
-                    <SelectItem value="Online">Online</SelectItem>
-                    <SelectItem value="On-site">On-site</SelectItem>
-                </SelectContent>
-            </Select>
-            <Select value={completionStatusFilter} onValueChange={(value) => setCompletionStatusFilter(value as 'all' | 'completed' | 'in-progress')}>
-                <SelectTrigger className="w-full sm:w-auto flex-grow">
-                    <SelectValue placeholder="Select Status" />
-                </SelectTrigger>
-                <SelectContent>
-                    <SelectItem value="all">All Statuses</SelectItem>
-                    <SelectItem value="completed">Completed</SelectItem>
-                    <SelectItem value="in-progress">In Progress</SelectItem>
-                </SelectContent>
-            </Select>
-             <Select value={percentageFilter} onValueChange={setPercentageFilter}>
-                <SelectTrigger className="w-full sm:w-auto flex-grow">
-                    <SelectValue placeholder="Filter by Percentage" />
-                </SelectTrigger>
-                <SelectContent>
-                    <SelectItem value="all">Any Percentage</SelectItem>
-                    <SelectItem value="0-25">0 - 25%</SelectItem>
-                    <SelectItem value="26-50">26 - 50%</SelectItem>
-                    <SelectItem value="51-75">51 - 75%</SelectItem>
-                    <SelectItem value="76-99">76 - 99%</SelectItem>
-                    <SelectItem value="100-100">100% (Completed)</SelectItem>
-                </SelectContent>
-            </Select>
-            <Popover>
-              <PopoverTrigger asChild>
-                <Button id="date-enrollment" variant={"outline"} className={cn("w-full sm:w-auto justify-start text-left font-normal", !dateRange && "text-muted-foreground")}>
-                  <CalendarIcon className="mr-2 h-4 w-4" />
-                  {dateRange?.from ? (
-                    dateRange.to ? (
-                      <>{format(dateRange.from, "LLL dd, y")} - {format(dateRange.to, "LLL dd, y")}</>
-                    ) : (
-                      format(dateRange.from, "LLL dd, y")
-                    )
-                  ) : (
-                    <span>Filter by date</span>
-                  )}
-                </Button>
-              </PopoverTrigger>
-              <PopoverContent className="w-auto p-0" align="start">
-                <Calendar initialFocus mode="range" defaultMonth={dateRange?.from} selected={dateRange} onSelect={setDateRange} numberOfMonths={2} />
-              </PopoverContent>
-            </Popover>
-            {dateRange && <Button variant="ghost" size="icon" onClick={() => setDateRange(undefined)}><XIcon className="h-4 w-4" /></Button>}
+            <Sheet onOpenChange={(open) => {
+                if (open) {
+                    setPendingCourse(selectedCourse);
+                    setPendingCampus(selectedCampus);
+                    setPendingLanguage(selectedLanguage);
+                    setPendingCompletionType(selectedCompletionType);
+                    setPendingStatus(completionStatusFilter);
+                    setPendingPercentage(percentageFilter);
+                    setPendingDateRange(dateRange);
+                }
+            }}>
+                <SheetTrigger asChild>
+                    <Button variant="outline" size="icon" className="relative h-10 w-10 flex-shrink-0">
+                        <ListFilter className="h-4 w-4" />
+                        {activeFilterCount > 0 && (
+                            <Badge className="absolute -top-2 -right-2 h-5 w-5 flex items-center justify-center p-0 text-[10px] bg-primary">
+                                {activeFilterCount}
+                            </Badge>
+                        )}
+                    </Button>
+                </SheetTrigger>
+                <SheetContent className="w-full sm:max-w-md flex flex-col">
+                    <SheetHeader className="mb-6 flex-shrink-0">
+                        <SheetTitle>Filter Reports</SheetTitle>
+                        <SheetDescription>Adjust filters and click "Apply" to update results.</SheetDescription>
+                    </SheetHeader>
+                    <ScrollArea className="flex-1 pr-6 -mr-6">
+                        <div className="space-y-6 px-1">
+                            <div className="space-y-2">
+                                <Label>Course or Learning Path</Label>
+                                <Select value={pendingCourse} onValueChange={setPendingCourse}>
+                                <SelectTrigger>
+                                    <SelectValue placeholder="All Courses & Paths" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="all">All Courses & Paths</SelectItem>
+                                    <SelectGroup>
+                                    <SelectLabel>Learning Paths</SelectLabel>
+                                    {allCourseGroups.map((group) => (
+                                        <SelectItem key={group.id} value={`group_${group.id}`}>{group.title}</SelectItem>
+                                    ))}
+                                    </SelectGroup>
+                                    <SelectGroup>
+                                    <SelectLabel>Courses</SelectLabel>
+                                    {allCourses.map((course) => (
+                                        <SelectItem key={course.id} value={course.id}>{course.title}</SelectItem>
+                                    ))}
+                                    </SelectGroup>
+                                </SelectContent>
+                                </Select>
+                            </div>
+
+                            <div className="space-y-2">
+                                <Label>Campus</Label>
+                                <Select value={pendingCampus} onValueChange={setPendingCampus} disabled={!canViewAllCampuses}>
+                                <SelectTrigger>
+                                    <SelectValue placeholder="All Campuses" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="all">All Campuses</SelectItem>
+                                    {allCampuses.map((campus) => (
+                                    <SelectItem key={campus.id} value={campus.id}>{campus["Campus Name"]}</SelectItem>
+                                    ))}
+                                </SelectContent>
+                                </Select>
+                            </div>
+
+                            <div className="space-y-2">
+                                <Label>Language</Label>
+                                <Select value={pendingLanguage} onValueChange={setPendingLanguage}>
+                                    <SelectTrigger>
+                                        <SelectValue placeholder="All Languages" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="all">All Languages</SelectItem>
+                                        {allLanguages.map((lang) => {
+                                            const langInfo = allLanguagesList.find(l => l.code === lang.id);
+                                            const displayName = langInfo ? cleanNativeName(langInfo.nativeName) : lang.name;
+                                            return (
+                                                <SelectItem key={lang.id} value={lang.name}>{displayName}</SelectItem>
+                                            );
+                                        })}
+                                    </SelectContent>
+                                </Select>
+                            </div>
+
+                            <div className="space-y-2">
+                                <Label>Completion Type</Label>
+                                <Select value={pendingCompletionType} onValueChange={(value) => setPendingCompletionType(value as 'all' | 'Online' | 'On-site')}>
+                                    <SelectTrigger>
+                                        <SelectValue placeholder="All Types" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="all">All Types</SelectItem>
+                                        <SelectItem value="Online">Online</SelectItem>
+                                        <SelectItem value="On-site">On-site</SelectItem>
+                                    </SelectContent>
+                                </Select>
+                            </div>
+
+                            <div className="space-y-2">
+                                <Label>Completion Status</Label>
+                                <Select value={pendingStatus} onValueChange={(value) => setPendingStatus(value as 'all' | 'completed' | 'in-progress')}>
+                                    <SelectTrigger>
+                                        <SelectValue placeholder="All Statuses" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="all">All Statuses</SelectItem>
+                                        <SelectItem value="completed">Completed</SelectItem>
+                                        <SelectItem value="in-progress">In Progress</SelectItem>
+                                    </SelectContent>
+                                </Select>
+                            </div>
+
+                            <div className="space-y-2">
+                                <Label>Progress Percentage</Label>
+                                <Select value={pendingPercentage} onValueChange={setPendingPercentage}>
+                                    <SelectTrigger>
+                                        <SelectValue placeholder="Any Percentage" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="all">Any Percentage</SelectItem>
+                                        <SelectItem value="0-25">0 - 25%</SelectItem>
+                                        <SelectItem value="26-50">26 - 50%</SelectItem>
+                                        <SelectItem value="51-75">51 - 75%</SelectItem>
+                                        <SelectItem value="76-99">76 - 99%</SelectItem>
+                                        <SelectItem value="100-100">100% (Completed)</SelectItem>
+                                    </SelectContent>
+                                </Select>
+                            </div>
+
+                            <div className="space-y-2">
+                                <Label>Date Range (Completion or Enrollment)</Label>
+                                <div className="grid grid-cols-2 gap-2">
+                                    <div className="space-y-1">
+                                        <span className="text-[10px] text-muted-foreground uppercase font-bold">From</span>
+                                        <Input
+                                            type="date"
+                                            value={pendingDateRange?.from ? format(pendingDateRange.from, 'yyyy-MM-dd') : ''}
+                                            onChange={(e) => {
+                                                const from = e.target.value ? new Date(e.target.value + 'T00:00:00') : undefined;
+                                                setPendingDateRange((prev) => ({ ...prev, from }));
+                                            }}
+                                        />
+                                    </div>
+                                    <div className="space-y-1">
+                                        <span className="text-[10px] text-muted-foreground uppercase font-bold">To</span>
+                                        <Input
+                                            type="date"
+                                            value={pendingDateRange?.to ? format(pendingDateRange.to, 'yyyy-MM-dd') : ''}
+                                            onChange={(e) => {
+                                                const to = e.target.value ? new Date(e.target.value + 'T23:59:59') : undefined;
+                                                setPendingDateRange((prev) => ({ ...prev, to }));
+                                            }}
+                                        />
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </ScrollArea>
+                    <SheetFooter className="mt-8 flex flex-col gap-2 flex-shrink-0">
+                        <Button variant="outline" className="w-full" onClick={resetFilters}>Reset Filters</Button>
+                        <SheetClose asChild>
+                            <Button className="w-full" onClick={handleApplyFilters}>Apply Filters</Button>
+                        </SheetClose>
+                    </SheetFooter>
+                </SheetContent>
+            </Sheet>
           </div>
         </CardHeader>
         <CardContent>
@@ -758,9 +794,31 @@ export default function CourseReportsPage() {
                     <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                     <Input placeholder="Search..." value={detailedSearchTerm} onChange={e => setDetailedSearchTerm(e.target.value)} className="pl-10" />
                 </div>
-                <Select value={selectedDetailedCourse} onValueChange={setSelectedDetailedCourse}><SelectTrigger className="w-full sm:w-auto flex-grow"><SelectValue placeholder="Select Course or Learning Path" /></SelectTrigger><SelectContent><SelectItem value="all">All Courses</SelectItem>{allCourses.map((course) => (<SelectItem key={course.id} value={course.id}>{course.title}</SelectItem>))}</SelectContent></Select>
-                <Select value={selectedDetailedCampus} onValueChange={setSelectedDetailedCampus} disabled={!canViewAllCampuses}><SelectTrigger className="w-full sm:w-auto flex-grow"><SelectValue placeholder="Select Campus" /></SelectTrigger><SelectContent><SelectItem value="all">All Campuses</SelectItem>{allCampuses.map((campus) => (<SelectItem key={campus.id} value={campus.id}>{campus["Campus Name"]}</SelectItem>))}</SelectContent></Select>
-                <Popover><PopoverTrigger asChild><Button id="date" variant={"outline"} className={cn("w-full sm:w-auto justify-start text-left font-normal", !detailedReportDateRange && "text-muted-foreground")}><CalendarIcon className="mr-2 h-4 w-4" />{detailedReportDateRange?.from ? (detailedReportDateRange.to ? (<>{format(detailedReportDateRange.from, "LLL dd, y")} - {format(detailedReportDateRange.to, "LLL dd, y")}</>) : (format(detailedReportDateRange.from, "LLL dd, y"))) : (<span>Pick a date range</span>)}</Button></PopoverTrigger><PopoverContent className="w-auto p-0" align="start"><Calendar initialFocus mode="range" defaultMonth={detailedReportDateRange?.from} selected={detailedReportDateRange} onSelect={setDetailedReportDateRange} numberOfMonths={2} /></PopoverContent></Popover>
+                <Select value={selectedDetailedCourse} onValueChange={setSelectedDetailedCourse}><SelectTrigger className="w-full sm:w-auto flex-grow"><SelectValue placeholder="Select Course" /></SelectTrigger><SelectContent><SelectItem value="all">All Courses</SelectItem>{allCourses.map((course) => (<SelectItem key={course.id} value={course.id}>{course.title}</SelectItem>))}</SelectContent></Select>
+                <Select value={selectedDetailedCampus} onValueChange={setSelectedDetailedCampus} disabled={!canViewAllCampuses}><SelectTrigger className="w-full sm:w-auto flex-grow"><SelectValue placeholder="Select Campus" /></SelectTrigger><SelectContent><SelectItem value="all">All Campuses</SelectItem>{allCampuses.map((campus) => (
+                  <SelectItem key={campus.id} value={campus.id}>{campus["Campus Name"]}</SelectItem>
+                ))}</SelectContent></Select>
+                <div className="flex items-center gap-2">
+                    <Input
+                        type="date"
+                        value={detailedReportDateRange?.from ? format(detailedReportDateRange.from, 'yyyy-MM-dd') : ''}
+                        onChange={(e) => {
+                            const from = e.target.value ? new Date(e.target.value.replace(/-/g, '/')) : undefined;
+                            setDetailedReportDateRange((prev) => ({ ...prev, from }));
+                        }}
+                        className="w-full sm:w-[150px]"
+                    />
+                    <span className="text-muted-foreground">-</span>
+                    <Input
+                        type="date"
+                        value={detailedReportDateRange?.to ? format(detailedReportDateRange.to, 'yyyy-MM-dd') : ''}
+                        onChange={(e) => {
+                            const to = e.target.value ? new Date(e.target.value.replace(/-/g, '/')) : undefined;
+                            setDetailedReportDateRange((prev) => ({ ...prev, to }));
+                        }}
+                        className="w-full sm:w-[150px]"
+                    />
+                </div>
                 {detailedReportDateRange && <Button variant="ghost" size="icon" onClick={() => setDetailedReportDateRange(undefined)}><XIcon className="h-4 w-4" /></Button>}
                 <Button onClick={handleExportDetailedCSV} variant="outline" disabled={!sortedAndFilteredDetailedProgress || sortedAndFilteredDetailedProgress.length === 0} className="w-full sm:w-auto"><Download className="mr-2 h-4 w-4" />Export as CSV</Button>
               </div>
@@ -789,7 +847,9 @@ export default function CourseReportsPage() {
         </CardContent>
         {detailedReportTotalPages > 1 && (
           <CardFooter className="flex justify-end items-center gap-4">
-            <div className="flex items-center gap-2 text-sm text-muted-foreground"><span>Rows per page</span><Select value={`${detailedReportPageSize}`} onValueChange={(value) => { setDetailedReportPageSize(Number(value)); setDetailedReportPage(1);}}><SelectTrigger className="w-[70px]"><SelectValue placeholder={`${detailedReportPageSize}`} /></SelectTrigger><SelectContent>{[10, 25, 50, 100].map(size => (<SelectItem key={size} value={`${size}`}>{size}</SelectItem>))}</SelectContent></Select></div>
+            <div className="flex items-center gap-2 text-sm text-muted-foreground"><span>Rows per page</span><Select value={`${detailedReportPageSize}`} onValueChange={(value) => { setDetailedReportPageSize(Number(value)); setDetailedReportPage(1);}}><SelectTrigger className="w-[70px]"><SelectValue placeholder={`${detailedReportPageSize}`} /></SelectTrigger><SelectContent>{[10, 25, 50, 100].map(size => (
+                            <SelectItem key={size} value={`${size}`}>{size}</SelectItem>
+                        ))}</SelectContent></Select></div>
             <span className="text-sm text-muted-foreground">Page {detailedReportPage} of {detailedReportTotalPages}</span>
             <div className="flex items-center gap-2"><Button variant="outline" size="sm" onClick={() => setDetailedReportPage(prev => Math.max(prev - 1, 1))} disabled={detailedReportPage === 1}><ChevronLeft className="h-4 w-4" />Previous</Button><Button variant="outline" size="sm" onClick={() => setDetailedReportPage(prev => Math.min(prev + 1, detailedReportTotalPages))} disabled={detailedReportPage === detailedReportTotalPages}>Next<ChevronRight className="h-4 w-4" /></Button></div>
           </CardFooter>
@@ -805,7 +865,13 @@ export default function CourseReportsPage() {
           {selectedProgressDetail && (
             <div className="max-h-[60vh] overflow-y-auto">
               <Table>
-                <TableHeader><TableRow><TableHead>Video Title</TableHead><TableHead>Status</TableHead><TableHead className="text-right">Time Spent</TableHead></TableRow></TableHeader>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Video Title</TableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead className="text-right">Time Spent</TableHead>
+                  </TableRow>
+                </TableHeader>
                 <TableBody>
                   {selectedProgressDetail.course.videos?.map(videoId => {
                     const video = allVideos.find(v => v.id === videoId);

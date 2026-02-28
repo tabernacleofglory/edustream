@@ -1,4 +1,5 @@
 
+
 "use client";
 
 import { useState, useEffect, useCallback, useMemo } from 'react';
@@ -8,7 +9,7 @@ import { useToast } from '@/hooks/use-toast';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Button } from '@/components/ui/button';
-import { Loader2, Eye, Users, RefreshCw, BookCopy, AlertTriangle, ChevronLeft, ChevronRight, Search } from 'lucide-react';
+import { Loader2, Eye, Users, RefreshCw, BookCopy, AlertTriangle, ChevronLeft, ChevronRight, Search, UserMinus } from 'lucide-react';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -20,6 +21,18 @@ import Link from 'next/link';
 import { Progress } from '@/components/ui/progress';
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@/components/ui/select';
 import { Input } from '@/components/ui/input';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
+import { unenrollUserFromCourse } from '@/lib/user-actions';
 
 
 const getInitials = (name?: string | null) => (!name ? "U" : name.trim().split(/\s+/).map(p => p[0]?.toUpperCase()).join(""));
@@ -129,6 +142,7 @@ export default function EnrollmentSyncPage() {
     const [onsiteCompletions, setOnsiteCompletions] = useState<OnsiteCompletion[]>([]);
     const { hasPermission } = useAuth();
     const [searchTerm, setSearchTerm] = useState("");
+    const [unrollingCourseId, setUnrollingCourseId] = useState<string | null>(null);
     
     const canManageCourses = hasPermission('manageCourses');
 
@@ -147,7 +161,7 @@ export default function EnrollmentSyncPage() {
             const allUsers = usersSnap.docs.map(d => ({ id: d.id, ...d.data() } as User));
             const allEnrollments = enrollmentsSnap.docs.map(d => d.data() as Enrollment);
             const allCourseGroups = courseGroupsSnap.docs.map(d => ({ id: d.id, ...d.data() } as CourseGroup));
-            const allOnsiteCompletions = onsiteCompletionsSnap.docs.map(d => d.data() as OnsiteCompletion);
+            const allOnsiteCompletions = onsiteCompletionsSnap.docs.map(d => ({ id: d.id, ...d.data() } as OnsiteCompletion));
             setCourseGroups(allCourseGroups);
 
             const usersMap = new Map(allUsers.map(u => [u.id, u]));
@@ -263,11 +277,26 @@ export default function EnrollmentSyncPage() {
             // Fetch onsite completions
             const onsiteQuery = query(collection(db, 'onsiteCompletions'), where('userId', '==', viewingUser.userId));
             const onsiteSnap = await getDocs(onsiteQuery);
-            setOnsiteCompletions(onsiteSnap.docs.map(d => d.data() as OnsiteCompletion));
+            setOnsiteCompletions(onsiteSnap.docs.map(d => ({ id: d.id, ...d.data() } as OnsiteCompletion)));
         };
         fetchUserData();
     }, [viewingUser, db]);
     
+    const handleUnenroll = async (userId: string, courseId: string, courseTitle: string) => {
+        setUnrollingCourseId(courseId);
+        const result = await unenrollUserFromCourse(userId, courseId);
+        if (result.success) {
+            toast({ title: 'Success', description: result.message });
+            calculateActivity(); 
+            if (viewingUser) {
+                setViewingUser(prev => prev ? ({ ...prev, enrollments: prev.enrollments.filter(e => e.courseId !== courseId) }) : null);
+            }
+        } else {
+            toast({ variant: 'destructive', title: 'Error', description: result.message });
+        }
+        setUnrollingCourseId(null);
+    };
+
     if (!canManageCourses) {
         return <p>You do not have permission to view this page.</p>;
     }
@@ -334,12 +363,35 @@ export default function EnrollmentSyncPage() {
                                 <h4 className="font-semibold text-md mb-2">Concurrently Enrolled Courses</h4>
                                 <div className="space-y-3">
                                     {viewingUser.enrollments.map(e => (
-                                        <div key={e.courseId}>
-                                            <div className="flex justify-between items-center text-sm">
-                                                <span>{e.courseTitle}</span>
-                                                <span className="font-medium">{userProgress[e.courseId] || 0}%</span>
+                                        <div key={e.courseId} className="flex items-center justify-between">
+                                            <div className="flex-1 pr-4">
+                                                <div className="flex justify-between items-center text-sm">
+                                                    <span>{e.courseTitle}</span>
+                                                    <span className="font-medium">{userProgress[e.courseId] || 0}%</span>
+                                                </div>
+                                                <Progress value={userProgress[e.courseId] || 0} className="h-2 mt-1" />
                                             </div>
-                                            <Progress value={userProgress[e.courseId] || 0} className="h-2 mt-1" />
+                                             <AlertDialog>
+                                                <AlertDialogTrigger asChild>
+                                                    <Button variant="ghost" size="icon" disabled={unrollingCourseId === e.courseId}>
+                                                         {unrollingCourseId === e.courseId ? <Loader2 className="h-4 w-4 animate-spin" /> : <UserMinus className="h-4 w-4 text-destructive" />}
+                                                    </Button>
+                                                </AlertDialogTrigger>
+                                                <AlertDialogContent>
+                                                    <AlertDialogHeader>
+                                                        <AlertDialogTitle>Are you sure?</AlertDialogTitle>
+                                                        <AlertDialogDescription>
+                                                            This will un-enroll {viewingUser.userName} from "{e.courseTitle}" and delete all their progress. This action cannot be undone.
+                                                        </AlertDialogDescription>
+                                                    </AlertDialogHeader>
+                                                    <AlertDialogFooter>
+                                                        <AlertDialogCancel>Cancel</AlertDialogCancel>
+                                                        <AlertDialogAction onClick={() => handleUnenroll(viewingUser.userId, e.courseId, e.courseTitle)}>
+                                                            Yes, Un-enroll
+                                                        </AlertDialogAction>
+                                                    </AlertDialogFooter>
+                                                </AlertDialogContent>
+                                            </AlertDialog>
                                         </div>
                                     ))}
                                 </div>

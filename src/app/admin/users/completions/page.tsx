@@ -42,8 +42,6 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import Papa from "papaparse";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from "@/components/ui/select";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { Calendar } from "@/components/ui/calendar";
 import { DateRange } from "react-day-picker";
 import { Checkbox } from "@/components/ui/checkbox";
 
@@ -702,25 +700,27 @@ export default function ManageCompletionsPage() {
                             {courses.map(c => <SelectItem key={c.id} value={c.id}>{c.title}</SelectItem>)}
                         </SelectContent>
                     </Select>
-                     <Popover>
-                      <PopoverTrigger asChild>
-                        <Button id="date" variant={"outline"} className={cn("w-full sm:w-auto justify-start text-left font-normal", !dateRange && "text-muted-foreground")}>
-                          <CalendarIcon className="mr-2 h-4 w-4" />
-                          {dateRange?.from ? (
-                            dateRange.to ? (
-                              <>{format(dateRange.from, "LLL dd, y")} - {format(dateRange.to, "LLL dd, y")}</>
-                            ) : (
-                              format(dateRange.from, "LLL dd, y")
-                            )
-                          ) : (
-                            <span>Filter by date</span>
-                          )}
-                        </Button>
-                      </PopoverTrigger>
-                      <PopoverContent className="w-auto p-0" align="start">
-                        <Calendar initialFocus mode="range" defaultMonth={dateRange?.from} selected={dateRange} onSelect={setDateRange} numberOfMonths={2} />
-                      </PopoverContent>
-                    </Popover>
+                    <div className="flex items-center gap-2">
+                        <Input
+                            type="date"
+                            value={dateRange?.from ? format(dateRange.from, 'yyyy-MM-dd') : ''}
+                            onChange={(e) => {
+                                const from = e.target.value ? new Date(e.target.value.replace(/-/g, '/')) : undefined;
+                                setDateRange((prev) => ({ ...prev, from }));
+                            }}
+                            className="w-full sm:w-[150px]"
+                        />
+                        <span className="text-muted-foreground">-</span>
+                        <Input
+                            type="date"
+                            value={dateRange?.to ? format(dateRange.to, 'yyyy-MM-dd') : ''}
+                            onChange={(e) => {
+                                const to = e.target.value ? new Date(e.target.value.replace(/-/g, '/')) : undefined;
+                                setDateRange((prev) => ({ ...prev, to }));
+                            }}
+                            className="w-full sm:w-[150px]"
+                        />
+                    </div>
                     {dateRange && <Button variant="ghost" size="icon" onClick={() => setDateRange(undefined)}><XIcon className="h-4 w-4" /></Button>}
                     <Button variant="outline" className="w-full sm:w-auto" onClick={handleDownloadCSV}><Download className="h-4 w-4 mr-2" />CSV</Button>
                 </div>

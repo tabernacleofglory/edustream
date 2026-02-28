@@ -1,4 +1,3 @@
-
 "use client";
 
 import { useMemo } from "react";
@@ -7,9 +6,11 @@ import { useAuth } from "@/hooks/use-auth";
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
 import { Skeleton } from "@/components/ui/skeleton";
+import { useI18n } from "@/hooks/use-i18n";
 
 export default function DashboardPage() {
   const { user, loading: authLoading } = useAuth();
+  const { t } = useI18n();
 
   // Safer first name extraction (handles extra spaces and one-word names)
   const userName = useMemo(() => {
@@ -46,16 +47,16 @@ export default function DashboardPage() {
           <div>
             <h1 className="text-4xl md:text-5xl font-extrabold tracking-tight">
               <span className="animate-text-gradient bg-gradient-to-r from-pink-500 via-red-500 to-orange-400 bg-clip-text text-transparent">
-                Welcome!
+                {t('dashboard.welcome', 'Welcome!')}
               </span>
             </h1>
             <p className="text-muted-foreground mt-2">
-              Sign in to pick up where you left off.
+              {t('dashboard.signin_desc', 'Sign in to pick up where you left off.')}
             </p>
           </div>
           <div>
             <Button asChild size="lg" className="bg-gradient-to-r from-pink-500 to-orange-400 hover:from-pink-600 hover:to-orange-500">
-              <Link href="/login">Sign In</Link>
+              <Link href="/login">{t('dashboard.signin_button', 'Sign In')}</Link>
             </Button>
           </div>
         </div>

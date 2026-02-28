@@ -38,8 +38,6 @@ import { Eye, Download, Calendar as CalendarIcon, X as XIcon, CheckCircle, XCirc
 import Papa from 'papaparse';
 import { format, startOfDay, endOfDay } from "date-fns";
 import { DateRange } from "react-day-picker";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { Calendar } from "@/components/ui/calendar";
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
@@ -106,9 +104,9 @@ export default function QuizReportsPage() {
       const [usersSnapshot, coursesSnapshot, courseGroupsSnapshot, quizzesSnapshot, quizResultsSnapshot, campusesSnapshot] = await Promise.all([
         getDocs(usersCollection),
         getDocs(coursesCollection),
-        getDocs(courseGroupsCollection),
+        getDocs(courseGroupsSnapshot),
         getDocs(quizzesCollection),
-        getDocs(quizResultsCollection),
+        getDocs(quizResultsSnapshot),
         getDocs(campusesCollection),
       ]);
 
@@ -395,28 +393,27 @@ export default function QuizReportsPage() {
                     <SelectItem value="100-100">100%</SelectItem>
                 </SelectContent>
             </Select>
-            <Popover>
-              <PopoverTrigger asChild>
-                <Button id="date-quiz" variant={"outline"} className={cn("w-full sm:w-auto justify-start text-left font-normal", !dateRange && "text-muted-foreground")}>
-                  <CalendarIcon className="mr-2 h-4 w-4" />
-                  {dateRange?.from ? (
-                    dateRange.to ? (
-                      <>
-                        {format(dateRange.from, "LLL dd, y")} -{" "}
-                        {format(dateRange.to, "LLL dd, y")}
-                      </>
-                    ) : (
-                      format(dateRange.from, "LLL dd, y")
-                    )
-                  ) : (
-                    <span>Pick a date range</span>
-                  )}
-                </Button>
-              </PopoverTrigger>
-              <PopoverContent className="w-auto p-0" align="start">
-                <Calendar initialFocus mode="range" defaultMonth={dateRange?.from} selected={dateRange} onSelect={setDateRange} numberOfMonths={2} />
-              </PopoverContent>
-            </Popover>
+            <div className="flex items-center gap-2">
+                <Input
+                    type="date"
+                    value={dateRange?.from ? format(dateRange.from, 'yyyy-MM-dd') : ''}
+                    onChange={(e) => {
+                        const from = e.target.value ? new Date(e.target.value.replace(/-/g, '/')) : undefined;
+                        setDateRange((prev) => ({ ...prev, from }));
+                    }}
+                    className="w-full sm:w-[150px]"
+                />
+                <span className="text-muted-foreground">-</span>
+                <Input
+                    type="date"
+                    value={dateRange?.to ? format(dateRange.to, 'yyyy-MM-dd') : ''}
+                    onChange={(e) => {
+                        const to = e.target.value ? new Date(e.target.value.replace(/-/g, '/')) : undefined;
+                        setDateRange((prev) => ({ ...prev, to }));
+                    }}
+                    className="w-full sm:w-[150px]"
+                />
+            </div>
             {dateRange && <Button variant="ghost" size="icon" onClick={() => setDateRange(undefined)}><XIcon className="h-4 w-4" /></Button>}
           </div>
         </CardHeader>

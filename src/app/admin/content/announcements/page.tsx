@@ -1,4 +1,3 @@
-
 "use client";
 
 import React, { useState, useEffect, useCallback, FormEvent, MouseEvent } from "react";
@@ -24,6 +23,7 @@ import { Switch } from "@/components/ui/switch";
 import VideoLibrary from "@/components/video-library";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+import remarkBreaks from "remark-breaks";
 import { ScrollArea } from "@/components/ui/scroll-area";
 
 interface Announcement {
@@ -180,8 +180,8 @@ const AnnouncementForm = ({
                             />
                             <div className="p-4 border-t bg-muted/50">
                                 <Label className="text-xs">Preview</Label>
-                                <div className="prose dark:prose-invert prose-sm max-w-full">
-                                    <ReactMarkdown remarkPlugins={[remarkGfm]}>{description}</ReactMarkdown>
+                                <div className="prose dark:prose-invert prose-sm max-w-full prose-p:my-1 prose-headings:mb-2 prose-headings:mt-4">
+                                    <ReactMarkdown remarkPlugins={[remarkGfm, remarkBreaks]}>{description}</ReactMarkdown>
                                 </div>
                             </div>
                         </Card>
@@ -430,8 +430,8 @@ export default function AnnouncementsPage() {
                         <div key={item.id} className="flex flex-col sm:flex-row items-start sm:items-center gap-4 rounded-lg border p-4">
                             <Image src={item.imageUrl} alt={item.description} width={128} height={72} className="aspect-video object-cover rounded-md" />
                             <div className="flex-1">
-                                <div className="prose dark:prose-invert prose-sm max-w-full">
-                                  <ReactMarkdown remarkPlugins={[remarkGfm]}>{item.description}</ReactMarkdown>
+                                <div className="prose dark:prose-invert prose-sm max-w-full prose-p:my-1 prose-headings:mb-2 prose-headings:mt-4">
+                                  <ReactMarkdown remarkPlugins={[remarkGfm, remarkBreaks]}>{item.description}</ReactMarkdown>
                                 </div>
                                 <a href={item.buttonUrl} target="_blank" rel="noopener noreferrer" className="text-sm text-muted-foreground hover:underline flex items-center gap-1 mt-2">
                                     <Link2 className="h-3 w-3" />

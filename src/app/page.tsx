@@ -1,4 +1,3 @@
-
 "use client";
 
 import { Button } from "@/components/ui/button";
@@ -30,6 +29,8 @@ import { Logo } from "@/components/logo";
 import { Sheet, SheetContent, SheetHeader, SheetTrigger } from "@/components/ui/sheet";
 import { DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import LanguageSwitcher from "@/components/language-switcher";
+import { useI18n } from "@/hooks/use-i18n";
+import Script from "next/script";
 
 
 type SiteSettings = Awaited<ReturnType<typeof getSiteSettings>>;
@@ -69,7 +70,8 @@ export default function Home() {
   const [settings, setSettings] = useState<SiteSettings | null>(null);
   const [navLinks, setNavLinks] = useState<NavLink[]>([]);
   const [linksLoading, setLinksLoading] = useState(true);
-  const { user, loading: authLoading, isCurrentUserAdmin, hasPermission } = useAuth();
+  const { user, loading: authLoading, isCurrentUserAdmin } = useAuth();
+  const { t } = useI18n();
   const router = useRouter();
 
   const handleSignOut = async () => {
@@ -97,6 +99,19 @@ export default function Home() {
 
   return (
     <div className="dark min-h-screen bg-gradient-to-b from-gray-900 to-black text-white">
+        <Script id="tawk-to-script" strategy="afterInteractive">
+          {`
+            var Tawk_API=Tawk_API||{}, Tawk_LoadStart=new Date();
+            (function(){
+            var s1=document.createElement("script"),s0=document.getElementsByTagName("script")[0];
+            s1.async=true;
+            s1.src='https://embed.tawk.to/69a30f709d76e61c38796886/1jiif8kn3';
+            s1.charset='UTF-8';
+            s1.setAttribute('crossorigin','*');
+            s0.parentNode.insertBefore(s1,s0);
+            })();
+          `}
+        </Script>
         <div className="absolute inset-0 z-0">
             {settings?.homepageBackgroundImageUrl && (
                 <Image 
@@ -178,39 +193,39 @@ export default function Home() {
                           <DropdownMenuItem asChild>
                               <Link href="/dashboard">
                                   <LayoutDashboard className="mr-2 h-4 w-4" />
-                                  <span>Dashboard</span>
+                                  <span>{t('nav.dashboard', "Dashboard")}</span>
                               </Link>
                           </DropdownMenuItem>
                            <DropdownMenuItem asChild>
                               <Link href="/settings">
                                   <Settings className="mr-2 h-4 w-4" />
-                                  <span>Settings</span>
+                                  <span>{t('nav.settings', "Settings")}</span>
                               </Link>
                           </DropdownMenuItem>
                           {isCurrentUserAdmin && (
                               <DropdownMenuItem asChild>
                                   <Link href="/admin/analytics">
                                       <Shield className="mr-2 h-4 w-4" />
-                                      <span>Admin Panel</span>
+                                      <span>{t('nav.admin_panel', "Admin Panel")}</span>
                                   </Link>
                               </DropdownMenuItem>
                           )}
                           <DropdownMenuSeparator />
                           <DropdownMenuItem onClick={handleSignOut}>
                                <LogOut className="mr-2 h-4 w-4" />
-                               <span>Log out</span>
+                               <span>{t('nav.logout', "Log Out")}</span>
                           </DropdownMenuItem>
                       </DropdownMenuContent>
                     </DropdownMenu>
                 ) : (
                   <div className="hidden md:flex items-center gap-4">
-                      <ConditionalLink href="/login" className="hover:text-primary transition-colors text-white/80">Sign In</ConditionalLink>
-                      <Button asChild><ConditionalLink href="/signup">Get Started</ConditionalLink></Button>
+                      <ConditionalLink href="/login" className="hover:text-primary transition-colors text-white/80">{t('home.nav.login', "Sign In")}</ConditionalLink>
+                      <Button asChild><ConditionalLink href="/signup">{t('home.nav.signup', "Get Started")}</ConditionalLink></Button>
                   </div>
                 )}
                 <div className="md:hidden">
                     {authLoading ? <Skeleton className="h-9 w-9 rounded-full bg-white/10" /> : user ? null : (
-                    <Button asChild variant="ghost"><Link href="/login">Sign In</Link></Button>
+                    <Button asChild variant="ghost"><Link href="/login">{t('home.nav.login', "Sign In")}</Link></Button>
                 )}
                 </div>
             </div>
@@ -229,28 +244,28 @@ export default function Home() {
                     transition={{ duration: 0.5 }}
                 >
                     <h1 className="text-4xl sm:text-5xl md:text-6xl font-extrabold tracking-tight mb-4">
-                    {settings?.homepageTitle || "Unlock Your Potential."}
+                    {t('home.hero.title', settings?.homepageTitle || "Unlock Your Potential.")}
                     </h1>
                     <p className="max-w-2xl mx-auto text-lg sm:text-xl text-muted-foreground mb-8">
-                    {settings?.homepageSubtitle || "Join Glory Training Hub for world-class training and resources to help you grow in your faith and leadership."}
+                    {t('home.hero.subtitle', settings?.homepageSubtitle || "Join Glory Training Hub for world-class training and resources to help you grow in your faith and leadership.")}
                     </p>
                     <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
                     {user ? (
                         <Button size="lg" asChild className="w-full sm:w-auto">
                             <Link href="/dashboard">
-                                Go to Dashboard <ArrowRight className="ml-2 h-5 w-5" />
+                                {t('home.hero.dashboardButton', "Go to Dashboard")} <ArrowRight className="ml-2 h-5 w-5" />
                             </Link>
                         </Button>
                     ) : (
                         <Button size="lg" asChild className="w-full sm:w-auto">
                             <ConditionalLink href={settings?.enrollButtonLink || "/signup"}>
-                                {settings?.enrollButtonText || "Start Your Journey"} <ArrowRight className="ml-2 h-5 w-5" />
+                                {t('home.hero.enrollButton', settings?.enrollButtonText || "Start Your Journey")} <ArrowRight className="ml-2 h-5 w-5" />
                             </ConditionalLink>
                         </Button>
                     )}
                     <Button size="lg" variant="outline" asChild className="w-full sm:w-auto">
                         <ConditionalLink href={settings?.exploreButtonLink || "/courses"}>
-                        {settings?.exploreButtonText || "Explore Courses"}
+                        {t('home.hero.exploreButton', settings?.exploreButtonText || "Explore Courses")}
                         </ConditionalLink>
                     </Button>
                     </div>
@@ -261,24 +276,24 @@ export default function Home() {
         {/* Features Section */}
         <div className="container mx-auto px-4 sm:px-6 lg:px-8 py-20">
           <div className="text-center mb-12">
-            <h2 className="text-3xl font-bold">{settings?.featuresTitle || "Why Choose Us?"}</h2>
-            <p className="text-muted-foreground">{settings?.featuresSubtitle || "Everything you need for your spiritual growth."}</p>
+            <h2 className="text-3xl font-bold">{t('home.features.title', settings?.featuresTitle || "Why Choose Us?")}</h2>
+            <p className="text-muted-foreground">{t('home.features.subtitle', settings?.featuresSubtitle || "Everything you need for your spiritual growth.")}</p>
           </div>
           <div className="grid md:grid-cols-3 gap-8">
             <FeatureCard
               icon={settings?.feature1Icon || 'BookOpen'}
-              title={settings?.feature1Title || "Expert-Led Courses"}
-              description={settings?.feature1Description || "Learn from experienced pastors and leaders on a variety of biblical topics."}
+              title={t('home.features.1.title', settings?.feature1Title || "Expert-Led Courses")}
+              description={t('home.features.1.desc', settings?.feature1Description || "Learn from experienced pastors and leaders on a variety of biblical topics.")}
             />
             <FeatureCard
               icon={settings?.feature2Icon || 'Users'}
-              title={settings?.feature2Title || "Community"}
-              description={settings?.feature2Description || "Connect with a global community of believers and grow together."}
+              title={t('home.features.2.title', settings?.feature2Title || "Community")}
+              description={t('home.features.2.desc', settings?.feature2Description || "Connect with a global community of believers and grow together.")}
             />
             <FeatureCard
               icon={settings?.feature3Icon || 'Video'}
-              title={settings?.feature3Title || "On-Demand Video"}
-              description={settings?.feature3Description || "Access our extensive library of video resources anytime, anywhere."}
+              title={t('home.features.3.title', settings?.feature3Title || "On-Demand Video")}
+              description={t('home.features.3.desc', settings?.feature3Description || "Access our extensive library of video resources anytime, anywhere.")}
             />
           </div>
         </div>
@@ -287,7 +302,7 @@ export default function Home() {
       {/* Footer */}
       <footer className="border-t border-white/10 relative z-10">
         <div className="container mx-auto px-4 sm:px-6 lg:px-8 py-8 text-center text-muted-foreground">
-          &copy; {new Date().getFullYear()} {settings?.websiteName || "Glory Training Hub"}. All rights reserved.
+          &copy; {new Date().getFullYear()} {t('home.footer.copyright', settings?.websiteName || "Tabernacle of Glory")}. {t('home.footer.rights', "All rights reserved.")}
         </div>
       </footer>
     </div>

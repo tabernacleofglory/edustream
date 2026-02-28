@@ -14,7 +14,7 @@ import {
   Tv,
   FileText,
   Music,
-  Image as ImageIcon,
+  ImageIcon,
   Award,
   BookCopy,
   Folder,
@@ -45,6 +45,8 @@ import {
   Theater,
   List,
   Mail,
+  Send,
+  Palette,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
@@ -64,6 +66,7 @@ import { Alert, AlertTitle, AlertDescription } from "@/components/ui/alert";
 import { Lock } from 'lucide-react';
 import GlobalSearch from "@/components/global-search";
 import { useI18n } from "@/hooks/use-i18n";
+import MobileNav from "@/components/mobile-nav";
 
 
 const NavItem = ({ href, label, icon: Icon, subItems, permission, isSidebarOpen }: { href?: string; label:string; icon: React.ElementType; subItems?: any[]; permission?: string, isSidebarOpen: boolean }) => {
@@ -150,14 +153,23 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
           permission: 'viewUserManagement',
           subItems: [
             { href: "/admin/users", label: t('admin.nav.users.management', "User Management"), icon: Users, permission: 'manageUsers' },
-            { href: "/admin/users/completions", label: "Onsite Completions", icon: BookCheck, permission: 'manageCompletions' },
-            { href: "/admin/users/course-credit", label: "Course Credit", icon: Award, permission: 'manageCourseCredit' },
+            { href: "/admin/users/completions", label: t('admin.nav.users.onsite_completions', "Onsite Completions"), icon: BookCheck, permission: 'manageCompletions' },
+            { href: "/admin/users/course-credit", label: t('admin.nav.users.course_credit', "Course Credit"), icon: Award, permission: 'manageCourseCredit' },
             { href: "/admin/ladders", label: t('admin.nav.users.ladders', "Ladders"), icon: Shield, permission: 'manageUsers' },
             { href: "/admin/speakers", label: t('admin.nav.users.speakers', "Speakers"), icon: UserRound, permission: 'manageContent' },
             { href: "/admin/promotions", label: t('admin.nav.users.promotions', "Promotion Requests"), icon: UserCheck, permission: 'managePromotions'},
             { href: "/admin/users/hp-requests", label: t('admin.nav.users.hp_requests', "HP Requests"), icon: UserPlus, permission: 'manageHpRequests' },
           ],
         },
+      ],
+    },
+    {
+      group: t('admin.nav.group.marketing', "Marketing"),
+      items: [
+        { href: "/admin/content/announcements", label: t('admin.nav.marketing.announcements', "Announcements"), icon: Megaphone, permission: 'manageContent' },
+        { href: "/admin/content/emails", label: t('admin.nav.marketing.emails', "Email Templates"), icon: Mail, permission: 'manageContent' },
+        { href: "/admin/content/email-sender", label: t('admin.nav.marketing.email_sender', "Email Sender"), icon: Send, permission: 'manageContent' },
+        { href: "/admin/marketing/email-layout", label: t('admin.nav.marketing.email_layout', "Email Layout"), icon: Palette, permission: 'manageContent' },
       ],
     },
     {
@@ -168,13 +180,13 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
           icon: BookOpen,
           permission: 'viewCourseManagement',
           subItems: [
-            { href: "/admin/courses", label: "Course Manager", icon: Settings },
-            { href: "/admin/courses/enrollments", label: "Enrollment Activity", icon: Users2 },
-            { href: "/admin/courses/enrollment-issues", label: "Enrollment Issues", icon: AlertTriangle },
+            { href: "/admin/courses", label: t('admin.nav.content.courses.manager', "Course Manager"), icon: Settings },
+            { href: "/admin/courses/enrollments", label: t('admin.nav.content.courses.enrollments', "Enrollment Activity"), icon: Users2 },
+            { href: "/admin/courses/enrollment-issues", label: t('admin.nav.content.courses.issues', "Enrollment Issues"), icon: AlertTriangle },
           ]
         },
-        { href: "/admin/content/groups", label: "Learning Paths", icon: Group, permission: 'manageContent' },
-        { href: "/admin/forms", label: "Forms", icon: FileQuestion, permission: 'viewForms' },
+        { href: "/admin/content/groups", label: t('admin.nav.content.paths', "Learning Paths"), icon: Group, permission: 'manageContent' },
+        { href: "/admin/forms", label: t('admin.nav.content.forms', "Forms"), icon: FileQuestion, permission: 'viewForms' },
         {
           label: t('admin.nav.content.libraries', "Libraries"),
           icon: Folder,
@@ -188,8 +200,6 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
             { href: "/admin/content/logos", label: t('admin.nav.content.logos', "Logos"), icon: Award },
             { href: "/admin/content/certificates", label: t('admin.nav.content.certificates', "Certificates"), icon: Award },
             { href: "/admin/content/documentation", label: t('admin.nav.content.documentation', "Documentation"), icon: BookCopy },
-            { href: "/admin/content/announcements", label: t('admin.nav.content.announcements', "Announcements"), icon: Megaphone },
-            { href: "/admin/content/emails", label: "Email Templates", icon: Mail },
             { href: "/admin/content/languages", label: t('admin.nav.content.languages', "Languages"), icon: Languages },
             { href: "/admin/content/ministries", label: t('admin.nav.content.ministries', "Ministries"), icon: Church },
           ],
@@ -197,19 +207,19 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
       ],
     },
     {
-      group: "Reports",
+      group: t('admin.nav.group.reports', "Reports"),
       permission: "viewReports",
       items: [
-        { href: "/admin/reports/courses", label: "Course Reports", icon: BarChart2 },
-        { href: "/admin/reports/quizzes", label: "Quiz Reports", icon: BarChart2 },
+        { href: "/admin/reports/courses", label: t('admin.nav.reports.courses', "Course Reports"), icon: BarChart2 },
+        { href: "/admin/reports/quizzes", label: t('admin.nav.reports.quizzes', "Quiz Reports"), icon: BarChart2 },
       ],
     },
     {
       group: t('admin.nav.group.platform', "Platform"),
       items: [
         { href: "/admin/campus", label: t('admin.nav.platform.campus', "Campus"), icon: Building, permission: 'viewCampusManagement' },
-        { href: "/admin/custom-fields", label: "Custom Fields", icon: List, permission: 'manageForms' },
-        { href: "/admin/courses/teaching", label: "Teaching", icon: Play },
+        { href: "/admin/custom-fields", label: t('admin.nav.platform.custom_fields', "Custom Fields"), icon: List, permission: 'manageForms' },
+        { href: "/admin/courses/teaching", label: t('admin.nav.platform.teaching', "Teaching"), icon: Play },
         { href: "/admin/live", label: t('admin.nav.platform.live', "Live"), icon: Tv, permission: 'viewLiveManagement' },
         { href: "/my-certificates", label: t('admin.nav.platform.my_certificates', "My Certificates"), icon: Award, permission: 'viewDashboard' },
         {
@@ -340,19 +350,19 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
                     <DropdownMenuItem asChild>
                        <Link href="/dashboard">
                         <LayoutDashboard className="mr-2 h-4 w-4" />
-                        <span>Student View</span>
+                        <span>{t('nav.student_view', "Student View")}</span>
                        </Link>
                     </DropdownMenuItem>
                     <DropdownMenuItem asChild>
                        <Link href="/settings">
                         <Settings className="mr-2 h-4 w-4" />
-                        <span>Settings</span>
+                        <span>{t('nav.settings', 'Settings')}</span>
                        </Link>
                     </DropdownMenuItem>
                     <DropdownMenuSeparator />
                     <DropdownMenuItem onClick={handleSignOut}>
                         <LogOut className="mr-2 h-4 w-4" />
-                        <span>Log out</span>
+                        <span>{t('nav.logout', 'Log Out')}</span>
                     </DropdownMenuItem>
                 </DropdownMenuContent>
             </DropdownMenu>
@@ -381,10 +391,11 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
                 <ThemeToggle />
             </div>
         </header>
-        <main className="flex-1 p-4 sm:p-6 bg-muted/40 overflow-auto">
+        <main className={cn("flex-1 p-4 sm:p-6 bg-muted/40 overflow-auto", isMobile && "pb-24")}>
             {children}
         </main>
       </div>
+      <MobileNav onMenuClick={() => setIsSidebarOpen(true)} />
     </div>
   );
 }

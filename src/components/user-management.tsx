@@ -1,14 +1,13 @@
 
-
 "use client";
 
 import { useState, useEffect, useCallback, useMemo } from "react";
 import Link from "next/link";
 import { getFirebaseFirestore, getFirebaseApp, getFirebaseFunctions } from "@/lib/firebase";
-import { collection, getDocs, doc, updateDoc, query, orderBy, deleteDoc, setDoc, addDoc, serverTimestamp, where, documentId, writeBatch, getDoc, collectionGroup } from "firebase/firestore";
+import { collection, getDocs, doc, updateDoc, query, orderBy, deleteDoc, setDoc, addDoc, serverTimestamp, where, documentId, writeBatch, getDoc, collectionGroup, increment, limit } from "firebase/firestore";
 import { getAuth, deleteUser as deleteFirebaseAuthUser } from "firebase/auth";
 import { httpsCallable } from 'firebase/functions';
-import type { User, Course, Enrollment, UserProgress as UserProgressType, Ladder, UserLadderProgress, EmailTemplate } from "@/lib/types";
+import type { User, Course, Enrollment, UserProgress as UserProgressType, Ladder, UserLadderProgress, EmailTemplate, EmailLayoutSettings } from "@/lib/types";
 import {
   Card,
   CardContent,
@@ -81,6 +80,8 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "./ui/t
 import { useAuth } from "@/hooks/use-auth";
 import { Checkbox } from "./ui/checkbox";
 import { RadioGroup, RadioGroupItem } from "./ui/radio-group";
+import { marked } from 'marked';
+import { wrapInEmailLayout } from "@/lib/email-utils";
 
 interface UserCourseProgress {
     courseId: string;
@@ -360,6 +361,7 @@ const SendEmailDialog = ({ user, onClose }: { user: User, onClose: () => void })
     const [selectedTemplateId, setSelectedTemplateId] = useState<string>('');
     const [loadingTemplates, setLoadingTemplates] = useState(true);
     const [isSending, setIsSending] = useState(false);
+    const [emailLayout, setEmailLayout] = useState<EmailLayoutSettings | null>(null);
     const db = getFirebaseFirestore();
     const { toast } = useToast();
 
@@ -367,9 +369,12 @@ const SendEmailDialog = ({ user, onClose }: { user: User, onClose: () => void })
         const fetchTemplates = async () => {
             setLoadingTemplates(true);
             try {
-                const q = query(collection(db, 'emailTemplates'), orderBy('name', 'asc'));
-                const snapshot = await getDocs(q);
-                setTemplates(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as EmailTemplate)));
+                const [templatesSnap, layoutSnap] = await Promise.all([
+                    getDocs(query(collection(db, 'emailTemplates'), orderBy('name', 'asc'))),
+                    getDoc(doc(db, 'siteSettings', 'emailLayout'))
+                ]);
+                setTemplates(templatesSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as EmailTemplate)));
+                if (layoutSnap.exists()) setEmailLayout(layoutSnap.data() as EmailLayoutSettings);
             } catch (error) {
                 toast({ variant: 'destructive', title: 'Failed to load templates' });
             } finally {
@@ -386,13 +391,120 @@ const SendEmailDialog = ({ user, onClose }: { user: User, onClose: () => void })
         }
         setIsSending(true);
         try {
-            const functions = getFirebaseFunctions();
-            const sendEmail = httpsCallable(functions, 'sendEmailViaAppsheet');
-            await sendEmail({ userId: user.id, templateId: selectedTemplateId });
-            toast({ title: 'Email Sent', description: `Email queued for ${user.displayName}.` });
+            const template = templates.find(t => t.id === selectedTemplateId);
+            if (!template) throw new Error("Template not found");
+
+            let subject = template.subject || '';
+            let body = template.body || '';
+
+            // Map user data to placeholders
+            const placeholders: Record<string, any> = {
+                userName: user.displayName || user.firstName || 'User',
+                firstName: user.firstName || '',
+                lastName: user.lastName || '',
+                email: user.email || '',
+                phoneNumber: user.phoneNumber || '',
+                campus: user.campus || '',
+                hpNumber: user.hpNumber || '',
+                facilitatorName: user.facilitatorName || '',
+                classLadder: user.classLadder || '',
+                ministry: user.ministry || '',
+                charge: user.charge || '',
+            };
+
+            // 1. Basic user-level substitution
+            Object.entries(placeholders).forEach(([key, val]) => {
+                const regex = new RegExp(`{{${key}}}`, "g");
+                subject = subject.replace(regex, String(val ?? ''));
+                body = body.replace(regex, String(val ?? ''));
+            });
+
+            // 2. Resolve Form Placeholders: {{form:formId:fieldId}} and {{formTitle:formId}}
+            const formPlaceholderRegex = /{{form:([^:]+):([^}]+)}}/g;
+            const formTitleRegex = /{{formTitle:([^}]+)}}/g;
+            
+            const combinedText = subject + " " + body;
+            const formMatches = Array.from(combinedText.matchAll(formPlaceholderRegex));
+            const formTitleMatches = Array.from(combinedText.matchAll(formTitleRegex));
+            
+            const formIdsInUse = Array.from(new Set([
+                ...formMatches.map(m => m[1]),
+                ...formTitleMatches.map(m => m[1])
+            ]));
+
+            const formSubmissionsMap: Record<string, any> = {};
+            const formTitlesMap: Record<string, string> = {};
+
+            for (const fId of formIdsInUse) {
+                // Fetch form title
+                try {
+                    const formSnap = await getDoc(doc(db, 'forms', fId));
+                    if (formSnap.exists()) {
+                        formTitlesMap[fId] = formSnap.data().title || 'Untitled Form';
+                    }
+                } catch (e) {
+                    console.warn(`Could not fetch form ${fId}:`, e);
+                }
+
+                // Fetch submission if needed (only if {{form:fId:fieldId}} is used)
+                const hasFieldMatch = formMatches.some(m => m[1] === fId);
+                if (hasFieldMatch) {
+                    const subQuery = query(
+                        collection(db, 'forms', fId, 'submissions'),
+                        where('userId', '==', user.id),
+                        orderBy('submittedAt', 'desc'),
+                        limit(1)
+                    );
+                    try {
+                        const snap = await getDocs(subQuery);
+                        if (!snap.empty) {
+                            const subData = snap.docs[0].data();
+                            formSubmissionsMap[fId] = subData.data || subData;
+                        }
+                    } catch (e) {
+                        console.warn(`Could not fetch submission for form ${fId}:`, e);
+                    }
+                }
+            }
+
+            // Replace form field placeholders
+            const formReplacer = (match: string, fId: string, fFieldId: string) => {
+                const val = formSubmissionsMap[fId]?.[fFieldId];
+                return val == null ? '' : Array.isArray(val) ? val.join(', ') : String(val);
+            };
+            subject = subject.replace(formPlaceholderRegex, formReplacer);
+            body = body.replace(formPlaceholderRegex, formReplacer);
+
+            // Replace form title placeholders
+            const titleReplacer = (match: string, fId: string) => {
+                return formTitlesMap[fId] || '';
+            };
+            subject = subject.replace(formTitleRegex, titleReplacer);
+            body = body.replace(formTitleRegex, titleReplacer);
+
+            // Convert Markdown to HTML for the email body
+            const htmlContent = marked.parse(body, { breaks: true });
+            
+            let finalHtml = `<div style="font-family:sans-serif;line-height:1.5;color:#2d3748;max-width:600px;margin:0 auto;">${htmlContent}</div>`;
+            if (emailLayout) {
+                finalHtml = wrapInEmailLayout(htmlContent, emailLayout, "View Student Dashboard", `${window.location.origin}/dashboard`);
+            }
+
+            // Write to the 'mail' collection to trigger the extension
+            await addDoc(collection(db, 'mail'), {
+                to: [user.email],
+                message: {
+                    subject: subject,
+                    html: finalHtml,
+                },
+                templateId: selectedTemplateId,
+                userId: user.id
+            });
+
+            toast({ title: 'Email Queued', description: `Email for ${user.displayName} has been added to the queue.` });
             onClose();
         } catch (error: any) {
-            console.error("Error sending email:", error);
+            console.error("Error queueing email:", error);
             toast({ variant: 'destructive', title: 'Send Failed', description: error.message });
         } finally {
             setIsSending(false);
@@ -403,7 +515,7 @@ const SendEmailDialog = ({ user, onClose }: { user: User, onClose: () => void })
         <DialogContent>
             <DialogHeader>
                 <DialogTitle>Send Email to {user.displayName}</DialogTitle>
-                <DialogDescription>Select an email template to send.</DialogDescription>
+                <DialogDescription>Select an email template to send via the email extension.</DialogDescription>
             </DialogHeader>
             <div className="py-4">
                 {loadingTemplates ? (
@@ -460,6 +572,7 @@ export default function UserManagement() {
   const [isMergeDialogOpen, setIsMergeDialogOpen] = useState(false);
   
   const canDeleteUsers = hasPermission('deleteUsersClientSide');
+  const canManageUsers = hasPermission('manageUsers');
 
   const fetchAllData = useCallback(async () => {
     setLoading(true);
@@ -785,7 +898,7 @@ export default function UserManagement() {
 
               await setDoc(doc(db, "users", user.uid), newUserForDb);
               
-              if (secondaryAuth.currentUser?.id === user.uid) {
+              if (secondaryAuth.currentUser?.uid === user.uid) {
                   await signOut(secondaryAuth);
               }
               
@@ -851,6 +964,7 @@ export default function UserManagement() {
             "Email": user.email,
             "Role": user.role,
             "Membership Status": user.membershipStatus,
+            "Graduation Status": user.graduationStatus,
             "Membership Ladder": getUserLadderName(user.classLadderId),
             "Campus": user.campus,
             "Phone Number": user.phoneNumber,
@@ -863,13 +977,15 @@ export default function UserManagement() {
         const csv = Papa.unparse(dataToExport);
         const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
         const link = document.createElement("a");
-        const url = URL.createObjectURL(blob);
-        link.setAttribute("href", url);
-        link.setAttribute("download", "users_export.csv");
-        link.style.visibility = 'hidden';
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
+        if (link.download !== undefined) {
+            const url = URL.createObjectURL(blob);
+            link.setAttribute("href", url);
+            link.setAttribute("download", "users_export.csv");
+            link.style.visibility = 'hidden';
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+        }
     };
 
     const handleSendResetLink = async (email?: string | null) => {
@@ -1172,10 +1288,12 @@ export default function UserManagement() {
                         </TableCell>
                         <TableCell className="text-right">
                            <div className="flex justify-end gap-1">
-                             <Button variant="ghost" size="icon" onClick={(e) => handleActionClick(e, () => setSendingEmailToUser(user))}>
-                                <Mail className="h-4 w-4" />
-                                <span className="sr-only">Send Email</span>
-                            </Button>
+                             {canManageUsers && (
+                                <Button variant="ghost" size="icon" onClick={(e) => handleActionClick(e, () => setSendingEmailToUser(user))}>
+                                    <Mail className="h-4 w-4" />
+                                    <span className="sr-only">Send Email</span>
+                                </Button>
+                             )}
                              <Button variant="ghost" size="icon" onClick={(e) => handleActionClick(e, () => setViewingUser(user))}>
                                 <Eye className="h-4 w-4" />
                                 <span className="sr-only">View Details</span>
@@ -1278,6 +1396,7 @@ export default function UserManagement() {
                           ]),
                           { label: 'Membership Ladder', value: getUserLadderName(viewingUser.classLadderId) },
                           { label: 'Charge', value: viewingUser.charge },
+                          { label: 'Graduation Status', value: viewingUser.graduationStatus || 'Not Started', isBadge: true, variant: 'outline' },
                           { label: 'Role', value: viewingUser.role, isBadge: true, variant: (viewingUser.role === 'admin' || viewingUser.role === 'developer' ? 'default' : 'secondary') },
                           { label: 'Membership Status', value: viewingUser.membershipStatus, isBadge: true, variant: 'secondary' },
                       ].map(field => (
@@ -1366,10 +1485,12 @@ export default function UserManagement() {
                       </Button>
                   </div>
                   <div className="flex gap-2">
-                      <Button variant="outline" onClick={() => handleSendResetLink(viewingUser?.email)}>
-                        <Mail className="mr-2 h-4 w-4" />
-                        Send Reset Link
-                      </Button>
+                      {canManageUsers && (
+                        <Button variant="outline" onClick={() => handleSendResetLink(viewingUser?.email)}>
+                            <Mail className="mr-2 h-4 w-4" />
+                            Send Reset Link
+                        </Button>
+                      )}
                       <Button variant="secondary" onClick={() => setViewingUser(null)}>Close</Button>
                        <Button onClick={() => { setEditingUser(viewingUser); setViewingUser(null); }}>
                            <Edit className="mr-2 h-4 w-4" />
