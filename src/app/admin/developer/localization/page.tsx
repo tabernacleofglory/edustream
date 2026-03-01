@@ -1,4 +1,3 @@
-
 "use client";
 
 import { useState, useEffect, useCallback, useMemo } from 'react';
@@ -53,13 +52,13 @@ const DEFAULT_TRANSLATIONS: { [key: string]: { [key: string]: string } } = {
     "settings.labels.first_name": { "en": "First Name", "ht": "Prenon", "fr": "Prénom", "es": "Nombre" },
     "settings.labels.last_name": { "en": "Last Name", "ht": "Non", "fr": "Nom", "es": "Apellido" },
     "settings.labels.gender": { "en": "Gender", "ht": "Sèks", "fr": "Genre", "es": "Género" },
-    "settings.labels.age_range": { "en": "Age Range", "ht": "Gwoup laj", "fr": "Tranche d'âge", "es": "Rango de edad" },
-    "settings.labels.phone": { "en": "Phone Number", "ht": "Nimewo telefòn", "fr": "Numéro de téléphone", "es": "Número de téléphone" },
+    "settings.labels.age_range": { "en": "Age Range", "ht": "Gwoup laj", "fr": "Tranche d'âge", "es": "Tranche d'âge" },
+    "settings.labels.phone": { "en": "Phone Number", "ht": "Nimewo telefòn", "fr": "Numéro de téléphone", "es": "Número de teléfono" },
     "settings.labels.in_hp": { "en": "Are you in a Prayer Group (HP)?", "ht": "Èske ou nan yon gwoup priyè (HP)?", "fr": "Êtes-vous dans un groupe de prière (HP) ?", "es": "¿Estás en un grupo de oración (HP)?" },
     "settings.labels.hp_number": { "en": "HP Number", "ht": "Nimewo HP", "fr": "Numéro de HP", "es": "Número de HP" },
     "settings.labels.facilitator": { "en": "Facilitator's Full Name", "ht": "Non konplè fasilitatè a", "fr": "Nom complet du facilitateur", "es": "Nombre completo del facilitador" },
     "settings.labels.hp_day": { "en": "HP Availability Day", "ht": "Jou disponiblite HP", "fr": "Jour de disponibilité HP", "es": "Día de disponibilidad de HP" },
-    "settings.labels.hp_time": { "en": "HP Availability Time", "ht": "Lè disponiblite HP", "fr": "Heure de disponibilité HP", "es": "Hora de disponibilité de HP" },
+    "settings.labels.hp_time": { "en": "HP Availability Time", "ht": "Lè disponiblite HP", "fr": "Heure de disponibilité HP", "es": "Hora de disponibilidad de HP" },
     "settings.labels.is_baptized": { "en": "Are you baptized?", "ht": "Èske ou batize?", "fr": "Êtes-vous baptisé ?", "es": "¿Estás bautizado?" },
     "settings.labels.denomination": { "en": "Denomination", "ht": "Denominasyon", "fr": "Dénomination", "es": "Denominación" },
     "settings.labels.campus": { "en": "Campus", "ht": "Kanpis", "fr": "Campus", "es": "Campus" },
@@ -70,6 +69,7 @@ const DEFAULT_TRANSLATIONS: { [key: string]: { [key: string]: string } } = {
     "settings.labels.charge": { "en": "Charge", "ht": "Chaj", "fr": "Charge", "es": "Cargo" },
     "settings.labels.role": { "en": "Role", "ht": "Wòl", "fr": "Rôle", "es": "Rol" },
     "settings.labels.bio": { "en": "Profile Bio", "ht": "Biyo pwofil", "fr": "Bio du profil", "es": "Biografía del perfil" },
+    "settings.placeholder.bio": { "en": "Tell us a little about yourself...", "ht": "Rakonte nou yon ti kras sou tèt ou...", "fr": "Dites-nous en un peu plus sur vous...", "es": "Cuéntanos un poco sobre ti..." },
     "settings.button.clear": { "en": "Clear Form", "ht": "Efase fòm nan", "fr": "Effacer le formulaire", "es": "Limpiar formulario" },
     "settings.button.save": { "en": "Save Changes", "ht": "Anrejistre chanjman yo", "fr": "Enregistrer les modifications", "es": "Guardar cambios" },
     "common.gender.male": { "en": "Male", "ht": "Gason", "fr": "Homme", "es": "Masculino" },
@@ -124,7 +124,7 @@ const DEFAULT_TRANSLATIONS: { [key: string]: { [key: string]: string } } = {
     "course.alert.cancel": { "en": "Cancel", "ht": "Anile", "fr": "Annuler", "es": "Cancelar" },
     "course.alert.delete_confirm": { "en": "Delete", "ht": "Efase", "fr": "Supprimer", "es": "Eliminar" },
     "course.tooltip.prereq": { "en": "Complete \"{{title}}\" to unlock.", "ht": "Konplete \"{{title}}\" pou debloke.", "fr": "Terminez « {{title}} » pour déverrouiller.", "es": "Completa \"{{title}}\" para desbloquear." },
-    "course.tooltip.higher_ladder": { "en": "This is in a higher ladder and locked for now.", "ht": "Sa a nan yon nechèl pi wo epi li bloke pou kounye a.", "fr": "Ceci est dans une échelle supérieure et verrouillé pour le moment.", "es": "Esto está en una escala superior y bloqueado por ahora." },
+    "course.tooltip.higher_ladder": { "en": "This is in a higher ladder and locked for now.", "ht": "Sa a nan yon nechèl pi wo epi li bloke pou kounye a.", "fr": "Ceci est dans une échelle supérieure et verrouillé for the moment.", "es": "Esto está en una escala superior y bloqueado por ahora." },
     "course.preview.lessons_title": { "en": "Lessons in this course", "ht": "Leson nan kou sa a", "fr": "Leçons de ce cours", "es": "Lecciones de este curso" },
     "course.preview.no_lessons": { "en": "No lessons available yet.", "ht": "Pa gen leson ankò.", "fr": "Aucune leçon disponible pour le moment.", "es": "No hay lecciones disponibles todavía." },
     "community.create.title": { "en": "Create Post", "ht": "Kreye Post", "fr": "Créer un message", "es": "Crear publicación" },

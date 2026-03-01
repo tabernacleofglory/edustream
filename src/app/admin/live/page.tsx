@@ -1,4 +1,3 @@
-
 'use client';
 import { useState, useEffect, FormEvent } from 'react';
 import {
@@ -20,7 +19,7 @@ import { collection, onSnapshot, orderBy, query, updateDoc, doc, getDocs } from 
 import { db } from '@/lib/firebase';
 import type { LiveEvent, Ladder } from '@/lib/types';
 import Image from 'next/image';
-import { Calendar as CalendarIcon, UploadCloud, Link as LinkIcon, Copy, Check, Plus, Settings2, ChevronDown, X } from 'lucide-react';
+import { Calendar as CalendarIcon, UploadCloud, Link as LinkIcon, Copy, Check, Plus, Settings2, ChevronDown, X, Youtube, Loader2, Info } from 'lucide-react';
 import { format } from 'date-fns';
 import { cn } from '@/lib/utils';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
@@ -32,6 +31,7 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuCheckboxItem } from '@/components/ui/dropdown-menu';
 import { Badge } from '@/components/ui/badge';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 
 const LivePage = () => {
   const [title, setTitle] = useState('');
@@ -108,7 +108,6 @@ const LivePage = () => {
             setIsGloryLiveModalOpen(true);
             toast({ title: 'Success', description: 'Your Glory Live room is ready!' });
         } else if (result.success) {
-            // This case handles external events that are just marked as live
             toast({ title: 'Success', description: 'Event status updated to live.' });
         }
         else {
@@ -124,11 +123,7 @@ const LivePage = () => {
   const handleEndLive = async (eventId: string) => {
     setIsSubmitting(true);
     try {
-      await updateDoc(doc(db, 'liveEvents', eventId), {
-        status: 'ended',
-        gloryLiveRoomId: null,
-        gloryLiveRoomPassword: null,
-      });
+      updateLiveEvent(eventId, { status: 'ended' });
       toast({ title: 'Success', description: 'The live event has been ended.' });
     } catch (err: any) {
       toast({ variant: 'destructive', title: 'Error Ending Live Event', description: err.message });
@@ -139,7 +134,7 @@ const LivePage = () => {
 
   const handleDelete = async (eventId: string) => {
     try {
-      await deleteEvent(eventId);
+      deleteEvent(eventId);
       toast({ title: "Success", description: "Live event deleted successfully." });
     } catch (err: any) {
       console.error('Error deleting live event:', err);
@@ -154,7 +149,7 @@ const LivePage = () => {
     setPlatform(event.platform);
     setExternalLink(event.externalLink || '');
     setSelectedLadderIds(event.ladderIds || []);
-    setStartTime(new Date()); // Reset to now
+    setStartTime(new Date()); 
     setEditingEvent(null);
     setIsCreateSheetOpen(true);
   }
@@ -203,12 +198,27 @@ const LivePage = () => {
     }
     setIsSubmitting(true);
     try {
-      const eventPayload = { title, description, startTime, imageUrl: imageUrl || '', platform, externalLink: externalLink || undefined, ladderIds: selectedLadderIds };
+      const eventPayload: any = { 
+        title, 
+        description, 
+        startTime: startTime.toISOString(), 
+        imageUrl: imageUrl || '', 
+        platform, 
+        ladderIds: selectedLadderIds 
+      };
+
+      if (platform === 'external' && externalLink.trim()) {
+        eventPayload.externalLink = externalLink.trim();
+      }
+
       if (editingEvent) {
-          await updateLiveEvent(editingEvent.id, eventPayload);
+          updateLiveEvent(editingEvent.id, eventPayload);
           toast({ title: "Success", description: "Live event updated successfully." });
       } else {
-          await createLiveEvent({ ...eventPayload, vdoNinjaRoomId: vdoNinjaRoomId || undefined });
+          if (vdoNinjaRoomId.trim()) {
+            eventPayload.vdoNinjaRoomId = vdoNinjaRoomId.trim();
+          }
+          createLiveEvent(eventPayload);
           toast({ title: "Success", description: "Live event created successfully." });
       }
 
@@ -318,15 +328,24 @@ const LivePage = () => {
                           </Select>
                       </div>
                       {platform === 'external' && (
-                        <div className="space-y-2">
-                          <Label htmlFor="externalLink">External Meeting Link</Label>
-                          <Input
-                            id="externalLink"
-                            value={externalLink}
-                            onChange={(e) => setExternalLink(e.target.value)}
-                            placeholder="https://zoom.us/j/..."
-                            required={platform === 'external'}
-                          />
+                        <div className="space-y-4">
+                          <div className="space-y-2">
+                            <Label htmlFor="externalLink">External Meeting Link</Label>
+                            <Input
+                              id="externalLink"
+                              value={externalLink}
+                              onChange={(e) => setExternalLink(e.target.value)}
+                              placeholder="https://www.youtube.com/watch?v=..."
+                              required={platform === 'external'}
+                            />
+                          </div>
+                          <Alert>
+                            <Info className="h-4 w-4" />
+                            <AlertTitle>YouTube Tip</AlertTitle>
+                            <AlertDescription className="text-xs">
+                              For the best experience, use a direct video link (e.g., <code>.../watch?v=ID</code>). Permanent channel links (e.g., <code>.../live</code>) work but may not show thumbnails.
+                            </AlertDescription>
+                          </Alert>
                         </div>
                       )}
                       <div className="space-y-2">

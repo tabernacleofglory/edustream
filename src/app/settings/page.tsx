@@ -1,4 +1,3 @@
-
 "use client";
 
 import { useAuth } from "@/hooks/use-auth";
@@ -662,7 +661,7 @@ export default function SettingsPage() {
                                     </div>
                                     <div className="space-y-2 md:col-span-2">
                                         <Label htmlFor="bio">{t('settings.labels.bio', 'Profile Bio')}</Label>
-                                        <Textarea id="bio" {...register("bio")} placeholder="Tell us a little about yourself..." />
+                                        <Textarea id="bio" {...register("bio")} placeholder={t('settings.placeholder.bio', 'Tell us a little about yourself...')} />
                                         {errors.bio && <p className="text-sm text-destructive">{errors.bio.message}</p>}
                                     </div>
                                 </>

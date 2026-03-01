@@ -1,28 +1,21 @@
-
-'use server';
-
-import { db } from './firebase-admin'; // Admin SDK Firestore (FirebaseFirestore.Firestore)
-import { FieldValue } from 'firebase-admin/firestore';
+import { db } from './firebase';
+import { collection, query, where, getDocs, doc, updateDoc, getDoc, serverTimestamp, increment, deleteDoc, writeBatch, orderBy } from 'firebase/firestore';
 import type { Course, Ladder, UserProgress, PromotionRequest } from './types';
+import { errorEmitter } from '@/firebase/error-emitter';
+import { FirestorePermissionError } from '@/firebase/errors';
 
-/**
- * CHECK & PROMOTE USER
- * (Uses Admin SDK query syntax throughout.)
- */
 export async function checkAndPromoteUser(userId: string, currentLadder: string) {
   if (!currentLadder) {
     return { status: 'no-ladder', promoted: false };
   }
 
-  // Ladders ordered
-  const laddersSnapshot = await db.collection('courseLevels').orderBy('order').get();
+  const laddersSnapshot = await getDocs(query(collection(db, 'courseLevels'), orderBy('order')));
   const allLadders = laddersSnapshot.docs.map(
     (doc) => ({ id: doc.id, ...(doc.data() as any) } as Ladder)
   );
 
   const currentLadderDoc = allLadders.find((l) => l.name === currentLadder);
   if (!currentLadderDoc) {
-    console.warn(`Current ladder "${currentLadder}" not found in courseLevels.`);
     return { status: 'no-ladder-doc', promoted: false };
   }
 
@@ -31,26 +24,28 @@ export async function checkAndPromoteUser(userId: string, currentLadder: string)
     return { status: 'last-ladder', promoted: false };
   }
 
-  // Courses that belong to this ladder name
-  const coursesSnapshot = await db
-    .collection('courses')
-    .where('ladderIds', 'array-contains', currentLadderDoc.id)
-    .get();
+  const coursesSnapshot = await getDocs(query(
+    collection(db, 'courses'),
+    where('ladderIds', 'array-contains', currentLadderDoc.id)
+  ));
 
   const requiredCourses = coursesSnapshot.docs.map(
     (doc) => ({ id: doc.id, ...(doc.data() as any) } as Course)
   );
 
   if (requiredCourses.length === 0) {
-    // No required courses for that ladder
+    const userRef = doc(db, 'users', userId);
+    updateDoc(userRef, {
+        classLadder: nextLadder.name,
+        classLadderId: nextLadder.id,
+    });
     return { status: 'promoted', newLadder: nextLadder.name, promoted: true };
   }
 
-  // All progress for the user
-  const progressSnapshot = await db
-    .collection('userVideoProgress')
-    .where('userId', '==', userId)
-    .get();
+  const progressSnapshot = await getDocs(query(
+    collection(db, 'userVideoProgress'),
+    where('userId', '==', userId)
+  ));
 
   const completedCourses = new Set<string>();
 
@@ -74,9 +69,6 @@ export async function checkAndPromoteUser(userId: string, currentLadder: string)
   return { status: 'in-progress', promoted: false };
 }
 
-/**
- * REQUEST PROMOTION
- */
 export async function requestPromotion(
   userId: string,
   userName: string,
@@ -85,13 +77,13 @@ export async function requestPromotion(
   requestedLadder: Ladder
 ): Promise<{ success: boolean; message: string }> {
   try {
-    const requestRef = db.collection('promotionRequests');
+    const requestRef = collection(db, 'promotionRequests');
 
-    // Check existing pending request
-    const pendingSnap = await requestRef
-      .where('userId', '==', userId)
-      .where('status', '==', 'pending')
-      .get();
+    const pendingSnap = await getDocs(query(
+      requestRef,
+      where('userId', '==', userId),
+      where('status', '==', 'pending')
+    ));
 
     if (!pendingSnap.empty) {
       return { success: false, message: 'You already have a pending promotion request.' };
@@ -106,81 +98,53 @@ export async function requestPromotion(
       requestedLadderId: requestedLadder.id,
       requestedLadderName: requestedLadder.name,
       status: 'pending',
-      requestedAt: FieldValue.serverTimestamp() as any,
+      requestedAt: serverTimestamp() as any,
     };
 
-    await requestRef.add(newRequest);
+    addDoc(requestRef, newRequest).catch(async (err) => {
+        errorEmitter.emit('permission-error', new FirestorePermissionError({
+            path: 'promotionRequests',
+            operation: 'create',
+            requestResourceData: newRequest,
+        }));
+    });
 
     return { success: true, message: 'Promotion request submitted successfully.' };
   } catch (error: any) {
     console.error('Error requesting promotion:', error);
-    const message = error.message || 'An unexpected error occurred.';
-    return { success: false, message };
+    return { success: false, message: error.message || 'An unexpected error occurred.' };
   }
 }
 
-/**
- * UNENROLL USER FROM COURSE
- * - Deletes the enrollment document
- * - Deletes the user's progress document for that course
- * - Decrements the course's enrollmentCount
- */
 export async function unenrollUserFromCourse(
   userId: string,
   courseId: string
 ): Promise<{ success: boolean; message: string }> {
   try {
     const enrollmentId = `${userId}_${courseId}`;
-    const enrollmentRef = db.doc(`enrollments/${enrollmentId}`);
-    const courseRef = db.doc(`courses/${courseId}`);
-    const progressRef = db.doc(`userVideoProgress/${userId}_${courseId}`);
-    const quizResultsQuery = db.collection('userQuizResults').where('userId', '==', userId).where('courseId', '==', courseId);
-    const formSubmissionsQuery = db.collectionGroup('submissions').where('userId', '==', userId).where('courseId', '==', courseId);
+    const enrollmentRef = doc(db, 'enrollments', enrollmentId);
+    const courseRef = doc(db, 'courses', courseId);
+    const progressRef = doc(db, 'userVideoProgress', `${userId}_${courseId}`);
+    
+    const quizResultsQuery = query(collection(db, 'userQuizResults'), where('userId', '==', userId), where('courseId', '==', courseId));
+    const quizResultsSnapshot = await getDocs(quizResultsQuery);
 
-    // Fetch documents to be deleted before the transaction starts
-    const quizResultsSnapshot = await quizResultsQuery.get();
-    const formSubmissionsSnapshot = await formSubmissionsQuery.get();
+    const batch = writeBatch(db);
+    batch.delete(enrollmentRef);
+    batch.delete(progressRef);
+    quizResultsSnapshot.forEach(d => batch.delete(d.ref));
+    batch.update(courseRef, { enrollmentCount: increment(-1) });
 
-    await db.runTransaction(async (transaction) => {
-      // --- ALL READS FIRST ---
-      const enrollmentDoc = await transaction.get(enrollmentRef);
-      const progressDoc = await transaction.get(progressRef);
-      const courseDoc = await transaction.get(courseRef);
-
-      // --- WRITES AFTER ALL READS ---
-      if (!enrollmentDoc.exists) {
-        // If there's no enrollment, there's nothing to do.
-        return;
-      }
-
-      // 1. Delete the enrollment document
-      transaction.delete(enrollmentRef);
-      
-      // 2. Delete userVideoProgress for that course
-      if (progressDoc.exists) {
-        transaction.delete(progressRef);
-      }
-      
-      // 3. Delete quiz results for that course and user
-      quizResultsSnapshot.forEach(doc => {
-          transaction.delete(doc.ref);
-      });
-
-      // 4. Delete form submissions for that course and user
-      formSubmissionsSnapshot.forEach(doc => {
-          transaction.delete(doc.ref);
-      });
-
-      // 5. Decrement the course's enrollmentCount, ensuring it doesn't go below zero
-      if(courseDoc.exists) {
-         transaction.update(courseRef, { enrollmentCount: FieldValue.increment(-1) });
-      }
+    batch.commit().catch(async (err) => {
+        errorEmitter.emit('permission-error', new FirestorePermissionError({
+            path: 'batch',
+            operation: 'delete',
+        }));
     });
     
     return { success: true, message: 'Successfully unenrolled from the course and all related progress was deleted.' };
   } catch (error: any) {
     console.error('Error unenrolling user:', error);
-    const message = error.message || 'An unexpected error occurred.';
-    return { success: false, message };
+    return { success: false, message: error.message || 'An unexpected error occurred.' };
   }
 }

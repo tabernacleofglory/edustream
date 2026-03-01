@@ -1,6 +1,5 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  /* config options here */
   typescript: {
     ignoreBuildErrors: true,
   },
@@ -10,36 +9,11 @@ const nextConfig = {
   images: {
     unoptimized: true,
     remotePatterns: [
-      {
-        protocol: 'https',
-        hostname: 'placehold.co',
-        port: '',
-        pathname: '/**',
-      },
-      {
-        protocol: 'https',
-        hostname: 'images.unsplash.com',
-        port: '',
-        pathname: '/**',
-      },
-      {
-        protocol: 'https',
-        hostname: 'firebasestorage.googleapis.com',
-        port: '',
-        pathname: '/**',
-      },
-      {
-        protocol: 'https',
-        hostname: 'storage.googleapis.com',
-        port: '',
-        pathname: '/edustream-videos-uscentral1/**',
-      },
-      {
-        protocol: 'https',
-        hostname: 'photos.google.com',
-        port: '',
-        pathname: '/**',
-      }
+      { protocol: 'https', hostname: 'placehold.co', port: '', pathname: '/**' },
+      { protocol: 'https', hostname: 'images.unsplash.com', port: '', pathname: '/**' },
+      { protocol: 'https', hostname: 'firebasestorage.googleapis.com', port: '', pathname: '/**' },
+      { protocol: 'https', hostname: 'storage.googleapis.com', port: '', pathname: '/edustream-videos-uscentral1/**' },
+      { protocol: 'https', hostname: 'photos.google.com', port: '', pathname: '/**' }
     ],
   },
   webpack(config) {
@@ -47,9 +21,9 @@ const nextConfig = {
     return config;
   },
   async headers() {
-    // ALWAYS allow embedding in Firebase Studio / Cloud Workstations
     const studioFrameAncestors = [
       "'self'",
+      "https://6000-firebase-studio-1753264491393.cluster-f4iwdviaqvc2ct6pgytzw4xqy4.cloudworkstations.dev",
       "https://9000-firebase-studio-1753264491393.cluster-f4iwdviaqvc2ct6pgytzw4xqy4.cloudworkstations.dev",
       "https://workstations.cloud.google.com",
       "https://*.cloud.google.com",
@@ -62,8 +36,6 @@ const nextConfig = {
       "base-uri 'self'",
       "object-src 'none'",
       `frame-ancestors ${studioFrameAncestors}`,
-
-      // Scripts
       [
         "script-src",
         "'self'",
@@ -80,12 +52,8 @@ const nextConfig = {
         "https://embed.tawk.to",
         "https://*.tawk.to",
       ].join(' '),
-
-      // Styles & Fonts
-      "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
-      "font-src 'self' https://fonts.gstatic.com data:",
-
-      // Images
+      "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://embed.tawk.to https://*.tawk.to",
+      "font-src 'self' https://fonts.gstatic.com https://embed.tawk.to https://*.tawk.to data:",
       [
         "img-src",
         "'self'",
@@ -100,9 +68,8 @@ const nextConfig = {
         "https://placehold.co",
         "https://images.unsplash.com",
         "https://*.tawk.to",
+        "https://embed.tawk.to",
       ].join(' '),
-
-      // XHR / Fetch / WebSockets
       [
         "connect-src",
         "'self'",
@@ -124,35 +91,29 @@ const nextConfig = {
         "https://*.googlevideo.com",
         "https://*.tawk.to",
         "wss://*.tawk.to",
-        // ALWAYS allow connections for dev environment
         "https://workstations.cloud.google.com",
         "https://*.cloud.google.com",
         "https://*.cloudworkstations.dev",
         "wss://*.cloudworkstations.dev",
       ].join(' '),
-
-      // Iframes you embed (YouTube, Google sign-in, etc.)
       [
         "frame-src",
         "'self'",
         "https://challenges.cloudflare.com",
         "https://accounts.google.com",
-        "https://*.firebaseapp.com", // important for Firebase Auth handler flows
+        "https://*.firebaseapp.com",
         "https://www.youtube.com",
         "https://www.youtube-nocookie.com",
         "https://*.youtube.com",
         "https://drive.google.com",
         "https://vdo.ninja",
         "https://*.tawk.to",
-        // ALWAYS allow frames for dev environment
+        "https://embed.tawk.to",
         "https://workstations.cloud.google.com",
         "https://*.cloud.google.com",
         "https://*.cloudworkstations.dev",
       ].join(' '),
-
-      // Media
       "media-src 'self' https: blob: https://*.googlevideo.com",
-      // Workers
       "worker-src 'self' blob:",
       "manifest-src 'self'",
       "upgrade-insecure-requests",
@@ -179,7 +140,6 @@ const nextConfig = {
     serverActions: {
       bodySizeLimit: '2mb',
     },
-    // Adding this to see if it helps with dev server caching issues
     devCache: false,
   },
 };
