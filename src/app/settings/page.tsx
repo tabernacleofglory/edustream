@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useAuth } from "@/hooks/use-auth";
@@ -51,7 +52,7 @@ const settingsSchema = z.discriminatedUnion("isInHpGroup", [
         bio: z.string().max(200, "Bio cannot be more than 200 characters.").optional(),
         phoneNumber: z.string().optional(),
         hpNumber: z.string().min(1, "HP Number is required."),
-        facilitatorName: z.string().optional(),
+        facilitatorName: z.string().min(1, "Facilitator name is required."),
         isBaptized: z.enum(['true', 'false']).optional(),
         denomination: z.string().optional(),
         campus: z.string().min(1, "Campus is required."),
@@ -320,7 +321,7 @@ export default function SettingsPage() {
         side: data.side,
         
         hpNumber: data.isInHpGroup ? data.hpNumber : null,
-        facilitatorName: data.isInHpGroup ? (data as any).facilitatorName : null,
+        facilitatorName: data.isInHpGroup ? data.facilitatorName : null,
         bio: data.isInHpGroup ? data.bio : null,
         charge: data.isInHpGroup ? data.charge : null,
         classLadderId: data.isInHpGroup ? data.classLadderId : user.classLadderId,
@@ -370,26 +371,26 @@ export default function SettingsPage() {
     <div className="container mx-auto p-4 md:p-8">
       <Card className="max-w-4xl mx-auto">
         <CardHeader>
-          <CardTitle>{t('nav.settings', 'Settings')}</CardTitle>
+          <CardTitle><span>{t('nav.settings', 'Settings')}</span></CardTitle>
           <CardDescription>
-            Manage your personal information, achievements, and account settings.
+            <span>{t('settings.description', 'Manage your personal information, achievements, and account settings.')}</span>
           </CardDescription>
         </CardHeader>
         <CardContent>
             <Tabs defaultValue="profile">
                 <TabsList className="grid w-full grid-cols-2 mb-6">
-                    <TabsTrigger value="profile">{t('settings.tabs.profile', 'Profile')}</TabsTrigger>
-                    <TabsTrigger value="achievements">{t('settings.tabs.achievements', 'My Achievements')}</TabsTrigger>
+                    <TabsTrigger value="profile"><span>{t('settings.tabs.profile', 'Profile')}</span></TabsTrigger>
+                    <TabsTrigger value="achievements"><span>{t('settings.tabs.achievements', 'My Achievements')}</span></TabsTrigger>
                 </TabsList>
                 <TabsContent value="profile">
                     {!showProfileForm ? (
                         <div className="text-center p-8 border-2 border-dashed rounded-lg">
-                            <h3 className="text-lg font-semibold">{t('settings.hp_followup.title', 'Thank You!')}</h3>
+                            <h3 className="text-lg font-semibold"><span>{t('settings.hp_followup.title', 'Thank You!')}</span></h3>
                             <p className="text-muted-foreground mt-2">
-                                {t('settings.hp_followup.description', "We have received your information. Someone from our team will reach out to place you in a prayer group (HP). Once you have your HP number, please come back to complete your profile.")}
+                                <span>{t('settings.hp_followup.description', "We have received your information. Someone from our team will reach out to place you in a prayer group (HP). Once you have your HP number, please come back to complete your profile.")}</span>
                             </p>
                             <Button className="mt-4" onClick={() => setShowProfileForm(true)}>
-                                {t('settings.hp_followup.button', 'Complete Profile Now')}
+                                <span>{t('settings.hp_followup.button', 'Complete Profile Now')}</span>
                             </Button>
                         </div>
                     ) : user && (
@@ -400,36 +401,36 @@ export default function SettingsPage() {
                             <AvatarFallback className="text-3xl">{getInitials(user.displayName)}</AvatarFallback>
                             </Avatar>
                             <div className="space-y-2 flex-1">
-                                <Label htmlFor="photoFile">{t('settings.labels.update_photo', 'Update Profile Picture')}</Label>
+                                <Label htmlFor="photoFile"><span>{t('settings.labels.update_photo', 'Update Profile Picture')}</span></Label>
                                 <Input id="photoFile" type="file" {...register("photoFile")} />
                             </div>
                         </div>
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                             <div className="space-y-2">
-                                <Label htmlFor="firstName">{t('settings.labels.first_name', 'First Name')} <span className="text-destructive">*</span></Label>
+                                <Label htmlFor="firstName"><span>{t('settings.labels.first_name', 'First Name')}</span> <span className="text-destructive">*</span></Label>
                                 <Input id="firstName" {...register("firstName")} />
                                 {errors.firstName && <p className="text-sm text-destructive">{errors.firstName.message}</p>}
                             </div>
                             <div className="space-y-2">
-                                <Label htmlFor="lastName">{t('settings.labels.last_name', 'Last Name')} <span className="text-destructive">*</span></Label>
+                                <Label htmlFor="lastName"><span>{t('settings.labels.last_name', 'Last Name')}</span> <span className="text-destructive">*</span></Label>
                                 <Input id="lastName" {...register("lastName")} />
                                 {errors.lastName && <p className="text-sm text-destructive">{errors.lastName.message}</p>}
                             </div>
                             <div className="space-y-2">
-                                <Label>Email</Label>
+                                <Label><span>Email</span></Label>
                                 <Input value={user.email || ""} disabled />
                             </div>
                             <div className="space-y-2">
-                                <Label>{t('settings.labels.gender', 'Gender')} <span className="text-destructive">*</span></Label>
+                                <Label><span>{t('settings.labels.gender', 'Gender')}</span> <span className="text-destructive">*</span></Label>
                                 <Controller
                                     name="gender"
                                     control={control}
                                     render={({ field }) => (
                                         <Select onValueChange={field.onChange} value={field.value}>
-                                            <SelectTrigger><SelectValue placeholder="Select gender" /></SelectTrigger>
+                                            <SelectTrigger><SelectValue placeholder={t('common.select_placeholder', 'Select')} /></SelectTrigger>
                                             <SelectContent>
-                                                <SelectItem value="Male">{t('common.gender.male', 'Male')}</SelectItem>
-                                                <SelectItem value="Female">{t('common.gender.female', 'Female')}</SelectItem>
+                                                <SelectItem value="Male"><span>{t('common.gender.male', 'Male')}</span></SelectItem>
+                                                <SelectItem value="Female"><span>{t('common.gender.female', 'Female')}</span></SelectItem>
                                             </SelectContent>
                                         </Select>
                                     )}
@@ -437,22 +438,22 @@ export default function SettingsPage() {
                                 {errors.gender && <p className="text-sm text-destructive">{errors.gender.message}</p>}
                             </div>
                             <div className="space-y-2">
-                                <Label>{t('settings.labels.age_range', 'Age Range')} <span className="text-destructive">*</span></Label>
+                                <Label><span>{t('settings.labels.age_range', 'Age Range')}</span> <span className="text-destructive">*</span></Label>
                                 <Controller
                                     name="ageRange"
                                     control={control}
                                     render={({ field }) => (
                                         <Select onValueChange={field.onChange} value={field.value}>
-                                            <SelectTrigger><SelectValue placeholder="Select age range" /></SelectTrigger>
+                                            <SelectTrigger><SelectValue placeholder={t('common.select_placeholder', 'Select')} /></SelectTrigger>
                                             <SelectContent>
-                                                <SelectItem value="Less than 13">Less than 13</SelectItem>
-                                                <SelectItem value="13-17">13-17</SelectItem>
-                                                <SelectItem value="18-24">18-24</SelectItem>
-                                                <SelectItem value="25-34">25-34</SelectItem>
-                                                <SelectItem value="35-44">35-44</SelectItem>
-                                                <SelectItem value="45-54">45-54</SelectItem>
-                                                <SelectItem value="55-64">55-64</SelectItem>
-                                                <SelectItem value="65+">65+</SelectItem>
+                                                <SelectItem value="Less than 13"><span>Less than 13</span></SelectItem>
+                                                <SelectItem value="13-17"><span>13-17</span></SelectItem>
+                                                <SelectItem value="18-24"><span>18-24</span></SelectItem>
+                                                <SelectItem value="25-34"><span>25-34</span></SelectItem>
+                                                <SelectItem value="35-44"><span>35-44</span></SelectItem>
+                                                <SelectItem value="45-54"><span>45-54</span></SelectItem>
+                                                <SelectItem value="55-64"><span>55-64</span></SelectItem>
+                                                <SelectItem value="65+"><span>65+</span></SelectItem>
                                             </SelectContent>
                                         </Select>
                                     )}
@@ -460,12 +461,12 @@ export default function SettingsPage() {
                                 {errors.ageRange && <p className="text-sm text-destructive">{errors.ageRange.message}</p>}
                             </div>
                             <div className="space-y-2">
-                                <Label htmlFor="phoneNumber">{t('settings.labels.phone', 'Phone Number')}</Label>
+                                <Label htmlFor="phoneNumber"><span>{t('settings.labels.phone', 'Phone Number')}</span></Label>
                                 <Input id="phoneNumber" type="tel" {...register("phoneNumber")} />
                                 {errors.phoneNumber && <p className="text-sm text-destructive">{errors.phoneNumber.message}</p>}
                             </div>
                             <div className="space-y-2 md:col-span-2">
-                                <Label>{t('settings.labels.in_hp', 'Are you in a Prayer Group (HP)?')} <span className="text-destructive">*</span></Label>
+                                <Label><span>{t('settings.labels.in_hp', 'Are you in a Prayer Group (HP)?')}</span> <span className="text-destructive">*</span></Label>
                                 <Controller
                                     name="isInHpGroup"
                                     control={control}
@@ -477,7 +478,7 @@ export default function SettingsPage() {
                                                 onClick={() => field.onChange(true)}
                                                 className="w-full"
                                             >
-                                                {t('common.yes', 'Yes')}
+                                                <span>{t('common.yes', 'Yes')}</span>
                                             </Button>
                                             <Button
                                                 type="button"
@@ -485,7 +486,7 @@ export default function SettingsPage() {
                                                 onClick={() => field.onChange(false)}
                                                 className="w-full"
                                             >
-                                                {t('common.no', 'No')}
+                                                <span>{t('common.no', 'No')}</span>
                                             </Button>
                                         </div>
                                     )}
@@ -493,31 +494,38 @@ export default function SettingsPage() {
                             </div>
 
                             {isInHpGroup ? (
-                                <div className="space-y-2">
-                                    <Label htmlFor="hpNumber">{t('settings.labels.hp_number', 'HP Number')} <span className="text-destructive">*</span></Label>
-                                    <Input id="hpNumber" {...register("hpNumber")} />
-                                    {errors.hpNumber && <p className="text-sm text-destructive">{errors.hpNumber.message}</p>}
-                                </div>
+                                <>
+                                    <div className="space-y-2">
+                                        <Label htmlFor="hpNumber"><span>{t('settings.labels.hp_number', 'HP Number')}</span> <span className="text-destructive">*</span></Label>
+                                        <Input id="hpNumber" {...register("hpNumber")} />
+                                        {errors.hpNumber && <p className="text-sm text-destructive">{errors.hpNumber.message}</p>}
+                                    </div>
+                                    <div className="space-y-2">
+                                        <Label htmlFor="facilitatorName"><span>{t('settings.labels.facilitator', "Facilitator's Full Name")}</span> <span className="text-destructive">*</span></Label>
+                                        <Input id="facilitatorName" {...register("facilitatorName")} />
+                                        {errors.facilitatorName && <p className="text-sm text-destructive">{errors.facilitatorName.message}</p>}
+                                    </div>
+                                </>
                             ) : (
                                 <>
                                     <div className="space-y-2">
-                                        <Label htmlFor="hpAvailabilityDay">{t('settings.labels.hp_day', 'HP Availability Day')} <span className="text-destructive">*</span></Label>
+                                        <Label htmlFor="hpAvailabilityDay"><span>{t('settings.labels.hp_day', 'HP Availability Day')}</span> <span className="text-destructive">*</span></Label>
                                         <Controller
                                             name="hpAvailabilityDay"
                                             control={control}
                                             render={({ field }) => (
                                                 <Select onValueChange={field.onChange} value={field.value}>
                                                     <SelectTrigger>
-                                                        <SelectValue placeholder="Select a day" />
+                                                        <SelectValue placeholder={t('common.select_placeholder', 'Select')} />
                                                     </SelectTrigger>
                                                     <SelectContent>
-                                                        <SelectItem value="Monday">Monday</SelectItem>
-                                                        <SelectItem value="Tuesday">Tuesday</SelectItem>
-                                                        <SelectItem value="Wednesday">Wednesday</SelectItem>
-                                                        <SelectItem value="Thursday">Thursday</SelectItem>
-                                                        <SelectItem value="Friday">Friday</SelectItem>
-                                                        <SelectItem value="Saturday">Saturday</SelectItem>
-                                                        <SelectItem value="Sunday">Sunday</SelectItem>
+                                                        <SelectItem value="Monday"><span>Monday</span></SelectItem>
+                                                        <SelectItem value="Tuesday"><span>Tuesday</span></SelectItem>
+                                                        <SelectItem value="Wednesday"><span>Wednesday</span></SelectItem>
+                                                        <SelectItem value="Thursday"><span>Thursday</span></SelectItem>
+                                                        <SelectItem value="Friday"><span>Friday</span></SelectItem>
+                                                        <SelectItem value="Saturday"><span>Saturday</span></SelectItem>
+                                                        <SelectItem value="Sunday"><span>Sunday</span></SelectItem>
                                                     </SelectContent>
                                                 </Select>
                                             )}
@@ -525,40 +533,40 @@ export default function SettingsPage() {
                                         {errors.hpAvailabilityDay && <p className="text-sm text-destructive">{errors.hpAvailabilityDay.message}</p>}
                                     </div>
                                     <div className="space-y-2">
-                                        <Label htmlFor="hpAvailabilityTime">{t('settings.labels.hp_time', 'HP Availability Time')} <span className="text-destructive">*</span></Label>
+                                        <Label htmlFor="hpAvailabilityTime"><span>{t('settings.labels.hp_time', 'HP Availability Time')}</span> <span className="text-destructive">*</span></Label>
                                         <Input id="hpAvailabilityTime" type="time" {...register("hpAvailabilityTime")} />
                                         {errors.hpAvailabilityTime && <p className="text-sm text-destructive">{errors.hpAvailabilityTime.message}</p>}
                                     </div>
                                 </>
                             )}
                              <div className="space-y-2">
-                                <Label>{t('settings.labels.is_baptized', 'Are you baptized?')}</Label>
+                                <Label><span>{t('settings.labels.is_baptized', 'Are you baptized?')}</span></Label>
                                 <Controller
                                     name="isBaptized"
                                     control={control}
                                     render={({ field }) => (
                                         <Select onValueChange={field.onChange} value={field.value}>
-                                            <SelectTrigger><SelectValue placeholder="Select an option" /></SelectTrigger>
+                                            <SelectTrigger><SelectValue placeholder={t('common.select_placeholder', 'Select')} /></SelectTrigger>
                                             <SelectContent>
-                                                <SelectItem value="true">{t('common.yes', 'Yes')}</SelectItem>
-                                                <SelectItem value="false">{t('common.no', 'No')}</SelectItem>
+                                                <SelectItem value="true"><span>{t('common.yes', 'Yes')}</span></SelectItem>
+                                                <SelectItem value="false"><span>{t('common.no', 'No')}</span></SelectItem>
                                             </SelectContent>
                                         </Select>
                                     )}
                                 />
                             </div>
                             <div className="space-y-2">
-                                <Label>{t('settings.labels.denomination', 'Denomination')}</Label>
+                                <Label><span>{t('settings.labels.denomination', 'Denomination')}</span></Label>
                                 <Controller
                                     name="denomination"
                                     control={control}
                                     render={({ field }) => (
                                         <Select onValueChange={field.onChange} value={field.value}>
-                                            <SelectTrigger><SelectValue placeholder="Select denomination" /></SelectTrigger>
+                                            <SelectTrigger><SelectValue placeholder={t('common.select_placeholder', 'Select')} /></SelectTrigger>
                                             <SelectContent>
                                                 {[ "Apostolic", "Baptist", "Pentecostal", "Protestant", "Catholic", "Evangelical",
                                                     "Methodist", "Lutheran", "Presbyterian", "Anglican", "Other"
-                                                ].map(d => <SelectItem key={d} value={d}>{d}</SelectItem>)}
+                                                ].map(d => <SelectItem key={d} value={d}><span>{d}</span></SelectItem>)}
                                             </SelectContent>
                                         </Select>
                                     )}
@@ -566,18 +574,18 @@ export default function SettingsPage() {
                                 {errors.denomination && <p className="text-sm text-destructive">{errors.denomination.message}</p>}
                             </div>
                             <div className="space-y-2">
-                                <Label>{t('settings.labels.campus', 'Campus')} <span className="text-destructive">*</span></Label>
+                                <Label><span>{t('settings.labels.campus', 'Campus')}</span> <span className="text-destructive">*</span></Label>
                                 <Controller
                                     control={control}
                                     name="campus"
                                     render={({ field }) => (
                                         <Select onValueChange={field.onChange} value={field.value}>
                                             <SelectTrigger>
-                                                <SelectValue placeholder="Select your campus" />
+                                                <SelectValue placeholder={t('common.select_placeholder', 'Select')} />
                                             </SelectTrigger>
                                             <SelectContent>
                                                 {campuses.map(campus => (
-                                                    <SelectItem key={campus.id} value={campus["Campus Name"]}>{campus["Campus Name"]}</SelectItem>
+                                                    <SelectItem key={campus.id} value={campus["Campus Name"]}><span>{campus["Campus Name"]}</span></SelectItem>
                                                 ))}
                                             </SelectContent>
                                         </Select>
@@ -586,18 +594,18 @@ export default function SettingsPage() {
                                     {errors.campus && <p className="text-sm text-destructive">{errors.campus.message}</p>}
                             </div>
                             <div className="space-y-2">
-                                <Label>{t('settings.labels.attending', "I'm attending")} <span className="text-destructive">*</span></Label>
+                                <Label><span>{t('settings.labels.attending', "I'm attending")}</span> <span className="text-destructive">*</span></Label>
                                 <Controller
                                     control={control}
                                     name="locationPreference"
                                     render={({ field }) => (
                                         <Select onValueChange={field.onChange} value={field.value}>
                                             <SelectTrigger>
-                                                <SelectValue placeholder="Select your preference" />
+                                                <SelectValue placeholder={t('common.select_placeholder', 'Select')} />
                                             </SelectTrigger>
                                             <SelectContent>
-                                                <SelectItem value="Onsite">{t('common.location.onsite', 'Onsite')}</SelectItem>
-                                                <SelectItem value="Online">{t('common.location.online', 'Online')}</SelectItem>
+                                                <SelectItem value="Onsite"><span>{t('common.location.onsite', 'Onsite')}</span></SelectItem>
+                                                <SelectItem value="Online"><span>{t('common.location.online', 'Online')}</span></SelectItem>
                                             </SelectContent>
                                         </Select>
                                     )}
@@ -605,21 +613,21 @@ export default function SettingsPage() {
                                 {errors.locationPreference && <p className="text-sm text-destructive">{errors.locationPreference.message}</p>}
                             </div>
                             <div className="space-y-2">
-                                <Label>{t('settings.labels.language', 'Language')} <span className="text-destructive">*</span></Label>
+                                <Label><span>{t('settings.labels.language', 'Language')}</span> <span className="text-destructive">*</span></Label>
                                 <Controller
                                     control={control}
                                     name="language"
                                     render={({ field }) => (
                                         <Select onValueChange={field.onChange} value={field.value}>
                                             <SelectTrigger>
-                                                <SelectValue placeholder="Select your language" />
+                                                <SelectValue placeholder={t('common.select_placeholder', 'Select')} />
                                             </SelectTrigger>
                                             <SelectContent>
                                                 {availableLanguages.map(lang => {
                                                     const langInfo = allLanguagesList.find(l => l.code === lang.id);
                                                     const displayName = langInfo ? cleanNativeName(langInfo.nativeName) : lang.name;
                                                     return (
-                                                        <SelectItem key={lang.id} value={lang.name}>{displayName}</SelectItem>
+                                                        <SelectItem key={lang.id} value={lang.name}><span>{displayName}</span></SelectItem>
                                                     );
                                                 })}
                                             </SelectContent>
@@ -632,35 +640,35 @@ export default function SettingsPage() {
                             {isInHpGroup ? (
                                 <>
                                     <div className="space-y-2">
-                                        <Label>{t('settings.labels.ladder', 'Class Ladder')}</Label>
+                                        <Label><span>{t('settings.labels.ladder', 'Class Ladder')}</span></Label>
                                         <Input value={ladders.find(l => l.id === user.classLadderId)?.name || 'Not Assigned'} disabled />
                                     </div>
                                     <div className="space-y-2">
-                                        <Label>{t('settings.labels.side', 'Side')}</Label>
+                                        <Label><span>{t('settings.labels.side', 'Side')}</span></Label>
                                         <Controller
                                             name="side"
                                             control={control}
                                             render={({ field }) => (
                                                 <Select onValueChange={field.onChange} value={field.value}>
-                                                    <SelectTrigger><SelectValue placeholder="Select a side" /></SelectTrigger>
+                                                    <SelectTrigger><SelectValue placeholder={t('common.select_placeholder', 'Select')} /></SelectTrigger>
                                                     <SelectContent>
-                                                        <SelectItem value="hp">HP</SelectItem>
-                                                        <SelectItem value="ministry">Ministry</SelectItem>
+                                                        <SelectItem value="hp"><span>HP</span></SelectItem>
+                                                        <SelectItem value="ministry"><span>Ministry</span></SelectItem>
                                                     </SelectContent>
                                                 </Select>
                                             )}
                                         />
                                     </div>
                                     <div className="space-y-2">
-                                        <Label>{t('settings.labels.charge', 'Charge')}</Label>
+                                        <Label><span>{t('settings.labels.charge', 'Charge')}</span></Label>
                                         <Input value={user.charge || 'Not Assigned'} disabled />
                                     </div>
                                     <div className="space-y-2">
-                                        <Label>{t('settings.labels.role', 'Role')}</Label>
+                                        <Label><span>{t('settings.labels.role', 'Role')}</span></Label>
                                         <Input value={user.role || "user"} disabled className="capitalize"/>
                                     </div>
                                     <div className="space-y-2 md:col-span-2">
-                                        <Label htmlFor="bio">{t('settings.labels.bio', 'Profile Bio')}</Label>
+                                        <Label htmlFor="bio"><span>{t('settings.labels.bio', 'Profile Bio')}</span></Label>
                                         <Textarea id="bio" {...register("bio")} placeholder={t('settings.placeholder.bio', 'Tell us a little about yourself...')} />
                                         {errors.bio && <p className="text-sm text-destructive">{errors.bio.message}</p>}
                                     </div>
@@ -670,11 +678,11 @@ export default function SettingsPage() {
                         
                         <div className="flex justify-end gap-2">
                             <Button type="button" variant="outline" onClick={() => reset()}>
-                                {t('settings.button.clear', 'Clear Form')}
+                                <span>{t('settings.button.clear', 'Clear Form')}</span>
                             </Button>
                             <Button type="submit" disabled={isSubmitting}>
                                 {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                                {t('settings.button.save', 'Save Changes')}
+                                <span>{t('settings.button.save', 'Save Changes')}</span>
                             </Button>
                         </div>
                         </form>

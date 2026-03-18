@@ -40,13 +40,14 @@ import { collection, getDocs, query, where, getCountFromServer, documentId, orde
 import { getFirebaseFirestore } from "@/lib/firebase";
 import type { User, Course, UserProgress as UserProgressType, Video, Enrollment, Post, Quiz, UserQuizResult, QuizQuestion, CourseGroup, OnsiteCompletion, Ladder } from "@/lib/types";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Eye, Download, ArrowUpDown, ChevronLeft, ChevronRight, Calendar as CalendarIcon, X as XIcon, RefreshCw, BookCopy, FileQuestion, Users as UsersIcon, Home, Award, UserPlus, Loader2, BarChart3, CheckCircle2 } from "lucide-react";
+import { Eye, Download, ArrowUpDown, ChevronLeft, ChevronRight, Calendar as CalendarIcon, X as XIcon, RefreshCw, BookCopy, FileQuestion, Users as UsersIcon, Home, Award, UserPlus, Loader2, BarChart3, CheckCircle2, Waves, GraduationCap, Users2, MapPin, Monitor, Map as MapIcon, Globe } from "lucide-react";
 import Papa from 'papaparse';
 import { format, isValid, startOfDay, endOfDay, subDays, isSameDay } from "date-fns";
 import { DateRange } from "react-day-picker";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { cn } from "@/lib/utils";
+import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/use-auth";
 import { useIsMobile } from "@/hooks/use-is-mobile";
@@ -85,14 +86,56 @@ const engagementChartConfig = {
 
 const breakdownChartConfig = {
   value: {
-    label: "Activities",
+    label: "Count",
     color: "hsl(var(--primary))",
   },
 } satisfies ChartConfig;
 
 const completionChartConfig = {
   count: {
-    label: "Completions",
+    label: "Graduates",
+    color: "hsl(var(--accent))",
+  },
+} satisfies ChartConfig;
+
+const baptismChartConfig = {
+  count: {
+    label: "Users",
+    color: "hsl(var(--chart-1))",
+  },
+} satisfies ChartConfig;
+
+const graduationChartConfig = {
+  count: {
+    label: "Users",
+    color: "hsl(var(--chart-2))",
+  },
+} satisfies ChartConfig;
+
+const genderChartConfig = {
+  count: {
+    label: "Users",
+    color: "hsl(var(--chart-3))",
+  },
+} satisfies ChartConfig;
+
+const campusChartConfig = {
+  count: {
+    label: "Users",
+    color: "hsl(var(--chart-4))",
+  },
+} satisfies ChartConfig;
+
+const completionTypeChartConfig = {
+  count: {
+    label: "Total",
+    color: "hsl(var(--primary))",
+  },
+} satisfies ChartConfig;
+
+const locationPreferenceChartConfig = {
+  count: {
+    label: "Users",
     color: "hsl(var(--accent))",
   },
 } satisfies ChartConfig;
@@ -135,9 +178,15 @@ export default function AnalyticsDashboard() {
   const [quizPerformanceSummary, setQuizPerformanceSummary] = useState<QuizPerformanceSummary[] | null>(null);
   const [summaryStats, setSummaryStats] = useState<{ totalEnrollments: number, totalHpRequests: number } | null>(null);
   const [engagementData, setEngagementData] = useState<{ date: string, count: number, breakdown: { name: string, value: number }[] }[]>([]);
-  const [completionData, setCompletionData] = useState<{ category: string, count: number, breakdown: { ladders: any[], courses: any[] } }[]>([]);
+  const [completionData, setCompletionData] = useState<{ ladder: string, count: number, breakdown: { campuses: any[], languages: any[] } }[]>([]);
+  const [baptismData, setBaptismData] = useState<{ status: string, count: number }[]>([]);
+  const [graduationData, setGraduationData] = useState<{ status: string, count: number }[]>([]);
+  const [genderData, setGenderData] = useState<{ status: string, count: number }[]>([]);
+  const [campusDistributionData, setCampusDistributionData] = useState<{ name: string, count: number }[]>([]);
+  const [completionTypeData, setCompletionTypeData] = useState<{ type: string, count: number }[]>([]);
+  const [locationPreferenceData, setLocationPreferenceData] = useState<{ preference: string, count: number }[]>([]);
   const [selectedDayBreakdown, setSelectedDayBreakdown] = useState<any | null>(null);
-  const [selectedCategoryBreakdown, setSelectedCategoryBreakdown] = useState<any | null>(null);
+  const [selectedLadderBreakdown, setSelectedLadderBreakdown] = useState<any | null>(null);
 
 
   // Loading states
@@ -167,7 +216,6 @@ export default function AnalyticsDashboard() {
   }, []);
 
   const fetchBaseData = useCallback(async () => {
-    if (allUsers.length > 0) return;
     setLoading(true);
     try {
         const usersCollection = collection(db, 'users');
@@ -201,7 +249,7 @@ export default function AnalyticsDashboard() {
     } finally {
         setLoading(false);
     }
-  }, [allUsers.length, db, toast]);
+  }, [db, toast]);
 
   useEffect(() => {
     fetchBaseData();
@@ -268,56 +316,127 @@ export default function AnalyticsDashboard() {
     
     setEngagementData(engagementChartData);
 
-    // 4. Completion Data by Category
-    const completionsQuery = query(
-        collection(db, 'enrollments'),
-        where('completedAt', '!=', null)
-    );
-    const completionsSnap = await getDocs(completionsQuery);
-    const categoryMap: Record<string, { 
+    // 4. Completion Data by Ladder (Unique users who completed ALL courses in their ladder)
+    const userCompletionsMap = new Map<string, Set<string>>();
+
+    const [onlineCompletionsSnap, onsiteCompletionsSnap] = await Promise.all([
+        getDocs(query(collection(db, 'enrollments'), where('completedAt', '!=', null))),
+        getDocs(collection(db, 'onsiteCompletions'))
+    ]);
+
+    const recordCompletion = (userId: string, courseId: string) => {
+        if (!userCompletionsMap.has(userId)) userCompletionsMap.set(userId, new Set());
+        userCompletionsMap.get(userId)!.add(courseId);
+    };
+
+    onlineCompletionsSnap.forEach(d => recordCompletion(d.data().userId, d.data().courseId));
+    onsiteCompletionsSnap.forEach(d => recordCompletion(d.data().userId, d.data().courseId));
+
+    const ladderStats: Record<string, { 
         count: number, 
-        ladders: Record<string, number>, 
-        courses: Record<string, number> 
+        campuses: Record<string, number>, 
+        languages: Record<string, number> 
     }> = {};
 
-    completionsSnap.forEach(doc => {
-        const data = doc.data();
-        const course = allCourses.find(c => c.id === data.courseId);
-        if (course && course.Category) {
-            const categories = Array.isArray(course.Category) ? course.Category : [course.Category];
-            categories.forEach(cat => {
-                if (!categoryMap[cat]) {
-                    categoryMap[cat] = { count: 0, ladders: {}, courses: {} };
-                }
-                categoryMap[cat].count += 1;
-                
-                // Track Course
-                categoryMap[cat].courses[course.title] = (categoryMap[cat].courses[course.title] || 0) + 1;
-                
-                // Track Ladder
-                const ladderIds = course.ladderIds || [];
-                ladderIds.forEach(lId => {
-                    const ladder = allLadders.find(l => l.id === lId);
-                    const ladderName = ladder ? ladder.name : "Uncategorized";
-                    categoryMap[cat].ladders[ladderName] = (categoryMap[cat].ladders[ladderName] || 0) + 1;
-                });
-            });
-        }
+    allLadders.forEach(ladder => {
+        ladderStats[ladder.id] = { count: 0, campuses: {}, languages: {} };
+        const requiredCourses = allCourses.filter(c => c.ladderIds?.includes(ladder.id));
+        
+        allUsers.forEach(user => {
+            if (user.classLadderId !== ladder.id) return;
+            const userLang = user.language || 'English';
+            const langRequiredCourses = requiredCourses.filter(c => c.language === userLang);
+            if (langRequiredCourses.length === 0) return;
+
+            const userCompletedIds = userCompletionsMap.get(user.id) || new Set();
+            const finishedAll = langRequiredCourses.every(c => userCompletedIds.has(c.id));
+
+            if (finishedAll) {
+                ladderStats[ladder.id].count++;
+                const campus = user.campus || 'Unknown';
+                ladderStats[ladder.id].campuses[campus] = (ladderStats[ladder.id].campuses[campus] || 0) + 1;
+                ladderStats[ladder.id].languages[userLang] = (ladderStats[ladder.id].languages[userLang] || 0) + 1;
+            }
+        });
     });
 
-    const completionChartData = Object.entries(categoryMap)
-        .map(([category, data]) => ({ 
-            category, 
-            count: data.count,
+    const completionChartData = allLadders
+        .map(l => ({
+            ladder: l.name,
+            count: ladderStats[l.id].count,
             breakdown: {
-                ladders: Object.entries(data.ladders).map(([name, value]) => ({ name, value })).sort((a,b) => b.value - a.value),
-                courses: Object.entries(data.courses).map(([name, value]) => ({ name, value })).sort((a,b) => b.value - a.value)
+                campuses: Object.entries(ladderStats[l.id].campuses).map(([name, value]) => ({ name, value })).sort((a,b) => b.value - a.value),
+                languages: Object.entries(ladderStats[l.id].languages).map(([name, value]) => ({ name, value })).sort((a,b) => b.value - a.value)
             }
         }))
-        .sort((a, b) => b.count - a.count)
-        .slice(0, 5); // Top 5 categories
+        .filter(d => d.count > 0)
+        .sort((a,b) => b.count - a.count);
 
     setCompletionData(completionChartData);
+
+    // 5. Baptism Distribution
+    const baptizedCount = allUsers.filter(u => u.isBaptized === true).length;
+    const notBaptizedCount = allUsers.filter(u => u.isBaptized === false || u.isBaptized === undefined || u.isBaptized === null).length;
+    setBaptismData([
+        { status: "Baptized", count: baptizedCount },
+        { status: "Not Baptized", count: notBaptizedCount }
+    ]);
+
+    // 6. Graduation Status Breakdown
+    const gradMap: Record<string, number> = {
+        "Not Started": 0,
+        "In Progress": 0,
+        "Eligible": 0,
+        "Graduated": 0
+    };
+    allUsers.forEach(u => {
+        const status = u.graduationStatus || "Not Started";
+        if (gradMap[status] !== undefined) {
+            gradMap[status]++;
+        } else {
+            gradMap[status] = (gradMap[status] || 0) + 1;
+        }
+    });
+    setGraduationData(Object.entries(gradMap).map(([status, count]) => ({ status, count })));
+
+    // 7. Gender Distribution
+    const genderMap: Record<string, number> = { "Male": 0, "Female": 0, "Other": 0 };
+    allUsers.forEach(u => {
+        const gender = u.gender || "Other";
+        if (genderMap[gender] !== undefined) {
+            genderMap[gender]++;
+        } else {
+            genderMap["Other"]++;
+        }
+    });
+    setGenderData(Object.entries(genderMap).map(([status, count]) => ({ status, count })));
+
+    // 8. Campus Distribution
+    const campusDistributionMap: Record<string, number> = {};
+    allUsers.forEach(u => {
+        const campus = u.campus || "Unknown";
+        campusDistributionMap[campus] = (campusDistributionMap[campus] || 0) + 1;
+    });
+    setCampusDistributionData(Object.entries(campusDistributionMap)
+        .map(([name, count]) => ({ name, count }))
+        .sort((a, b) => b.count - a.count)
+    );
+
+    // 9. Completion Type Breakdown (Online vs On-site)
+    setCompletionTypeData([
+        { type: "Online", count: onlineCompletionsSnap.size },
+        { type: "On-site", count: onsiteCompletionsSnap.size }
+    ]);
+
+    // 10. Location Preference Distribution
+    const prefMap: Record<string, number> = { "Online": 0, "Onsite": 0 };
+    allUsers.forEach(u => {
+        const pref = u.locationPreference || "Online";
+        if (prefMap[pref] !== undefined) {
+            prefMap[pref]++;
+        }
+    });
+    setLocationPreferenceData(Object.entries(prefMap).map(([preference, count]) => ({ preference, count })));
 
   }, [allUsers, allCourses, allLadders, db]);
 
@@ -464,7 +583,7 @@ export default function AnalyticsDashboard() {
         const user = allUsers.find(u => u.id === progress.userId);
         const course = allCourses.find(c => c.id === progress.courseId);
         if (!user || !course || !course.videos) return [];
-        return (progress.videoProgress || []).filter(vp => vp.timeSpent > 0 || vp.completed).map(videoProgress => {
+        return (progress.videoProgress || []).filter(vp => vp.completed).map(videoProgress => {
             const video = allVideos.find(v => v.id === videoProgress.videoId);
             const startDate = progress.enrollment?.enrolledAt?.toDate ? format(progress.enrollment.enrolledAt.toDate(), 'yyyy-MM-dd') : 'N/A';
             const completionDate = progress.enrollment?.completedAt?.toDate ? format(progress.enrollment.completedAt.toDate(), 'yyyy-MM-dd') : 'N/A';
@@ -614,7 +733,7 @@ export default function AnalyticsDashboard() {
                             <CheckCircle2 className="h-4 w-4 text-primary" />
                             Completion Rates
                         </CardTitle>
-                        <CardDescription>Total completions by course category. Click for details.</CardDescription>
+                        <CardDescription>Unique graduates per Class Ladder. Click for details.</CardDescription>
                     </CardHeader>
                     <CardContent className="h-[300px]">
                         {loading || completionData.length === 0 ? (
@@ -627,7 +746,7 @@ export default function AnalyticsDashboard() {
                                     <CartesianGrid horizontal={false} strokeDasharray="3 3" opacity={0.2} />
                                     <XAxis type="number" hide />
                                     <YAxis
-                                        dataKey="category"
+                                        dataKey="ladder"
                                         type="category"
                                         tickLine={false}
                                         tickMargin={5}
@@ -643,11 +762,251 @@ export default function AnalyticsDashboard() {
                                         className="cursor-pointer"
                                         onClick={(data) => {
                                             if (data && data.activePayload && data.activePayload[0]) {
-                                                setSelectedCategoryBreakdown(data.activePayload[0].payload);
-                                            } else if (data && data.category) {
-                                                setSelectedCategoryBreakdown(data);
+                                                setSelectedLadderBreakdown(data.activePayload[0].payload);
+                                            } else if (data && data.ladder) {
+                                                setSelectedLadderBreakdown(data);
                                             }
                                         }}
+                                    />
+                                </BarChart>
+                            </ChartContainer>
+                        )}
+                    </CardContent>
+                </Card>
+            </div>
+
+            {/* Class Completion Type and Location Preference Section */}
+            <div className="grid gap-4 mt-6 grid-cols-1 md:grid-cols-2">
+                <Card>
+                    <CardHeader>
+                        <CardTitle className="flex items-center gap-2">
+                            <Monitor className="h-4 w-4 text-primary" />
+                            Class Completion Type
+                        </CardTitle>
+                        <CardDescription>Breakdown of Online vs. On-site course completions.</CardDescription>
+                    </CardHeader>
+                    <CardContent className="h-[300px]">
+                        {loading || completionTypeData.length === 0 ? (
+                            <div className="h-full flex items-center justify-center border-2 border-dashed rounded-lg bg-muted/10">
+                                <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+                            </div>
+                        ) : (
+                            <ChartContainer config={completionTypeChartConfig} className="h-full w-full">
+                                <BarChart data={completionTypeData} layout="vertical">
+                                    <CartesianGrid horizontal={false} strokeDasharray="3 3" opacity={0.2} />
+                                    <XAxis type="number" hide />
+                                    <YAxis
+                                        dataKey="type"
+                                        type="category"
+                                        tickLine={false}
+                                        tickMargin={5}
+                                        axisLine={false}
+                                        fontSize={isMobile ? 10 : 12}
+                                        width={isMobile ? 80 : 100}
+                                    />
+                                    <ChartTooltip content={<ChartTooltipContent />} />
+                                    <Bar
+                                        dataKey="count"
+                                        fill="var(--color-count)"
+                                        radius={[0, 4, 4, 0]}
+                                    />
+                                </BarChart>
+                            </ChartContainer>
+                        )}
+                    </CardContent>
+                </Card>
+                <Card>
+                    <CardHeader>
+                        <CardTitle className="flex items-center gap-2">
+                            <MapIcon className="h-4 w-4 text-primary" />
+                            Location Preference
+                        </CardTitle>
+                        <CardDescription>Breakdown of users by their preferred learning environment.</CardDescription>
+                    </CardHeader>
+                    <CardContent className="h-[300px]">
+                        {loading || locationPreferenceData.length === 0 ? (
+                            <div className="h-full flex items-center justify-center border-2 border-dashed rounded-lg bg-muted/10">
+                                <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+                            </div>
+                        ) : (
+                            <ChartContainer config={locationPreferenceChartConfig} className="h-full w-full">
+                                <BarChart data={locationPreferenceData} layout="vertical">
+                                    <CartesianGrid horizontal={false} strokeDasharray="3 3" opacity={0.2} />
+                                    <XAxis type="number" hide />
+                                    <YAxis
+                                        dataKey="preference"
+                                        type="category"
+                                        tickLine={false}
+                                        tickMargin={5}
+                                        axisLine={false}
+                                        fontSize={isMobile ? 10 : 12}
+                                        width={isMobile ? 80 : 100}
+                                    />
+                                    <ChartTooltip content={<ChartTooltipContent />} />
+                                    <Bar
+                                        dataKey="count"
+                                        fill="var(--color-count)"
+                                        radius={[0, 4, 4, 0]}
+                                    />
+                                </BarChart>
+                            </ChartContainer>
+                        )}
+                    </CardContent>
+                </Card>
+            </div>
+
+            {/* Baptism and Graduation Section */}
+            <div className="grid gap-4 mt-6 grid-cols-1 md:grid-cols-2">
+                <Card>
+                    <CardHeader>
+                        <CardTitle className="flex items-center gap-2">
+                            <Waves className="h-4 w-4 text-primary" />
+                            Baptism Status
+                        </CardTitle>
+                        <CardDescription>Breakdown of baptized vs. non-baptized users.</CardDescription>
+                    </CardHeader>
+                    <CardContent className="h-[300px]">
+                        {loading || baptismData.length === 0 ? (
+                            <div className="h-full flex items-center justify-center border-2 border-dashed rounded-lg bg-muted/10">
+                                <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+                            </div>
+                        ) : (
+                            <ChartContainer config={baptismChartConfig} className="h-full w-full">
+                                <BarChart data={baptismData} layout="vertical">
+                                    <CartesianGrid horizontal={false} strokeDasharray="3 3" opacity={0.2} />
+                                    <XAxis type="number" hide />
+                                    <YAxis
+                                        dataKey="status"
+                                        type="category"
+                                        tickLine={false}
+                                        tickMargin={5}
+                                        axisLine={false}
+                                        fontSize={isMobile ? 10 : 12}
+                                        width={isMobile ? 80 : 100}
+                                    />
+                                    <ChartTooltip content={<ChartTooltipContent />} />
+                                    <Bar
+                                        dataKey="count"
+                                        fill="var(--color-count)"
+                                        radius={[0, 4, 4, 0]}
+                                    />
+                                </BarChart>
+                            </ChartContainer>
+                        )}
+                    </CardContent>
+                </Card>
+                <Card>
+                    <CardHeader>
+                        <CardTitle className="flex items-center gap-2">
+                            <GraduationCap className="h-4 w-4 text-primary" />
+                            Graduation Status
+                        </CardTitle>
+                        <CardDescription>Breakdown of users by their graduation phase.</CardDescription>
+                    </CardHeader>
+                    <CardContent className="h-[300px]">
+                        {loading || graduationData.length === 0 ? (
+                            <div className="h-full flex items-center justify-center border-2 border-dashed rounded-lg bg-muted/10">
+                                <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+                            </div>
+                        ) : (
+                            <ChartContainer config={graduationChartConfig} className="h-full w-full">
+                                <BarChart data={graduationData} layout="vertical">
+                                    <CartesianGrid horizontal={false} strokeDasharray="3 3" opacity={0.2} />
+                                    <XAxis type="number" hide />
+                                    <YAxis
+                                        dataKey="status"
+                                        type="category"
+                                        tickLine={false}
+                                        tickMargin={5}
+                                        axisLine={false}
+                                        fontSize={isMobile ? 10 : 12}
+                                        width={isMobile ? 80 : 100}
+                                    />
+                                    <ChartTooltip content={<ChartTooltipContent />} />
+                                    <Bar
+                                        dataKey="count"
+                                        fill="var(--color-count)"
+                                        radius={[0, 4, 4, 0]}
+                                    />
+                                </BarChart>
+                            </ChartContainer>
+                        )}
+                    </CardContent>
+                </Card>
+            </div>
+
+            {/* Gender and Campus Section */}
+            <div className="grid gap-4 mt-6 grid-cols-1 md:grid-cols-2">
+                <Card>
+                    <CardHeader>
+                        <CardTitle className="flex items-center gap-2">
+                            <Users2 className="h-4 w-4 text-primary" />
+                            Gender Distribution
+                        </CardTitle>
+                        <CardDescription>Breakdown of users by gender.</CardDescription>
+                    </CardHeader>
+                    <CardContent className="h-[300px]">
+                        {loading || genderData.length === 0 ? (
+                            <div className="h-full flex items-center justify-center border-2 border-dashed rounded-lg bg-muted/10">
+                                <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+                            </div>
+                        ) : (
+                            <ChartContainer config={genderChartConfig} className="h-full w-full">
+                                <BarChart data={genderData} layout="vertical">
+                                    <CartesianGrid horizontal={false} strokeDasharray="3 3" opacity={0.2} />
+                                    <XAxis type="number" hide />
+                                    <YAxis
+                                        dataKey="status"
+                                        type="category"
+                                        tickLine={false}
+                                        tickMargin={5}
+                                        axisLine={false}
+                                        fontSize={isMobile ? 10 : 12}
+                                        width={isMobile ? 80 : 100}
+                                    />
+                                    <ChartTooltip content={<ChartTooltipContent />} />
+                                    <Bar
+                                        dataKey="count"
+                                        fill="var(--color-count)"
+                                        radius={[0, 4, 4, 0]}
+                                    />
+                                </BarChart>
+                            </ChartContainer>
+                        )}
+                    </CardContent>
+                </Card>
+                <Card>
+                    <CardHeader>
+                        <CardTitle className="flex items-center gap-2">
+                            <MapPin className="h-4 w-4 text-primary" />
+                            Campus Distribution
+                        </CardTitle>
+                        <CardDescription>Breakdown of users by campus.</CardDescription>
+                    </CardHeader>
+                    <CardContent className="h-[300px]">
+                        {loading || campusDistributionData.length === 0 ? (
+                            <div className="h-full flex items-center justify-center border-2 border-dashed rounded-lg bg-muted/10">
+                                <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+                            </div>
+                        ) : (
+                            <ChartContainer config={campusChartConfig} className="h-full w-full">
+                                <BarChart data={campusDistributionData} layout="vertical">
+                                    <CartesianGrid horizontal={false} strokeDasharray="3 3" opacity={0.2} />
+                                    <XAxis type="number" hide />
+                                    <YAxis
+                                        dataKey="name"
+                                        type="category"
+                                        tickLine={false}
+                                        tickMargin={5}
+                                        axisLine={false}
+                                        fontSize={isMobile ? 8 : 10}
+                                        width={isMobile ? 80 : 120}
+                                    />
+                                    <ChartTooltip content={<ChartTooltipContent />} />
+                                    <Bar
+                                        dataKey="count"
+                                        fill="var(--color-count)"
+                                        radius={[0, 4, 4, 0]}
                                     />
                                 </BarChart>
                             </ChartContainer>
@@ -732,7 +1091,7 @@ export default function AnalyticsDashboard() {
                 {quizPerformanceSummary === null ? <ClickToLoad onFetch={fetchQuizPerformance} title="Quiz Performance" /> : (
                     <div className="border rounded-lg overflow-hidden">
                         <Table>
-                            <TableHeader><TableRow><TableHead>Quiz Title</TableHead><TableHead className="text-center">Attempts</TableHead><TableHead className="text-center hidden sm:table-cell">Unique Users</TableHead><TableHead className="text-center">Passes</TableHead><TableHead className="text-center">Fails</TableHead></TableRow></TableHeader>
+                            <TableHeader><TableRow><TableHead>Quiz Title</TableHead><TableHead className="text-center">Attempts</TableHead><TableHead className="text-center hidden sm:table-cell">Unique Users</TableHead><TableHead className="text-center text-green-600">Passes</TableHead><TableHead className="text-center text-red-600">Fails</TableHead></TableRow></TableHeader>
                             <TableBody>
                                 {currentQuizPerformanceData.length > 0 ? (
                                     currentQuizPerformanceData.map(item => (<TableRow key={item.quizId}><TableCell className="font-medium text-xs md:text-sm">{item.quizTitle}</TableCell><TableCell className="text-center">{item.totalAttempts}</TableCell><TableCell className="text-center hidden sm:table-cell">{item.uniqueAttempts}</TableCell><TableCell className="text-center text-green-600">{item.passCount}</TableCell><TableCell className="text-center text-red-600">{item.failCount}</TableCell></TableRow>))
@@ -792,24 +1151,24 @@ export default function AnalyticsDashboard() {
         </DialogContent>
       </Dialog>
 
-      <Dialog open={!!selectedCategoryBreakdown} onOpenChange={() => setSelectedCategoryBreakdown(null)}>
+      <Dialog open={!!selectedLadderBreakdown} onOpenChange={() => setSelectedLadderBreakdown(null)}>
         <DialogContent className="max-w-4xl w-[95vw] sm:w-full">
             <DialogHeader>
-                <DialogTitle>Completion Breakdown - {selectedCategoryBreakdown?.category}</DialogTitle>
+                <DialogTitle>Graduation Breakdown - {selectedLadderBreakdown?.ladder}</DialogTitle>
                 <DialogDescription>
-                    Ladders and Courses completed within this category.
+                    Graduates within this ladder by campus and language.
                 </DialogDescription>
             </DialogHeader>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mt-4">
                 <div className="space-y-4">
                     <h4 className="text-sm font-semibold flex items-center gap-2">
-                        <Award className="h-4 w-4 text-primary" />
-                        By Ladder
+                        <MapPin className="h-4 w-4 text-primary" />
+                        By Campus
                     </h4>
                     <div className="h-[250px]">
-                        {selectedCategoryBreakdown && (
+                        {selectedLadderBreakdown && (
                             <ChartContainer config={breakdownChartConfig} className="h-full w-full">
-                                <BarChart data={selectedCategoryBreakdown.breakdown.ladders} layout="vertical">
+                                <BarChart data={selectedLadderBreakdown.breakdown.campuses} layout="vertical">
                                     <CartesianGrid horizontal={false} strokeDasharray="3 3" opacity={0.2} />
                                     <XAxis type="number" hide />
                                     <YAxis
@@ -834,13 +1193,13 @@ export default function AnalyticsDashboard() {
                 </div>
                 <div className="space-y-4">
                     <h4 className="text-sm font-semibold flex items-center gap-2">
-                        <BookCopy className="h-4 w-4 text-primary" />
-                        By Course
+                        <Globe className="h-4 w-4 text-primary" />
+                        By Language
                     </h4>
                     <div className="h-[250px]">
-                        {selectedCategoryBreakdown && (
+                        {selectedLadderBreakdown && (
                             <ChartContainer config={breakdownChartConfig} className="h-full w-full">
-                                <BarChart data={selectedCategoryBreakdown.breakdown.courses} layout="vertical">
+                                <BarChart data={selectedLadderBreakdown.breakdown.languages} layout="vertical">
                                     <CartesianGrid horizontal={false} strokeDasharray="3 3" opacity={0.2} />
                                     <XAxis type="number" hide />
                                     <YAxis

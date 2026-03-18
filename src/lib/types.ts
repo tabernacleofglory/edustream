@@ -16,6 +16,7 @@ export interface User {
   charge?: string;
   membershipStatus?: string;
   graduationStatus?: string;
+  graduationDate?: string;
   classLadder?: string;
   classLadderId?: string;
   side?: 'ministry' | 'hp' | 'none';
@@ -34,7 +35,9 @@ export interface User {
   locationPreference?: 'Onsite' | 'Online';
   campus?: string;
   isBaptized?: boolean;
+  baptismDate?: string;
   denomination?: string;
+  lastActiveAt?: any;
 }
 
 export interface Speaker {

@@ -8,7 +8,7 @@ import { z } from "zod";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
 import { Label } from "./ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./ui/select";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import { Loader2, Plus, Trash } from "lucide-react";
 import { getAuth, updateProfile } from "firebase/auth";
@@ -33,41 +33,66 @@ import 'react-phone-number-input/style.css';
 import allLanguagesList from "@/lib/languages.json";
 
 
-const profileSchema = z.object({
-  firstName: z.string().min(1, "First name is required"),
-  lastName: z.string().min(1, "Last name is required"),
-  email: z.string().email(),
-  phoneNumber: z.string().optional().or(z.literal("")).or(z.undefined()),
-  hpNumber: z.string().optional(),
-  facilitatorName: z.string().optional(),
-  campus: z.string().optional(),
-  classLadderId: z.string().optional(),
-  side: z.string().optional(),
-  role: z.string().optional(),
-  membershipStatus: z.string().optional(),
-  graduationStatus: z.string().optional(),
-  charge: z.string().optional(),
-  gender: z.string().optional(),
-  ageRange: z.string().optional(),
-  maritalStatus: z.string().optional(),
-  ministry: z.string().optional(),
-  bio: z.string().optional(),
-  isInHpGroup: z.enum(['true', 'false']),
-  hpAvailabilityDay: z.string().optional(),
-  hpAvailabilityTime: z.string().optional(),
-  locationPreference: z.string().optional(),
-  language: z.string().optional(),
-  isBaptized: z.enum(['true', 'false']).optional(),
-  denomination: z.string().optional(),
-}).refine(data => {
-    if (data.isInHpGroup === 'true') {
-        return !!data.hpNumber && !!data.facilitatorName;
-    }
-    return true;
-}, {
-    message: "HP Number and Facilitator's Name are required if in a prayer group.",
-    path: ['hpNumber'] // Or facilitatorName
-});
+const profileSchema = z.discriminatedUnion("isInHpGroup", [
+    z.object({
+        isInHpGroup: z.literal("true"),
+        firstName: z.string().min(1, "First name is required"),
+        lastName: z.string().min(1, "Last name is required"),
+        email: z.string().email(),
+        phoneNumber: z.string().optional().or(z.literal("")).or(z.undefined()),
+        hpNumber: z.string().min(1, "HP Number is required."),
+        facilitatorName: z.string().min(1, "Facilitator's Name is required."),
+        campus: z.string().optional(),
+        classLadderId: z.string().optional(),
+        side: z.string().optional(),
+        role: z.string().optional(),
+        membershipStatus: z.string().optional(),
+        graduationStatus: z.string().optional(),
+        graduationDate: z.string().optional(),
+        charge: z.string().optional(),
+        gender: z.string().optional(),
+        ageRange: z.string().optional(),
+        maritalStatus: z.string().optional(),
+        ministry: z.string().optional(),
+        bio: z.string().optional(),
+        hpAvailabilityDay: z.string().optional(),
+        hpAvailabilityTime: z.string().optional(),
+        locationPreference: z.string().optional(),
+        language: z.string().optional(),
+        isBaptized: z.enum(['true', 'false']).optional(),
+        baptismDate: z.string().optional(),
+        denomination: z.string().optional(),
+    }),
+    z.object({
+        isInHpGroup: z.literal("false"),
+        firstName: z.string().min(1, "First name is required"),
+        lastName: z.string().min(1, "Last name is required"),
+        email: z.string().email(),
+        phoneNumber: z.string().optional().or(z.literal("")).or(z.undefined()),
+        hpNumber: z.string().optional(),
+        facilitatorName: z.string().optional(),
+        campus: z.string().optional(),
+        classLadderId: z.string().optional(),
+        side: z.string().optional(),
+        role: z.string().optional(),
+        membershipStatus: z.string().optional(),
+        graduationStatus: z.string().optional(),
+        graduationDate: z.string().optional(),
+        charge: z.string().optional(),
+        gender: z.string().optional(),
+        ageRange: z.string().optional(),
+        maritalStatus: z.string().optional(),
+        ministry: z.string().optional(),
+        bio: z.string().optional(),
+        hpAvailabilityDay: z.string().optional(),
+        hpAvailabilityTime: z.string().optional(),
+        locationPreference: z.string().optional(),
+        language: z.string().optional(),
+        isBaptized: z.enum(['true', 'false']).optional(),
+        baptismDate: z.string().optional(),
+        denomination: z.string().optional(),
+    })
+]);
 
 type ProfileFormValues = z.infer<typeof profileSchema>;
 
@@ -146,6 +171,7 @@ export default function EditUserForm({ userToEdit, onUserUpdated }: EditUserForm
         role: userToEdit.role || "user",
         membershipStatus: userToEdit.membershipStatus || "free",
         graduationStatus: userToEdit.graduationStatus || "Not Started",
+        graduationDate: userToEdit.graduationDate || "",
         charge: userToEdit.charge || "",
         gender: userToEdit.gender || "",
         ageRange: userToEdit.ageRange || "",
@@ -154,6 +180,7 @@ export default function EditUserForm({ userToEdit, onUserUpdated }: EditUserForm
         bio: userToEdit.bio || "",
         isInHpGroup: String(userToEdit.isInHpGroup || 'false') as 'true' | 'false',
         isBaptized: userToEdit.isBaptized !== undefined ? String(userToEdit.isBaptized) as 'true' | 'false' : undefined,
+        baptismDate: userToEdit.baptismDate || "",
         denomination: userToEdit.denomination || "",
         hpAvailabilityDay: userToEdit.hpAvailabilityDay || "",
         hpAvailabilityTime: userToEdit.hpAvailabilityTime || "",
@@ -164,6 +191,7 @@ export default function EditUserForm({ userToEdit, onUserUpdated }: EditUserForm
   
   const isInHpGroupValue = watch('isInHpGroup');
   const isBaptizedValue = watch('isBaptized');
+  const graduationStatusValue = watch('graduationStatus');
   
    useEffect(() => {
     if (isBaptizedValue === 'false') {
@@ -264,6 +292,7 @@ export default function EditUserForm({ userToEdit, onUserUpdated }: EditUserForm
         role: data.role?.toLowerCase(),
         membershipStatus: data.membershipStatus,
         graduationStatus: data.graduationStatus,
+        graduationDate: data.graduationDate,
         charge: data.charge,
         gender: data.gender,
         ageRange: data.ageRange,
@@ -272,7 +301,8 @@ export default function EditUserForm({ userToEdit, onUserUpdated }: EditUserForm
         bio: data.bio,
         isInHpGroup: data.isInHpGroup === 'true',
         isBaptized: data.isBaptized === 'true',
-        denomination: data.isBaptized === 'false' ? 'Other' : data.denomination || 'Other',
+        baptismDate: data.baptismDate,
+        denomination: data.isBaptized === 'true' ? data.denomination || 'Other' : 'Other',
         hpNumber: data.isInHpGroup === 'true' ? data.hpNumber : null,
         facilitatorName: data.isInHpGroup === 'true' ? data.facilitatorName : null,
         hpAvailabilityDay: data.isInHpGroup !== 'true' ? data.hpAvailabilityDay : null,
@@ -519,12 +549,12 @@ export default function EditUserForm({ userToEdit, onUserUpdated }: EditUserForm
             {isInHpGroupValue === 'true' ? (
                 <>
                     <div className="space-y-2">
-                        <Label htmlFor="hpNumber">HP Number</Label>
+                        <Label htmlFor="hpNumber">HP Number <span className="text-destructive">*</span></Label>
                         <Input id="hpNumber" {...register("hpNumber")} />
                         {errors.hpNumber && <p className="text-sm text-destructive">{errors.hpNumber.message}</p>}
                     </div>
                     <div className="space-y-2">
-                        <Label htmlFor="facilitatorName">Facilitator's Full Name</Label>
+                        <Label htmlFor="facilitatorName">Facilitator's Full Name <span className="text-destructive">*</span></Label>
                         <Input id="facilitatorName" {...register("facilitatorName")} />
                          {errors.facilitatorName && <p className="text-sm text-destructive">{errors.facilitatorName.message}</p>}
                     </div>
@@ -577,6 +607,14 @@ export default function EditUserForm({ userToEdit, onUserUpdated }: EditUserForm
                     )}
                 />
             </div>
+            
+            {isBaptizedValue === 'true' && (
+                <div className="space-y-2">
+                    <Label htmlFor="baptismDate">Baptism Date</Label>
+                    <Input id="baptismDate" type="date" {...register("baptismDate")} disabled={isSubmitting} />
+                </div>
+            )}
+
             <div className="space-y-2">
                 <Label>Denomination</Label>
                 <Controller
@@ -792,6 +830,14 @@ export default function EditUserForm({ userToEdit, onUserUpdated }: EditUserForm
                     )}
                 />
             </div>
+            
+            {graduationStatusValue === 'Graduated' && (
+                <div className="space-y-2">
+                    <Label htmlFor="graduationDate">Graduation Date</Label>
+                    <Input id="graduationDate" type="date" {...register("graduationDate")} disabled={isSubmitting} />
+                </div>
+            )}
+
              <div className="space-y-2 md:col-span-2">
                 <Label htmlFor="bio">Bio</Label>
                 <Textarea id="bio" {...register("bio")} placeholder="A brief user bio..." />

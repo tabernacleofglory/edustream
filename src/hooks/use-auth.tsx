@@ -63,6 +63,43 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   
   const isProfileComplete = !!user?.isInHpGroup && !!user?.language && validLanguages.includes(user.language) && !!user?.locationPreference;
 
+  // --- Heartbeat Presence System ---
+  // This runs globally at the Provider level, ensuring every page (including homepage)
+  // reports activity for logged-in users.
+  useEffect(() => {
+    if (!user?.uid || !db) return;
+
+    const updateHeartbeat = async () => {
+      // Only report as "active" if the tab is actually in focus
+      if (document.visibilityState !== 'visible') return;
+      try {
+        const userRef = doc(db, 'users', user.uid);
+        await updateDoc(userRef, { lastActiveAt: serverTimestamp() });
+      } catch (e) {
+        // Silently fail if user doc doesn't exist yet during initial signup
+      }
+    };
+
+    // Update immediately on mount/auth-success
+    updateHeartbeat();
+
+    // Then update every 5 minutes
+    const interval = setInterval(updateHeartbeat, 5 * 60 * 1000); 
+    
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        updateHeartbeat();
+      }
+    };
+    
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
+    return () => {
+      clearInterval(interval);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+  }, [user?.uid, db]);
+
   useEffect(() => {
     const fetchValidLanguages = async () => {
         try {
@@ -95,7 +132,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
           classLadderId: defaultLadder?.id || null,
           classLadder: defaultLadder?.name || 'New Member',
         };
-        await setDoc(userDocRef, { ...newUser, createdAt: serverTimestamp() });
+        await setDoc(userDocRef, { ...newUser, createdAt: serverTimestamp(), lastActiveAt: serverTimestamp() });
         return true; // New user created
     }
     return false; // Existing user

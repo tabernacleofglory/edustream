@@ -45,6 +45,10 @@ export async function generateMetadata(): Promise<Metadata> {
     icons: {
       icon: settings?.faviconUrl || '/favicon.ico',
     },
+    // Security: Prevent browser translation tools from modifying the DOM, which causes React crashes
+    other: {
+      google: 'notranslate',
+    },
   };
 }
 
@@ -54,7 +58,15 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en" className={`${inter.variable} ${spaceGrotesk.variable} ${dancingScript.variable} ${greatVibes.variable} ${sourceSerif.variable}`} suppressHydrationWarning>
+    <html 
+      lang="en" 
+      className={`${inter.variable} ${spaceGrotesk.variable} ${dancingScript.variable} ${greatVibes.variable} ${sourceSerif.variable}`} 
+      suppressHydrationWarning
+      translate="no"
+    >
+      <head>
+        <meta name="google" content="notranslate" />
+      </head>
       <body>
         <Providers>
             {children}

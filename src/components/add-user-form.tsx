@@ -8,7 +8,7 @@ import { z } from "zod";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
 import { Label } from "./ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./ui/select";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import { Loader2, Plus, Trash } from "lucide-react";
 import { getApps, initializeApp, getApp } from "firebase/app";
@@ -48,6 +48,8 @@ const addUserSchema = z.object({
   charge: z.string().optional(),
   classLadderId: z.string().min(1, "Membership ladder is required"),
   graduationStatus: z.string().optional(),
+  graduationDate: z.string().optional(),
+  baptismDate: z.string().optional(),
 }).refine(data => {
     if (data.isInHpGroup === 'true') {
         return !!data.hpNumber && !!data.facilitatorName;
@@ -55,7 +57,7 @@ const addUserSchema = z.object({
     return true;
 }, {
     message: "HP Number and Facilitator Name are required if in a prayer group.",
-    path: ['hpNumber'] // Or facilitatorName
+    path: ['hpNumber']
 });
 
 
@@ -104,7 +106,6 @@ export default function AddUserForm({ onUserAdded, ladders }: AddUserFormProps) 
   const [availableLanguages, setAvailableLanguages] = useState<StoredItem[]>([]);
   const [isCampusDialogOpen, setIsCampusDialogOpen] = useState(false);
   const [newCampusName, setNewCampusName] = useState("");
-  const [charges, setCharges] = useState<StoredItem[]>([]);
   const [isChargeDialogOpen, setIsChargeDialogOpen] = useState(false);
   const [newChargeName, setNewChargeName] = useState("");
   const db = getFirebaseFirestore();
@@ -162,12 +163,14 @@ useEffect(() => {
         campus: "",
         language: "",
         locationPreference: "",
-        isInHpGroup: undefined,
+        isInHpGroup: "false",
         hpNumber: "",
         facilitatorName: "",
         charge: "",
         classLadderId: defaultLadderId || "",
         graduationStatus: "Not Started",
+        graduationDate: "",
+        baptismDate: "",
     }
   });
 
@@ -280,6 +283,7 @@ useEffect(() => {
         role: 'user',
         membershipStatus: 'Active',
         graduationStatus: data.graduationStatus,
+        graduationDate: data.graduationDate,
         classLadder: selectedLadder ? selectedLadder.name : '',
         classLadderId: data.classLadderId,
         campus: data.campus,
@@ -292,6 +296,7 @@ useEffect(() => {
         hpNumber: data.hpNumber,
         facilitatorName: data.facilitatorName,
         charge: data.charge,
+        baptismDate: data.baptismDate,
       };
 
       await setDoc(doc(db, "users", user.uid), newUser);
@@ -531,9 +536,14 @@ useEffect(() => {
         {isInHpGroupValue === 'true' && (
             <>
                 <div className="space-y-2">
-                    <Label htmlFor="hpNumber">HP Number</Label>
+                    <Label htmlFor="hpNumber">HP Number <span className="text-destructive">*</span></Label>
                     <Input id="hpNumber" placeholder="Your HP Number" {...register("hpNumber")} disabled={isSubmitting} />
                     {errors.hpNumber && <p className="text-sm text-destructive">{errors.hpNumber.message}</p>}
+                </div>
+                <div className="space-y-2">
+                    <Label htmlFor="facilitatorName">Facilitator's Full Name <span className="text-destructive">*</span></Label>
+                    <Input id="facilitatorName" placeholder="Name of your HP Facilitator" {...register("facilitatorName")} disabled={isSubmitting} />
+                    {errors.facilitatorName && <p className="text-sm text-destructive">{errors.facilitatorName.message}</p>}
                 </div>
             </>
         )}
@@ -636,6 +646,30 @@ useEffect(() => {
             )}
         />
       </div>
+
+      {watch('graduationStatus') === 'Graduated' && (
+          <div className="space-y-2">
+              <Label htmlFor="graduationDate">Graduation Date</Label>
+              <Input id="graduationDate" type="date" {...register("graduationDate")} disabled={isSubmitting} />
+          </div>
+      )}
+
+      <div className="space-y-2">
+          <Label>Has been baptized?</Label>
+          <div className="flex gap-2 p-2 bg-muted rounded-md">
+              <Label className="flex items-center gap-2 cursor-pointer">
+                  <Input type="checkbox" className="h-4 w-4" {...register("baptismDate")} />
+                  Show Baptism Date
+              </Label>
+          </div>
+      </div>
+
+      {watch('baptismDate') && (
+          <div className="space-y-2">
+              <Label htmlFor="actualBaptismDate">Baptism Date</Label>
+              <Input id="actualBaptismDate" type="date" {...register("baptismDate")} disabled={isSubmitting} />
+          </div>
+      )}
 
 
       <div className="flex justify-end">

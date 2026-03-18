@@ -108,8 +108,8 @@ export default function UserProfilePage() {
         getDocs(enrollmentsQuery),
         getDocs(onsiteQuery),
         getDocs(progressQuery),
-        getDocs(quizResultsQuery),
-        globalProgressQuery,
+        getDocs(quizResultsSnapshot || collection(db, 'placeholder')), // fallback if query fails
+        globalProgressSnap,
         getDocs(formSubmissionsQuery),
       ]);
 
@@ -121,7 +121,6 @@ export default function UserProfilePage() {
           });
       });
       const legacyQuizCompletions = new Set(quizResultsSnap.docs.map(d => d.data().quizId));
-      // For simplicity, we'll focus on videos and quizzes for now. Forms can be added later.
       const globalCompletedItems = new Set(globalProgressSnap.exists() ? Object.keys(globalProgressSnap.data().completedItems || {}) : []);
       
       let missingCount = 0;
@@ -294,7 +293,7 @@ export default function UserProfilePage() {
   const groupedCompletedCourses = useMemo(() => {
     const grouped: { [key: string]: { ladderId: string, ladderName: string, courses: any[] } } = {};
     completedCoursesList.forEach(course => {
-      const ladderId = course.ladderIds.length > 0 ? course.ladderIds[0] : 'uncategorized';
+      const ladderId = course.ladderIds.length > 0 ? course.ladderId[0] : 'uncategorized';
       const ladder = ladders.find(l => l.id === ladderId);
       const ladderName = ladder ? ladder.name : 'Uncategorized';
       if (!grouped[ladderId]) {
@@ -472,10 +471,14 @@ export default function UserProfilePage() {
                     ]),
                     { label: 'Marital Status', value: user.maritalStatus },
                     { label: 'Baptized', value: user.isBaptized ? 'Yes' : 'No' },
-                    ...(user.isBaptized ? [{ label: 'Denomination', value: user.denomination }] : []),
+                    ...(user.isBaptized ? [
+                        { label: 'Baptism Date', value: user.baptismDate },
+                        { label: 'Denomination', value: user.denomination }
+                    ] : []),
                     { label: 'Ministry', value: user.ministry },
                     { label: 'Charge', value: user.charge },
                     { label: 'Graduation Status', value: user.graduationStatus || 'Not Started' },
+                    ...(user.graduationStatus === 'Graduated' ? [{ label: 'Graduation Date', value: user.graduationDate }] : []),
                 ].map(field => (
                   <div key={field.label}>
                     <p className="font-semibold">{field.label}</p>

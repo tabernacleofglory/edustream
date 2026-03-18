@@ -67,6 +67,7 @@ import { Lock } from 'lucide-react';
 import GlobalSearch from "@/components/global-search";
 import { useI18n } from "@/hooks/use-i18n";
 import MobileNav from "@/components/mobile-nav";
+import ActiveUsersSidebar from "@/components/active-users-sidebar";
 
 
 const NavItem = ({ href, label, icon: Icon, subItems, permission, isSidebarOpen }: { href?: string; label:string; icon: React.ElementType; subItems?: any[]; permission?: string, isSidebarOpen: boolean }) => {
@@ -396,6 +397,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
         </main>
       </div>
       <MobileNav onMenuClick={() => setIsSidebarOpen(true)} />
+      <ActiveUsersSidebar />
     </div>
   );
 }
