@@ -412,7 +412,7 @@ export default function VideoPlayerClient({
             const q = query(collection(db, 'quizzes'), where(documentId(), 'in', course.quizIds));
             getDocs(q).then(snapshot => {
                 const fetchedQuizzes = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Quiz));
-                setQuizzes(fetchedQuizzes.sort((a,b) => (a.createdAt?.seconds || 0) - (b.createdAt?.seconds || 0)));
+                setQuizzes(fetchedQuizzes.sort((a,b) => (a.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0)));
             });
             const resultsQuery = query(collection(db, 'userQuizResults'), where('userId', '==', user.uid), where('courseId', '==', course.id), where('quizId', 'in', course.quizIds));
             getDocs(resultsQuery).then(resultsSnapshot => {
@@ -661,6 +661,7 @@ export default function VideoPlayerClient({
           lastWatchedVideoId: currentVideo.id,
           updatedAt: serverTimestamp() as any,
           percent: Math.round(percent),
+          totalProgress: Math.round(percent), // Also save as totalProgress for report consistency
         };
         batch.set(progressRef, dataToSave, { merge: true });
 
@@ -740,7 +741,7 @@ export default function VideoPlayerClient({
     return () => {
       v.removeEventListener("pause", onPause);
       v.removeEventListener("seeking", onSeeking);
-      v.removeEventListener("seeked", onSeeking);
+      v.removeEventListener("seeked", onSeeked);
       v.removeEventListener("loadedmetadata", onLoadedMetadata);
     };
   }, [flushProgress, isYouTube, isGoogleDrive, toast]);

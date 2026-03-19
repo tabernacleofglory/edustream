@@ -3,7 +3,7 @@
 
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import Link from 'next/link';
+import Link from 'link';
 import { collection, query, where, doc, getDoc, getDocs, documentId, collectionGroup, Timestamp } from 'firebase/firestore';
 import { useToast } from '@/hooks/use-toast';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card';
@@ -92,7 +92,8 @@ export default function UserProfilePage() {
 
       const userData = { id: userDoc.id, ...userDoc.data() } as User;
       setUser(userData);
-      setCourses(coursesSnap.docs.map(d => ({ id: d.id, ...d.data() } as Course)));
+      const allCourses = coursesSnap.docs.map(d => ({ id: d.id, ...d.data() } as Course));
+      setCourses(allCourses);
       setLadders(laddersSnap.docs.map(d => ({ id: d.id, ...d.data() } as Ladder)));
 
       // === Progress + completions (mirror the dialog logic) ===
@@ -101,16 +102,13 @@ export default function UserProfilePage() {
       const progressQuery = query(collection(db, 'userVideoProgress'), where('userId', '==', userId));
       const quizResultsQuery = query(collection(db, 'userQuizResults'), where('userId', '==', userId), where('passed', '==', true));
       const globalProgressQuery = getDoc(doc(db, "userContentProgress", userId));
-      const formSubmissionsQuery = query(collectionGroup(db, 'submissions'), where('userId', '==', userId));
 
-
-      const [enrollmentsSnap, onsiteSnap, progressSnap, quizResultsSnap, globalProgressSnap, formSubmissionsSnapshot] = await Promise.all([
+      const [enrollmentsSnap, onsiteSnap, progressSnap, quizResultsSnap, globalProgressSnap] = await Promise.all([
         getDocs(enrollmentsQuery),
         getDocs(onsiteQuery),
         getDocs(progressQuery),
-        getDocs(quizResultsSnapshot || collection(db, 'placeholder')), // fallback if query fails
-        globalProgressSnap,
-        getDocs(formSubmissionsQuery),
+        getDocs(quizResultsQuery),
+        globalProgressQuery,
       ]);
 
       // --- Calculate Migration Stats ---
@@ -146,6 +144,7 @@ export default function UserProfilePage() {
         setComputedCourseProgress([]);
         setCompletedCourses(new Set());
         setUserProgress([]);
+        setLoading(false);
         return; // Early exit
       }
 
@@ -179,11 +178,14 @@ export default function UserProfilePage() {
       });
       
       const detailedCourseProgress = enrolledCourses
-        .filter(c => c.language === userData.language)
         .map(c => {
           const totalVideos = c.videos?.length || 0;
           const completed = progressByCourse[c.id]?.completedVideos.size || 0;
-          const totalProgress = totalVideos > 0 ? Math.round((completed / totalVideos) * 100) : 0;
+          
+          // Prioritize totalProgress field if available, fallback to manual calculation
+          const storedProgress = progressDocs.find(p => p.courseId === c.id)?.totalProgress;
+          const totalProgress = storedProgress !== undefined ? storedProgress : (totalVideos > 0 ? Math.round((completed / totalVideos) * 100) : 0);
+          
           return {
             courseId: c.id,
             courseTitle: c.title,
@@ -222,23 +224,35 @@ export default function UserProfilePage() {
     return ladders
       .map(ladder => {
         const coursesInLadder = courses.filter(
-          c => c.ladderIds?.includes(ladder.id) && c.language === user.language
+          c => c.ladderIds?.includes(ladder.id)
         );
-        const totalCourses = coursesInLadder.length;
-        if (totalCourses === 0) return null;
+        const languages = Array.from(new Set(coursesInLadder.map(c => c.language).filter(Boolean)));
+        
+        let maxProgress = 0;
+        let bestTotal = 0;
+        let bestCompleted = 0;
 
-        const completed = coursesInLadder.filter(c => completedCourses.has(c.id)).length;
-        const progress = Math.round((completed / totalCourses) * 100);
+        languages.forEach(lang => {
+            const langCourses = coursesInLadder.filter(c => c.language === lang);
+            const total = langCourses.length;
+            const completed = langCourses.filter(c => completedCourses.has(c.id)).length;
+            const prog = total > 0 ? Math.round((completed / total) * 100) : 0;
+            if (prog >= maxProgress) {
+                maxProgress = prog;
+                bestTotal = total;
+                bestCompleted = completed;
+            }
+        });
 
         return {
           ladderId: ladder.id,
           ladderName: `${ladder.name} ${ladder.side !== 'none' ? `(${ladder.side})` : ''}`,
-          progress,
-          totalCourses,
-          completedCourses: completed,
+          progress: maxProgress,
+          totalCourses: bestTotal,
+          completedCourses: bestCompleted,
         };
       })
-      .filter((lp): lp is UserLadderProgress => lp !== null);
+      .filter((lp): lp is UserLadderProgress => lp.totalCourses > 0);
   }, [user, ladders, courses, completedCourses]);
 
   const enrolledCoursesProgress = useMemo(() => {
@@ -280,7 +294,7 @@ export default function UserProfilePage() {
     if (!user) return [];
     const progMap = new Map(computedCourseProgress.map(p => [p.courseId, p.totalProgress]));
     return courses
-      .filter(c => completedCourses.has(c.id) && c.language === user.language)
+      .filter(c => completedCourses.has(c.id))
       .map(c => ({
         courseId: c.id,
         courseTitle: c.title,
@@ -293,7 +307,7 @@ export default function UserProfilePage() {
   const groupedCompletedCourses = useMemo(() => {
     const grouped: { [key: string]: { ladderId: string, ladderName: string, courses: any[] } } = {};
     completedCoursesList.forEach(course => {
-      const ladderId = course.ladderIds.length > 0 ? course.ladderId[0] : 'uncategorized';
+      const ladderId = course.ladderIds.length > 0 ? course.ladderIds[0] : 'uncategorized';
       const ladder = ladders.find(l => l.id === ladderId);
       const ladderName = ladder ? ladder.name : 'Uncategorized';
       if (!grouped[ladderId]) {
@@ -557,7 +571,7 @@ export default function UserProfilePage() {
                                 <div className="space-y-4 pl-4 border-l">
                                     {group.courses.map((p: any) => (
                                         <div key={p.courseId} className="flex items-center justify-between">
-                                            <div>
+                                            <div className="flex-1">
                                                 <p className="font-medium">{p.courseTitle}</p>
                                                 <div className="flex items-center gap-2">
                                                     <Progress value={p.totalProgress} className="h-2 w-40" />
@@ -596,7 +610,7 @@ export default function UserProfilePage() {
                       <div className="space-y-4 pl-4 border-l">
                         {group.courses.map((p: any) => (
                           <div key={p.courseId} className="flex items-center justify-between">
-                            <div>
+                            <div className="flex-1">
                               <p className="font-medium flex items-center gap-2">
                                 <CheckCircle className="h-4 w-4 text-green-500" />
                                 {p.courseTitle}
@@ -608,7 +622,7 @@ export default function UserProfilePage() {
                             </div>
                             <div className="flex gap-2">
                               <Button variant="ghost" size="icon" onClick={() => handleViewCourseProgress(p)}>
-                                <Eye className="h-4 w-4" />
+                                <Eye className="mr-2 h-4 w-4" />
                               </Button>
                             </div>
                           </div>

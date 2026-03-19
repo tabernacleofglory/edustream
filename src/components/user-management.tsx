@@ -34,6 +34,15 @@ import {
     SelectLabel,
 } from "@/components/ui/select";
 import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+  DropdownMenuCheckboxItem,
+} from "@/components/ui/dropdown-menu";
+import {
   Dialog,
   DialogContent,
   DialogDescription,
@@ -65,7 +74,7 @@ import {
 } from "@/components/ui/sheet";
 import { Avatar, AvatarFallback, AvatarImage } from "./ui/avatar";
 import { Button } from "./ui/button";
-import { Edit, Eye, Loader2, Plus, Trash, Upload, Download, UserMinus, ChevronLeft, ChevronRight, Mail, BookCheck, Search, Star, Trash2, Combine, User as UserIcon, CheckCircle2, Circle, X, Pin, ListFilter, Globe } from "lucide-react";
+import { Edit, Eye, Loader2, Plus, Trash, Upload, Download, UserMinus, ChevronLeft, ChevronRight, Mail, BookCheck, Search, Star, Trash2, Combine, User as UserIcon, CheckCircle2, Circle, X, Pin, ListFilter, Globe, ChevronDown } from "lucide-react";
 import { Skeleton } from "./ui/skeleton";
 import AddUserForm from "./add-user-form";
 import { Badge } from "./ui/badge";
@@ -84,7 +93,6 @@ import { useToast } from "@/hooks/use-toast";
 import { RadioGroup, RadioGroupItem } from "./ui/radio-group";
 import { marked } from 'marked';
 import { wrapInEmailLayout } from "@/lib/email-utils";
-import { format } from "date-fns";
 import { Checkbox } from "@/components/ui/checkbox";
 import allLanguagesList from "@/lib/languages.json";
 
@@ -564,6 +572,8 @@ export default function UserManagement() {
   const [loading, setLoading] = useState(true);
   const [isAddUserOpen, setIsAddUserOpen] = useState(false);
   const [isImportUserOpen, setIsImportUserOpen] = useState(false);
+  const [isExportDialogOpen, setIsExportDialogOpen] = useState(false);
+  const [selectedExportFields, setSelectedExportFields] = useState<string[]>([]);
   const [editingUser, setEditingUser] = useState<User | null>(null);
   const [viewingUser, setViewingUser] = useState<User | null>(null);
   const [sendingEmailToUser, setSendingEmailToUser] = useState<User | null>(null);
@@ -574,11 +584,11 @@ export default function UserManagement() {
 
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCampus, setSelectedCampus] = useState('all');
-  const [filterRole, setFilterRole] = useState('all');
-  const [filterLadder, setFilterLadder] = useState('all');
+  const [filterRoles, setFilterRoles] = useState<string[]>([]);
+  const [filterLadders, setFilterLadders] = useState<string[]>([]);
   const [filterBaptism, setFilterBaptism] = useState('all');
-  const [filterGraduation, setFilterGraduation] = useState('all');
-  const [filterTrainingStatus, setFilterTrainingStatus] = useState('all');
+  const [filterGraduations, setFilterGraduations] = useState<string[]>([]);
+  const [filterTrainingStatuses, setFilterTrainingStatuses] = useState<string[]>([]);
   const [filterCompletedCount, setFilterCompletedCount] = useState('all');
 
   const [currentPage, setCurrentPage] = useState(1);
@@ -606,6 +616,35 @@ export default function UserManagement() {
       { id: 'team', name: 'Team' },
       { id: 'user', name: 'User' },
   ], []);
+
+  const exportFields = useMemo(() => [
+    { id: 'firstName', label: 'First Name' },
+    { id: 'lastName', label: 'Last Name' },
+    { id: 'email', label: 'Email' },
+    { id: 'phoneNumber', label: 'Phone Number' },
+    { id: 'campus', label: 'Campus' },
+    { id: 'hpNumber', label: 'HP Number' },
+    { id: 'facilitatorName', label: 'Facilitator Name' },
+    { id: 'gender', label: 'Gender' },
+    { id: 'ageRange', label: 'Age Range' },
+    { id: 'maritalStatus', label: 'Marital Status' },
+    { id: 'isBaptized', label: 'Baptism Status' },
+    { id: 'baptismDate', label: 'Baptism Date' },
+    { id: 'denomination', label: 'Denomination' },
+    { id: 'language', label: 'Language' },
+    { id: 'locationPreference', label: 'Location Preference' },
+    { id: 'role', label: 'Role' },
+    { id: 'classLadder', label: 'Membership Ladder' },
+    { id: 'charge', label: 'Charge' },
+    { id: 'graduationStatus', label: 'Graduation Status' },
+    { id: 'graduationDate', label: 'Graduation Date' },
+    { id: 'trainingStatus', label: 'Training Status (Filtered)' },
+    { id: 'classCount', label: 'Class Count (Filtered)' },
+  ], []);
+
+  useEffect(() => {
+    setSelectedExportFields(exportFields.map(f => f.id));
+  }, [exportFields]);
 
   const fetchAllData = useCallback(async () => {
     setLoading(true);
@@ -656,7 +695,7 @@ export default function UserManagement() {
             map.set(user.id, 'Not Started');
             return;
         }
-        const coursesInLadder = courses.filter(c => c.ladderIds?.includes(user.classLadderId!) && c.language === user.language);
+        const coursesInLadder = courses.filter(c => c.ladderIds?.includes(user.classLadderId!));
         if (coursesInLadder.length === 0) {
             map.set(user.id, 'Not Started');
             return;
@@ -670,13 +709,21 @@ export default function UserManagement() {
             ...userOnsite.map(oc => oc.courseId)
         ]);
         
-        const allCompleted = coursesInLadder.every(c => completedIds.has(c.id));
-        if (allCompleted) {
+        // Find all languages represented in this ladder
+        const languages = Array.from(new Set(coursesInLadder.map(c => c.language).filter(Boolean)));
+        
+        // Check if all courses are completed in ANY of these languages
+        const isLadderCompleted = languages.some(lang => {
+            const langCourses = coursesInLadder.filter(c => c.language === lang);
+            return langCourses.length > 0 && langCourses.every(c => completedIds.has(c.id));
+        });
+
+        if (isLadderCompleted) {
             map.set(user.id, 'Completed');
         } else {
-            const hasStarted = userEnrollments.some(e => coursesInLadder.some(c => c.id === e.courseId)) || 
-                               userOnsite.some(oc => coursesInLadder.some(c => c.id === oc.courseId));
-            map.set(user.id, hasStarted ? 'In Progress' : 'Not Started');
+            const hasAnyActivity = userEnrollments.some(e => coursesInLadder.some(c => c.id === e.courseId)) || 
+                                   userOnsite.some(oc => coursesInLadder.some(c => c.id === oc.courseId));
+            map.set(user.id, hasAnyActivity ? 'In Progress' : 'Not Started');
         }
     });
     return map;
@@ -685,7 +732,7 @@ export default function UserManagement() {
   const userCompletedCountMap = useMemo(() => {
     const map = new Map<string, number>();
     users.forEach(user => {
-        const targetLadderId = filterLadder === 'all' ? user.classLadderId : filterLadder;
+        const targetLadderId = filterLadders.length === 1 ? filterLadders[0] : user.classLadderId;
         if (!targetLadderId) {
             map.set(user.id, 0);
             return;
@@ -699,17 +746,17 @@ export default function UserManagement() {
             ...userOnsite.map(oc => oc.courseId)
         ]);
         
-        const coursesInTargetLadder = courses.filter(c => c.ladderIds?.includes(targetLadderId) && c.language === user.language);
+        const coursesInTargetLadder = courses.filter(c => c.ladderIds?.includes(targetLadderId));
         const completedInTargetCount = coursesInTargetLadder.filter(c => completedIds.has(c.id)).length;
         
         map.set(user.id, completedInTargetCount);
     });
     return map;
-  }, [users, courses, enrollments, onsiteCompletions, filterLadder]);
+  }, [users, courses, enrollments, onsiteCompletions, filterLadders]);
 
   const maxCoursesForFilter = useMemo(() => {
-    if (filterLadder !== 'all') {
-        const ladderCourses = courses.filter(c => c.ladderIds?.includes(filterLadder));
+    if (filterLadders.length > 0) {
+        const ladderCourses = courses.filter(c => c.ladderIds?.some(id => filterLadders.includes(id)));
         const countsByLang: Record<string, number> = {};
         ladderCourses.forEach(c => {
             const lang = c.language || 'unknown';
@@ -730,7 +777,7 @@ export default function UserManagement() {
         if (m > globalMax) globalMax = m;
     });
     return globalMax || 20; 
-  }, [filterLadder, courses, ladders]);
+  }, [filterLadders, courses, ladders]);
 
   useEffect(() => {
     if (filterCompletedCount !== 'all') {
@@ -759,30 +806,32 @@ export default function UserManagement() {
             matchesCampus = user.campus === selectedCampusObject?.["Campus Name"];
         }
 
-        const matchesRole = filterRole === 'all' || user.role === filterRole;
-        const matchesLadder = filterLadder === 'all' || user.classLadderId === filterLadder;
+        const matchesRole = filterRoles.length === 0 || filterRoles.includes(user.role!);
+        const matchesLadder = filterLadders.length === 0 || (user.classLadderId && filterLadders.includes(user.classLadderId));
         const matchesBaptism = filterBaptism === 'all' || String(user.isBaptized) === filterBaptism;
-        const matchesGraduation = filterGraduation === 'all' || user.graduationStatus === filterGraduation;
-        const matchesTrainingStatus = filterTrainingStatus === 'all' || userTrainingStatusMap.get(user.id) === filterTrainingStatus;
+        const matchesGraduation = filterGraduations.length === 0 || 
+            (user.graduationStatus && filterGraduations.includes(user.graduationStatus)) ||
+            (!user.graduationStatus && filterGraduations.includes('Empty'));
+        const matchesTrainingStatus = filterTrainingStatuses.length === 0 || filterTrainingStatuses.includes(userTrainingStatusMap.get(user.id)!);
         const matchesCompletedCount = filterCompletedCount === 'all' || (
             (userCompletedCountMap.get(user.id) || 0) >= parseInt(filterCompletedCount, 10)
         );
 
         return matchesSearch && matchesCampus && matchesRole && matchesLadder && matchesBaptism && matchesGraduation && matchesTrainingStatus && matchesCompletedCount;
     });
-}, [users, searchTerm, selectedCampus, currentUser, canViewAllCampuses, allCampuses, filterRole, filterLadder, filterBaptism, filterGraduation, filterTrainingStatus, userTrainingStatusMap, filterCompletedCount, userCompletedCountMap]);
+}, [users, searchTerm, selectedCampus, currentUser, canViewAllCampuses, allCampuses, filterRoles, filterLadders, filterBaptism, filterGraduations, filterTrainingStatuses, userTrainingStatusMap, filterCompletedCount, userCompletedCountMap]);
 
   const activeFilterCount = useMemo(() => {
     let count = 0;
     if (selectedCampus !== 'all') count++;
-    if (filterRole !== 'all') count++;
-    if (filterLadder !== 'all') count++;
+    if (filterRoles.length > 0) count++;
+    if (filterLadders.length > 0) count++;
     if (filterBaptism !== 'all') count++;
-    if (filterGraduation !== 'all') count++;
-    if (filterTrainingStatus !== 'all') count++;
+    if (filterGraduations.length > 0) count++;
+    if (filterTrainingStatuses.length > 0) count++;
     if (filterCompletedCount !== 'all') count++;
     return count;
-  }, [selectedCampus, filterRole, filterLadder, filterBaptism, filterGraduation, filterTrainingStatus, filterCompletedCount]);
+  }, [selectedCampus, filterRoles, filterLadders, filterBaptism, filterGraduations, filterTrainingStatuses, filterCompletedCount]);
 
   const totalPages = Math.ceil(filteredUsers.length / usersPerPage);
   const paginatedUsers = filteredUsers.slice((currentPage - 1) * usersPerPage, currentPage * usersPerPage);
@@ -832,11 +881,14 @@ export default function UserManagement() {
         const enrolledCourses = courseSnaps.flatMap(s => s.docs.map(d => ({ id: d.id, ...d.data() } as Course)));
 
         const detailedCourseProgress = enrolledCourses
-            .filter(course => course.language === user.language)
             .map(course => {
                 const totalVideos = course.videos?.length || 0;
                 const completedCount = progressByCourse[course.id]?.completedVideos.size || 0;
-                const totalProgress = totalVideos > 0 ? Math.round((completedCount / totalVideos) * 100) : 0;
+                
+                // Prioritize totalProgress field if available, fallback to manual calculation
+                const storedProgress = progressDocs.find(p => p.courseId === course.id)?.totalProgress;
+                const totalProgress = storedProgress !== undefined ? storedProgress : (totalVideos > 0 ? Math.round((completedCount / totalVideos) * 100) : 0);
+                
                 if (totalProgress === 100) allCompletedCourseIds.add(course.id);
                 return { courseId: course.id, courseTitle: course.title, totalProgress };
             })
@@ -846,11 +898,27 @@ export default function UserManagement() {
         setViewingUserCompletions(allCompletedCourseIds);
 
         const ladderProgressData: UserLadderProgress[] = ladders.map(ladder => {
-            const coursesInLadder = courses.filter(c => c.ladderIds?.includes(ladder.id) && c.language === user.language);
-            const total = coursesInLadder.length;
-            const completed = coursesInLadder.filter(c => allCompletedCourseIds.has(c.id)).length;
-            const progress = total > 0 ? Math.round((completed / total) * 100) : 0;
-            return { ladderId: ladder.id, ladderName: ladder.name, ladderSide: ladder.side, progress, totalCourses: total, completedCourses: completed };
+            const coursesInLadder = courses.filter(c => c.ladderIds?.includes(ladder.id));
+            const languages = Array.from(new Set(coursesInLadder.map(c => c.language).filter(Boolean)));
+            
+            // Find progress for each language and take the max
+            let maxProgress = 0;
+            let bestTotal = 0;
+            let bestCompleted = 0;
+
+            languages.forEach(lang => {
+                const langCourses = coursesInLadder.filter(c => c.language === lang);
+                const total = langCourses.length;
+                const completed = langCourses.filter(c => allCompletedCourseIds.has(c.id)).length;
+                const prog = total > 0 ? Math.round((completed / total) * 100) : 0;
+                if (prog >= maxProgress) {
+                    maxProgress = prog;
+                    bestTotal = total;
+                    bestCompleted = completed;
+                }
+            });
+
+            return { ladderId: ladder.id, ladderName: ladder.name, ladderSide: ladder.side, progress: maxProgress, totalCourses: bestTotal, completedCourses: bestCompleted };
         }).filter(lp => lp.totalCourses > 0);
 
         setViewingUserLadderProgress(ladderProgressData);
@@ -1035,29 +1103,48 @@ export default function UserManagement() {
 
     const handleExportCSV = () => {
         if (filteredUsers.length === 0) { toast({ variant: 'destructive', title: 'No users to export' }); return; }
-        const dataToExport = filteredUsers.map(user => ({ "User ID": user.id, "Full Name": user.fullName, "Email": user.email, "Role": user.role, "Membership Status": user.membershipStatus, "Graduation Status": user.graduationStatus, "Membership Ladder": getUserLadderName(user.classLadderId), "Campus": user.campus, "Phone Number": user.phoneNumber, "HP Number": user.hpNumber, "Facilitator": user.facilitatorName, "Marital Status": user.maritalStatus, "Ministry": user.ministry, "Charge": user.charge, "Training Status": userTrainingStatusMap.get(user.id) || 'Not Started' }));
+        if (selectedExportFields.length === 0) { toast({ variant: 'destructive', title: 'No fields selected' }); return; }
+
+        const dataToExport = filteredUsers.map(user => {
+            const row: any = {};
+            if (selectedExportFields.includes('firstName')) row["First Name"] = user.firstName || user.displayName?.split(' ')[0] || '';
+            if (selectedExportFields.includes('lastName')) row["Last Name"] = user.lastName || user.displayName?.split(' ').slice(1).join(' ') || '';
+            if (selectedExportFields.includes('email')) row["Mail"] = user.email || '';
+            if (selectedExportFields.includes('phoneNumber')) row["Phone"] = user.phoneNumber || '';
+            if (selectedExportFields.includes('campus')) row["Campus"] = user.campus || '';
+            if (selectedExportFields.includes('hpNumber')) row["HP"] = user.hpNumber || '';
+            if (selectedExportFields.includes('facilitatorName')) row["Facilitator"] = user.facilitatorName || '';
+            if (selectedExportFields.includes('gender')) row["Gender"] = user.gender || '';
+            if (selectedExportFields.includes('ageRange')) row["Age Range"] = user.ageRange || '';
+            if (selectedExportFields.includes('maritalStatus')) row["Marital Status"] = user.maritalStatus || '';
+            if (selectedExportFields.includes('isBaptized')) row["Baptism Status"] = user.isBaptized ? 'Baptized' : 'Not Baptized';
+            if (selectedExportFields.includes('baptismDate')) row["Baptism Date"] = user.baptismDate || '';
+            if (selectedExportFields.includes('denomination')) row["Denomination"] = user.denomination || '';
+            if (selectedExportFields.includes('language')) row["Language"] = user.language || '';
+            if (selectedExportFields.includes('locationPreference')) row["Location Preference"] = user.locationPreference || '';
+            if (selectedExportFields.includes('role')) row["Role"] = user.role || 'user';
+            if (selectedExportFields.includes('classLadder')) row["Membership Ladder"] = getUserLadderName(user.classLadderId);
+            if (selectedExportFields.includes('charge')) row["Charge"] = user.charge || '';
+            if (selectedExportFields.includes('graduationStatus')) row["Graduation Status"] = user.graduationStatus || 'Not Started';
+            if (selectedExportFields.includes('graduationDate')) row["Graduation Date"] = user.graduationDate || '';
+            if (selectedExportFields.includes('trainingStatus')) row["Training Status"] = userTrainingStatusMap.get(user.id) || 'Not Started';
+            if (selectedExportFields.includes('classCount')) row["Class Count"] = userCompletedCountMap.get(user.id) || 0;
+            return row;
+        });
+
         const csv = Papa.unparse(dataToExport);
         const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
         const link = document.createElement("a");
         if (link.download !== undefined) {
             const url = URL.createObjectURL(blob);
             link.setAttribute("href", url);
-            link.setAttribute("download", "users_export.csv");
+            link.setAttribute("download", `users_export_${new Date().toISOString().split('T')[0]}.csv`);
             link.style.visibility = 'hidden';
             document.body.appendChild(link);
             link.click();
             document.body.removeChild(link);
         }
-    };
-
-    const handleSendResetLink = async (email?: string | null) => {
-        if (!email) { toast({ variant: 'destructive', title: 'No email found.' }); return; }
-        try {
-            await sendPasswordResetEmail(getAuth(), email);
-            toast({ title: 'Reset Link Sent', description: `Sent to ${email}.` });
-        } catch (error: any) {
-            toast({ variant: 'destructive', title: 'Error', description: 'Failed to send email.' });
-        }
+        setIsExportDialogOpen(false);
     };
     
     const handleToggleAllOnPage = () => {
@@ -1082,6 +1169,19 @@ export default function UserManagement() {
         return allRoles.filter(role => allowedRoleIds.includes(role.id));
     }, [currentUser?.role, allRoles]);
 
+    const completedCoursesList = useMemo(() => {
+        if (!viewingUser) return [];
+        return courses
+          .filter(c => viewingUserCompletions.has(c.id))
+          .map(c => ({
+            courseId: c.id,
+            courseTitle: c.title,
+            totalProgress: 100,
+            ladderIds: c.ladderIds || [],
+          }))
+          .sort((a, b) => a.courseTitle.localeCompare(b.courseTitle));
+    }, [courses, viewingUserCompletions, viewingUser]);
+
   return (
     <>
     <Card>
@@ -1092,7 +1192,7 @@ export default function UserManagement() {
                 <CardDescription>Found {filteredUsers.length} users.</CardDescription>
             </div>
             <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
-                <Button variant="outline" onClick={handleExportCSV} className="w-full"><Download className="mr-2 h-4 w-4" /> Export CSV</Button>
+                <Button variant="outline" onClick={() => setIsExportDialogOpen(true)} className="w-full"><Download className="mr-2 h-4 w-4" /> Export CSV</Button>
                 <Dialog open={isImportUserOpen} onOpenChange={setIsImportUserOpen}>
                     <DialogTrigger asChild><Button variant="outline" className="w-full"><Upload className="mr-2 h-4 w-4" /> Import CSV</Button></DialogTrigger>
                     <ImportUsersDialog onImport={handleUsersImported} />
@@ -1147,29 +1247,43 @@ export default function UserManagement() {
                             </div>
 
                             <div className="space-y-2">
-                                <Label>Role</Label>
-                                <Select value={filterRole} onValueChange={setFilterRole}>
-                                    <SelectTrigger>
-                                        <SelectValue placeholder="All Roles" />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                        <SelectItem value="all">All Roles</SelectItem>
-                                        {allRoles.map(role => <SelectItem key={role.id} value={role.id}>{role.name}</SelectItem>)}
-                                    </SelectContent>
-                                </Select>
+                                <Label>Roles</Label>
+                                <div className="border rounded-md p-3 space-y-2 max-h-40 overflow-y-auto bg-background">
+                                    {allRoles.map(role => (
+                                        <div key={role.id} className="flex items-center space-x-2">
+                                            <Checkbox 
+                                                id={`role-${role.id}`} 
+                                                checked={filterRoles.includes(role.id)}
+                                                onCheckedChange={(checked) => {
+                                                    setFilterRoles(prev => checked ? [...prev, role.id] : prev.filter(r => r !== role.id));
+                                                }}
+                                            />
+                                            <Label htmlFor={`role-${role.id}`} className="text-sm font-normal cursor-pointer leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">
+                                                {role.name}
+                                            </Label>
+                                        </div>
+                                    ))}
+                                </div>
                             </div>
 
                             <div className="space-y-2">
-                                <Label>Membership Ladder</Label>
-                                <Select value={filterLadder} onValueChange={setFilterLadder}>
-                                    <SelectTrigger>
-                                        <SelectValue placeholder="All Ladders" />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                        <SelectItem value="all">All Ladders</SelectItem>
-                                        {ladders.map(l => <SelectItem key={l.id} value={l.id}>{l.name} {l.side !== 'none' && `(${l.side})`}</SelectItem>)}
-                                    </SelectContent>
-                                </Select>
+                                <Label>Membership Ladders</Label>
+                                <div className="border rounded-md p-3 space-y-2 max-h-60 overflow-y-auto bg-background">
+                                    {ladders.map(l => (
+                                        <div key={l.id} className="flex items-center space-x-2">
+                                            <Checkbox 
+                                                id={`ladder-${l.id}`} 
+                                                checked={filterLadders.includes(l.id)}
+                                                onCheckedChange={(checked) => {
+                                                    setFilterLadders(prev => checked ? [...prev, l.id] : prev.filter(id => id !== l.id));
+                                                }}
+                                            />
+                                            <Label htmlFor={`ladder-${l.id}`} className="text-sm font-normal cursor-pointer leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">
+                                                {l.name} {l.side !== 'none' && `(${l.side})`}
+                                            </Label>
+                                        </div>
+                                    ))}
+                                </div>
                             </div>
 
                             <div className="space-y-2">
@@ -1188,33 +1302,42 @@ export default function UserManagement() {
 
                             <div className="space-y-2">
                                 <Label>Graduation Status</Label>
-                                <Select value={filterGraduation} onValueChange={setFilterGraduation}>
-                                    <SelectTrigger>
-                                        <SelectValue placeholder="All Statuses" />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                        <SelectItem value="all">All Statuses</SelectItem>
-                                        <SelectItem value="Not Started">Not Started</SelectItem>
-                                        <SelectItem value="In Progress">In Progress</SelectItem>
-                                        <SelectItem value="Eligible">Eligible</SelectItem>
-                                        <SelectItem value="Graduated">Graduated</SelectItem>
-                                    </SelectContent>
-                                </Select>
+                                <div className="border rounded-md p-3 space-y-2 max-h-40 overflow-y-auto bg-background">
+                                    {['Not Started', 'In Progress', 'Eligible', 'Graduated', 'Empty'].map(status => (
+                                        <div key={status} className="flex items-center space-x-2">
+                                            <Checkbox 
+                                                id={`grad-${status}`} 
+                                                checked={filterGraduations.includes(status)}
+                                                onCheckedChange={(checked) => {
+                                                    setFilterGraduations(prev => checked ? [...prev, status] : prev.filter(s => s !== status));
+                                                }}
+                                            />
+                                            <Label htmlFor={`grad-${status}`} className="text-sm font-normal cursor-pointer leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">
+                                                {status === 'Empty' ? 'Empty (Not Set)' : status}
+                                            </Label>
+                                        </div>
+                                    ))}
+                                </div>
                             </div>
 
                             <div className="space-y-2">
                                 <Label>Training Status</Label>
-                                <Select value={filterTrainingStatus} onValueChange={setFilterTrainingStatus}>
-                                    <SelectTrigger>
-                                        <SelectValue placeholder="All Statuses" />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                        <SelectItem value="all">All Statuses</SelectItem>
-                                        <SelectItem value="Not Started">Not Started</SelectItem>
-                                        <SelectItem value="In Progress">In Progress</SelectItem>
-                                        <SelectItem value="Completed">Completed</SelectItem>
-                                    </SelectContent>
-                                </Select>
+                                <div className="border rounded-md p-3 space-y-2 max-h-40 overflow-y-auto bg-background">
+                                    {['Not Started', 'In Progress', 'Completed'].map(status => (
+                                        <div key={status} className="flex items-center space-x-2">
+                                            <Checkbox 
+                                                id={`train-${status}`} 
+                                                checked={filterTrainingStatuses.includes(status)}
+                                                onCheckedChange={(checked) => {
+                                                    setFilterTrainingStatuses(prev => checked ? [...prev, status] : prev.filter(s => s !== status));
+                                                }}
+                                            />
+                                            <Label htmlFor={`train-${status}`} className="text-sm font-normal cursor-pointer leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">
+                                                {status}
+                                            </Label>
+                                        </div>
+                                    ))}
+                                </div>
                             </div>
 
                             <div className="space-y-2">
@@ -1231,7 +1354,7 @@ export default function UserManagement() {
                                     </SelectContent>
                                 </Select>
                                 <p className="text-[10px] text-muted-foreground">
-                                    {filterLadder === 'all' ? "Relative to user's current ladder." : "Relative to selected ladder filter."}
+                                    {filterLadders.length !== 1 ? "Relative to user's current ladder." : "Relative to selected ladder filter."}
                                 </p>
                             </div>
                         </div>
@@ -1239,11 +1362,11 @@ export default function UserManagement() {
                     <SheetFooter>
                         <Button variant="outline" className="w-full" onClick={() => {
                             setSelectedCampus('all');
-                            setFilterRole('all');
-                            setFilterLadder('all');
+                            setFilterRoles([]);
+                            setFilterLadders([]);
                             setFilterBaptism('all');
-                            setFilterGraduation('all');
-                            setFilterTrainingStatus('all');
+                            setFilterGraduations([]);
+                            setFilterTrainingStatuses([]);
                             setFilterCompletedCount('all');
                         }}>
                             Reset Filters
@@ -1500,7 +1623,10 @@ export default function UserManagement() {
                             <div key={p.courseId} className="flex items-center justify-between p-2 rounded-md bg-muted/30">
                               <div className="flex-1 mr-4">
                                 <p className="text-sm font-medium mb-1 truncate">{p.courseTitle}</p>
-                                <Progress value={p.totalProgress} className="h-1" />
+                                <div className="flex items-center gap-2">
+                                    <Progress value={p.totalProgress} className="h-1" />
+                                    <span className="text-[10px] font-bold">{p.totalProgress}%</span>
+                                </div>
                               </div>
                               <AlertDialog>
                                 <AlertDialogTrigger asChild>
@@ -1535,8 +1661,8 @@ export default function UserManagement() {
                     </h4>
                     {isProgressLoading ? <Skeleton className="h-32 w-full" /> : (
                       <div className="space-y-2">
-                        {viewingUserProgress.filter(p => viewingUserCompletions.has(p.courseId)).length > 0 ? (
-                          viewingUserProgress.filter(p => viewingUserCompletions.has(p.courseId)).map(p => (
+                        {completedCoursesList.length > 0 ? (
+                          completedCoursesList.map(p => (
                             <div key={p.courseId} className="flex items-center gap-2 p-2 rounded-md bg-green-500/5 text-green-600 dark:text-green-400">
                               <CheckCircle2 className="h-4 w-4 shrink-0" />
                               <span className="text-sm truncate">{p.courseTitle}</span>
@@ -1588,10 +1714,51 @@ export default function UserManagement() {
         {sendingEmailToUser && <SendEmailDialog user={sendingEmailToUser} onClose={() => setSendingEmailToUser(null)} />}
       </Dialog>
       <Dialog open={!!datePickerDialog} onOpenChange={(o) => !o && setDatePickerDialog(null)}>
-        <DialogContent className="sm:max-w-md">
+        <DialogContent className="sm:max-md">
             <DialogHeader><DialogTitle>Set {datePickerDialog?.type} Date</DialogTitle><DialogDescription>Specify date for {datePickerDialog?.userName}.</DialogDescription></DialogHeader>
             <div className="py-4 space-y-2"><Label>Select Date</Label><Input type="date" value={selectedDate} onChange={(e) => setSelectedDate(e.target.value)} /></div>
             <DialogFooter className="gap-2"><Button variant="secondary" onClick={() => setDatePickerDialog(null)}>Cancel</Button><Button variant="outline" onClick={() => handleSaveDate(true)}>Skip Date</Button><Button onClick={() => handleSaveDate(false)} disabled={!selectedDate}>Save Date</Button></DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={isExportDialogOpen} onOpenChange={setIsExportDialogOpen}>
+        <DialogContent className="max-w-2xl">
+            <DialogHeader>
+                <DialogTitle>Customize CSV Export</DialogTitle>
+                <DialogDescription>
+                    Select the fields you want to include in the exported file.
+                </DialogDescription>
+            </DialogHeader>
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-4 py-4">
+                {exportFields.map((field) => (
+                    <div key={field.id} className="flex items-center space-x-2">
+                        <Checkbox 
+                            id={`export-${field.id}`} 
+                            checked={selectedExportFields.includes(field.id)}
+                            onCheckedChange={(checked) => {
+                                if (checked) {
+                                    setSelectedExportFields(prev => [...prev, field.id]);
+                                } else {
+                                    setSelectedExportFields(prev => prev.filter(id => id !== field.id));
+                                }
+                            }}
+                        />
+                        <Label htmlFor={`export-${field.id}`} className="text-sm font-normal cursor-pointer leading-none">
+                            {field.label}
+                        </Label>
+                    </div>
+                ))}
+            </div>
+            <DialogFooter className="flex flex-col sm:flex-row justify-between items-center gap-4 border-t pt-4">
+                <div className="flex gap-2 w-full sm:w-auto">
+                    <Button variant="ghost" size="sm" onClick={() => setSelectedExportFields(exportFields.map(f => f.id))}>Select All</Button>
+                    <Button variant="ghost" size="sm" onClick={() => setSelectedExportFields([])}>Clear All</Button>
+                </div>
+                <Button onClick={handleExportCSV} disabled={selectedExportFields.length === 0} className="w-full sm:w-auto">
+                    <Download className="mr-2 h-4 w-4" />
+                    Export {filteredUsers.length} Users
+                </Button>
+            </DialogFooter>
         </DialogContent>
       </Dialog>
     </>
