@@ -1,0 +1,32 @@
+rules_version = '2';
+service firebase.storage {
+  // This rule matches ALL buckets in your project
+  match /b/{bucket}/o {
+
+    // Rule for video UPLOADS
+    // Allows any authenticated user to write to the videos folder.
+    match /contents/videos/{videoId} {
+      allow write: if request.auth != null
+                   && request.resource.size < 2 * 1024 * 1024 * 1024 // Optional: Max 2GB
+                   && request.resource.contentType.matches('video/.*');
+
+      // Allows a user to delete a video if their UID is stored in the file's metadata.
+      allow delete: if request.auth != null && resource.metadata.uploaderId == request.auth.uid;
+    }
+
+    // Rule for thumbnail UPLOADS
+    // Allows any authenticated user to write image files for thumbnails.
+    match /contents/thumbnails/{thumbnailId} {
+       allow write: if request.auth != null
+                    && request.resource.size < 5 * 1024 * 1024 // Optional: Max 5MB
+                    && request.resource.contentType.matches('image/.*');
+    }
+
+    // Rule for transcoded video PLAYBACK
+    // This makes the final, processed videos public for anyone to stream.
+    match /transcoded-videos/{allPaths=**} {
+      allow read: if true;
+    }
+
+  }
+}

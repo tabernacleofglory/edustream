@@ -1,0 +1,338 @@
+.next/types/validator.ts(693,31): error TS2344: Type 'typeof import("/Users/ing.sylvensonrichard/Documents/GitHub/edustream/src/app/api/live-events/[eventId]/route")' does not satisfy the constraint 'RouteHandlerConfig<"/api/live-events/[eventId]">'.
+  Types of property 'PUT' are incompatible.
+    Type '(req: NextRequest, { params }: RouteParams) => Promise<NextResponse<{ error: string; }> | NextResponse<{ id: string; }>>' is not assignable to type '(request: NextRequest, context: { params: Promise<{ eventId: string; }>; }) => void | Response | Promise<void | Response>'.
+      Types of parameters '__1' and 'context' are incompatible.
+        Type '{ params: Promise<{ eventId: string; }>; }' is not assignable to type 'RouteParams'.
+          Types of property 'params' are incompatible.
+            Property 'eventId' is missing in type 'Promise<{ eventId: string; }>' but required in type '{ eventId: string; }'.
+BKP/app/admin/analytics/page.tsx(1138,58): error TS2345: Argument of type '(prev: DateRange | undefined) => { to: Date | undefined; from?: Date | undefined; }' is not assignable to parameter of type 'SetStateAction<DateRange | undefined>'.
+  Type '(prev: DateRange | undefined) => { to: Date | undefined; from?: Date | undefined; }' is not assignable to type '(prevState: DateRange | undefined) => DateRange | undefined'.
+    Type '{ to: Date | undefined; from?: Date | undefined; }' is not assignable to type 'DateRange'.
+      Property 'from' is optional in type '{ to: Date | undefined; from?: Date | undefined; }' but required in type 'DateRange'.
+BKP/app/admin/content/email-sender/page.tsx(381,43): error TS2345: Argument of type 'string | Promise<string>' is not assignable to parameter of type 'string'.
+  Type 'Promise<string>' is not assignable to type 'string'.
+BKP/app/admin/content/email-sender/page.tsx(795,51): error TS2345: Argument of type '(prev: DateRange | undefined) => { to: Date | undefined; from?: Date | undefined; }' is not assignable to parameter of type 'SetStateAction<DateRange | undefined>'.
+  Type '(prev: DateRange | undefined) => { to: Date | undefined; from?: Date | undefined; }' is not assignable to type '(prevState: DateRange | undefined) => DateRange | undefined'.
+    Type '{ to: Date | undefined; from?: Date | undefined; }' is not assignable to type 'DateRange'.
+      Property 'from' is optional in type '{ to: Date | undefined; from?: Date | undefined; }' but required in type 'DateRange'.
+BKP/app/admin/content/quizzes/page.tsx(146,9): error TS2322: Type 'number | null' is not assignable to type 'number | undefined'.
+  Type 'null' is not assignable to type 'number | undefined'.
+BKP/app/admin/content/quizzes/page.tsx(403,76): error TS2339: Property 'correctAnswerIndex' does not exist on type 'Merge<FieldError, FieldErrorsImpl<NonNullable<{ options: string[]; type: "multiple-choice"; id: string; questionText: string; correctAnswerIndex: number; minCharLength: number; } | { options: string[]; type: "multiple-select"; id: string; questionText: string; correctAnswerIndexes: number[]; minCharLength: number; }...'.
+BKP/app/admin/content/quizzes/page.tsx(403,181): error TS2339: Property 'correctAnswerIndex' does not exist on type 'Merge<FieldError, FieldErrorsImpl<NonNullable<{ options: string[]; type: "multiple-choice"; id: string; questionText: string; correctAnswerIndex: number; minCharLength: number; } | { options: string[]; type: "multiple-select"; id: string; questionText: string; correctAnswerIndexes: number[]; minCharLength: number; }...'.
+BKP/app/admin/content/quizzes/page.tsx(404,76): error TS2339: Property 'correctAnswerIndexes' does not exist on type 'Merge<FieldError, FieldErrorsImpl<NonNullable<{ options: string[]; type: "multiple-choice"; id: string; questionText: string; correctAnswerIndex: number; minCharLength: number; } | { options: string[]; type: "multiple-select"; id: string; questionText: string; correctAnswerIndexes: number[]; minCharLength: number; }...'.
+BKP/app/admin/content/quizzes/page.tsx(404,183): error TS2339: Property 'correctAnswerIndexes' does not exist on type 'Merge<FieldError, FieldErrorsImpl<NonNullable<{ options: string[]; type: "multiple-choice"; id: string; questionText: string; correctAnswerIndex: number; minCharLength: number; } | { options: string[]; type: "multiple-select"; id: string; questionText: string; correctAnswerIndexes: number[]; minCharLength: number; }...'.
+BKP/app/admin/courses/enrollment-issues/page.tsx(61,78): error TS2304: Cannot find name 'Enrollment'.
+BKP/app/admin/forms/builder/blank-form/page.tsx(570,93): error TS2561: Object literal may only specify known properties, but '_showDataSource' does not exist in type '{ type: "date" | "email" | "url" | "multiple-choice" | "multiple-select" | "image" | "text" | "phone" | "textarea" | "select" | "password" | "address" | "audio" | "file"; id: string; ... 8 more ...; userProfileField?: string | undefined; }'. Did you mean to write 'dataSource'?
+BKP/app/admin/promotions/page.tsx(231,66): error TS2322: Type 'string | undefined' is not assignable to type 'string'.
+  Type 'undefined' is not assignable to type 'string'.
+BKP/app/admin/reports/courses/page.tsx(235,29): error TS2339: Property 'createdAt' does not exist on type 'User'.
+BKP/app/admin/reports/courses/page.tsx(683,69): error TS2345: Argument of type '(prev: DateRange | undefined) => { to: Date | undefined; from?: Date | undefined; }' is not assignable to parameter of type 'SetStateAction<DateRange | undefined>'.
+  Type '(prev: DateRange | undefined) => { to: Date | undefined; from?: Date | undefined; }' is not assignable to type '(prevState: DateRange | undefined) => DateRange | undefined'.
+    Type '{ to: Date | undefined; from?: Date | undefined; }' is not assignable to type 'DateRange'.
+      Property 'from' is optional in type '{ to: Date | undefined; from?: Date | undefined; }' but required in type 'DateRange'.
+BKP/app/admin/reports/courses/page.tsx(817,56): error TS2345: Argument of type '(prev: DateRange | undefined) => { to: Date | undefined; from?: Date | undefined; }' is not assignable to parameter of type 'SetStateAction<DateRange | undefined>'.
+  Type '(prev: DateRange | undefined) => { to: Date | undefined; from?: Date | undefined; }' is not assignable to type '(prevState: DateRange | undefined) => DateRange | undefined'.
+    Type '{ to: Date | undefined; from?: Date | undefined; }' is not assignable to type 'DateRange'.
+      Property 'from' is optional in type '{ to: Date | undefined; from?: Date | undefined; }' but required in type 'DateRange'.
+BKP/app/admin/reports/quizzes/page.tsx(412,38): error TS2345: Argument of type '(prev: DateRange | undefined) => { to: Date | undefined; from?: Date | undefined; }' is not assignable to parameter of type 'SetStateAction<DateRange | undefined>'.
+  Type '(prev: DateRange | undefined) => { to: Date | undefined; from?: Date | undefined; }' is not assignable to type '(prevState: DateRange | undefined) => DateRange | undefined'.
+    Type '{ to: Date | undefined; from?: Date | undefined; }' is not assignable to type 'DateRange'.
+      Property 'from' is optional in type '{ to: Date | undefined; from?: Date | undefined; }' but required in type 'DateRange'.
+BKP/app/admin/users/completions/page.tsx(62,35): error TS2554: Expected 0 arguments, but got 1.
+BKP/app/admin/users/completions/page.tsx(719,46): error TS2345: Argument of type '(prev: DateRange | undefined) => { to: Date | undefined; from?: Date | undefined; }' is not assignable to parameter of type 'SetStateAction<DateRange | undefined>'.
+  Type '(prev: DateRange | undefined) => { to: Date | undefined; from?: Date | undefined; }' is not assignable to type '(prevState: DateRange | undefined) => DateRange | undefined'.
+    Type '{ to: Date | undefined; from?: Date | undefined; }' is not assignable to type 'DateRange'.
+      Property 'from' is optional in type '{ to: Date | undefined; from?: Date | undefined; }' but required in type 'DateRange'.
+BKP/app/admin/users/hp-requests/page.tsx(241,66): error TS2322: Type 'string | undefined' is not assignable to type 'string'.
+  Type 'undefined' is not assignable to type 'string'.
+BKP/app/api/auth/session/route.ts(6,29): error TS2339: Property 'get' does not exist on type 'Promise<ReadonlyRequestCookies>'.
+BKP/app/api/live-events/[eventId]/route.ts(22,26): error TS2769: No overload matches this call.
+  Overload 1 of 3, '(firestore: Firestore, path: string, ...pathSegments: string[]): DocumentReference<DocumentData, DocumentData>', gave the following error.
+    Argument of type 'FirebaseFirestore.Firestore' is not assignable to parameter of type 'import("/Users/ing.sylvensonrichard/Documents/GitHub/edustream/node_modules/@firebase/firestore/dist/index").Firestore'.
+      Type 'Firestore' is missing the following properties from type 'Firestore': type, app, toJSON
+  Overload 2 of 3, '(reference: CollectionReference<unknown, DocumentData>, path?: string | undefined, ...pathSegments: string[]): DocumentReference<unknown, DocumentData>', gave the following error.
+    Argument of type 'Firestore' is not assignable to parameter of type 'CollectionReference<unknown, DocumentData>'.
+      Type 'Firestore' is missing the following properties from type 'CollectionReference<unknown, DocumentData>': type, id, path, parent, and 3 more.
+  Overload 3 of 3, '(reference: DocumentReference<unknown, DocumentData>, path: string, ...pathSegments: string[]): DocumentReference<DocumentData, DocumentData>', gave the following error.
+    Argument of type 'Firestore' is not assignable to parameter of type 'DocumentReference<unknown, DocumentData>'.
+      Type 'Firestore' is missing the following properties from type 'DocumentReference<unknown, DocumentData>': converter, type, firestore, id, and 4 more.
+BKP/app/api/live-events/[eventId]/route.ts(43,26): error TS2769: No overload matches this call.
+  Overload 1 of 3, '(firestore: Firestore, path: string, ...pathSegments: string[]): DocumentReference<DocumentData, DocumentData>', gave the following error.
+    Argument of type 'FirebaseFirestore.Firestore' is not assignable to parameter of type 'import("/Users/ing.sylvensonrichard/Documents/GitHub/edustream/node_modules/@firebase/firestore/dist/index").Firestore'.
+      Type 'Firestore' is missing the following properties from type 'Firestore': type, app, toJSON
+  Overload 2 of 3, '(reference: CollectionReference<unknown, DocumentData>, path?: string | undefined, ...pathSegments: string[]): DocumentReference<unknown, DocumentData>', gave the following error.
+    Argument of type 'Firestore' is not assignable to parameter of type 'CollectionReference<unknown, DocumentData>'.
+      Type 'Firestore' is missing the following properties from type 'CollectionReference<unknown, DocumentData>': type, id, path, parent, and 3 more.
+  Overload 3 of 3, '(reference: DocumentReference<unknown, DocumentData>, path: string, ...pathSegments: string[]): DocumentReference<DocumentData, DocumentData>', gave the following error.
+    Argument of type 'Firestore' is not assignable to parameter of type 'DocumentReference<unknown, DocumentData>'.
+      Type 'Firestore' is missing the following properties from type 'DocumentReference<unknown, DocumentData>': converter, type, firestore, id, and 4 more.
+BKP/app/api/live-events/route.ts(24,11): error TS2741: Property 'platform' is missing in type '{ id: string; title: any; description: any; status: "upcoming"; startTime: string; }' but required in type 'LiveEvent'.
+BKP/app/external/[formId]/page.tsx(286,9): error TS2353: Object literal may only specify known properties, and 'createdAt' does not exist in type 'Partial<User>'.
+BKP/app/live/page.tsx(284,66): error TS2345: Argument of type '(prev: DateRange | undefined) => { to: Date | undefined; from?: Date | undefined; }' is not assignable to parameter of type 'SetStateAction<DateRange | undefined>'.
+  Type '(prev: DateRange | undefined) => { to: Date | undefined; from?: Date | undefined; }' is not assignable to type '(prevState: DateRange | undefined) => DateRange | undefined'.
+    Type '{ to: Date | undefined; from?: Date | undefined; }' is not assignable to type 'DateRange'.
+      Property 'from' is optional in type '{ to: Date | undefined; from?: Date | undefined; }' but required in type 'DateRange'.
+BKP/app/settings/page.tsx(215,39): error TS2345: Argument of type 'undefined' is not assignable to parameter of type 'string'.
+BKP/app/settings/page.tsx(216,40): error TS2345: Argument of type 'undefined' is not assignable to parameter of type 'string'.
+BKP/app/settings/page.tsx(533,49): error TS2339: Property 'hpAvailabilityDay' does not exist on type 'FieldErrors<{ role: string; campus: string; firstName: string; lastName: string; language: string; hpNumber: string; facilitatorName: string; gender: string; ageRange: string; locationPreference: "Onsite" | "Online"; ... 8 more ...; bio?: string | undefined; } | { ...; }>'.
+  Property 'hpAvailabilityDay' does not exist on type 'Partial<FieldErrorsImpl<{ role: string; campus: string; firstName: string; lastName: string; language: string; hpNumber: string; facilitatorName: string; gender: string; ageRange: string; locationPreference: NonNullable<"Onsite" | "Online">; ... 8 more ...; bio: string; }>> & { ...; }'.
+BKP/app/settings/page.tsx(533,118): error TS2339: Property 'hpAvailabilityDay' does not exist on type 'FieldErrors<{ role: string; campus: string; firstName: string; lastName: string; language: string; hpNumber: string; facilitatorName: string; gender: string; ageRange: string; locationPreference: "Onsite" | "Online"; ... 8 more ...; bio?: string | undefined; } | { ...; }>'.
+  Property 'hpAvailabilityDay' does not exist on type 'Partial<FieldErrorsImpl<{ role: string; campus: string; firstName: string; lastName: string; language: string; hpNumber: string; facilitatorName: string; gender: string; ageRange: string; locationPreference: NonNullable<"Onsite" | "Online">; ... 8 more ...; bio: string; }>> & { ...; }'.
+BKP/app/settings/page.tsx(538,49): error TS2339: Property 'hpAvailabilityTime' does not exist on type 'FieldErrors<{ role: string; campus: string; firstName: string; lastName: string; language: string; hpNumber: string; facilitatorName: string; gender: string; ageRange: string; locationPreference: "Onsite" | "Online"; ... 8 more ...; bio?: string | undefined; } | { ...; }>'.
+  Property 'hpAvailabilityTime' does not exist on type 'Partial<FieldErrorsImpl<{ role: string; campus: string; firstName: string; lastName: string; language: string; hpNumber: string; facilitatorName: string; gender: string; ageRange: string; locationPreference: NonNullable<"Onsite" | "Online">; ... 8 more ...; bio: string; }>> & { ...; }'.
+BKP/app/settings/page.tsx(538,119): error TS2339: Property 'hpAvailabilityTime' does not exist on type 'FieldErrors<{ role: string; campus: string; firstName: string; lastName: string; language: string; hpNumber: string; facilitatorName: string; gender: string; ageRange: string; locationPreference: "Onsite" | "Online"; ... 8 more ...; bio?: string | undefined; } | { ...; }>'.
+  Property 'hpAvailabilityTime' does not exist on type 'Partial<FieldErrorsImpl<{ role: string; campus: string; firstName: string; lastName: string; language: string; hpNumber: string; facilitatorName: string; gender: string; ageRange: string; locationPreference: NonNullable<"Onsite" | "Online">; ... 8 more ...; bio: string; }>> & { ...; }'.
+BKP/components/add-course-form.tsx(1070,49): error TS2322: Type 'FieldArrayWithId<{ status: "published" | "draft"; title: string; description: string; Category: string[]; videos: { title: string; id: string; type?: string | undefined; url?: string | undefined; Thumbnail?: string | undefined; }[]; ... 14 more ...; contentItems?: { ...; }[] | undefined; }, "videos", "id">[]' is not assignable to type 'Video[]'.
+  Type 'FieldArrayWithId<{ status: "published" | "draft"; title: string; description: string; Category: string[]; videos: { title: string; id: string; type?: string | undefined; url?: string | undefined; Thumbnail?: string | undefined; }[]; ... 14 more ...; contentItems?: { ...; }[] | undefined; }, "videos", "id">' is missing the following properties from type 'Video': duration, path, thumbnailPath, createdAt
+BKP/components/add-user-form.tsx(134,9): error TS2304: Cannot find name 'setCharges'.
+BKP/components/add-user-form.tsx(238,13): error TS2304: Cannot find name 'setCharges'.
+BKP/components/add-user-form.tsx(238,24): error TS7006: Parameter 'prev' implicitly has an 'any' type.
+BKP/components/add-user-form.tsx(250,34): error TS2304: Cannot find name 'charges'.
+BKP/components/add-user-form.tsx(250,49): error TS7006: Parameter 'item' implicitly has an 'any' type.
+BKP/components/add-user-form.tsx(251,13): error TS2304: Cannot find name 'setCharges'.
+BKP/components/add-user-form.tsx(252,37): error TS2304: Cannot find name 'charges'.
+BKP/components/add-user-form.tsx(252,50): error TS7006: Parameter 'item' implicitly has an 'any' type.
+BKP/components/add-user-form.tsx(586,30): error TS2304: Cannot find name 'charges'.
+BKP/components/add-user-form.tsx(586,43): error TS7006: Parameter 'c' implicitly has an 'any' type.
+BKP/components/add-user-form.tsx(606,34): error TS2304: Cannot find name 'charges'.
+BKP/components/add-user-form.tsx(606,46): error TS7006: Parameter 'c' implicitly has an 'any' type.
+BKP/components/ai-assistant.tsx(10,8): error TS2724: '"@/ai/flows/global-search"' has no exported member named 'GlobalSearchInput'. Did you mean 'globalSearch'?
+BKP/components/ai-assistant.tsx(29,30): error TS2305: Module '"@/lib/types"' has no exported member 'Documentation'.
+BKP/components/ai-assistant.tsx(118,41): error TS2345: Argument of type '{ query: string; }' is not assignable to parameter of type '{ query: string; courses: { title: string; description: string; id: string; Category: string[]; tags: string[]; }[]; videos: { title: string; id: string; courseId: string; courseTitle: string; }[]; documentation: { ...; }[]; users: { ...; }[]; }'.
+  Type '{ query: string; }' is missing the following properties from type '{ query: string; courses: { title: string; description: string; id: string; Category: string[]; tags: string[]; }[]; videos: { title: string; id: string; courseId: string; courseTitle: string; }[]; documentation: { ...; }[]; users: { ...; }[]; }': courses, videos, documentation, users
+BKP/components/analytics-dashboard.tsx(234,17): error TS2322: Type 'string | null | undefined' is not assignable to type 'string | undefined'.
+  Type 'null' is not assignable to type 'string | undefined'.
+BKP/components/analytics-dashboard.tsx(235,17): error TS2322: Type 'string | null | undefined' is not assignable to type 'string | undefined'.
+  Type 'null' is not assignable to type 'string | undefined'.
+BKP/components/certificate.tsx(138,18): error TS2345: Argument of type '"cert_show_completionDate"' is not assignable to parameter of type 'keyof SiteSettings'.
+BKP/components/certificate.tsx(142,37): error TS2345: Argument of type '"cert_completionDate_size"' is not assignable to parameter of type 'keyof SiteSettings'.
+BKP/components/certificate.tsx(143,38): error TS2345: Argument of type '"cert_spacing_userName_completionDate"' is not assignable to parameter of type 'keyof SiteSettings'.
+BKP/components/certificate.tsx(147,23): error TS2345: Argument of type '"cert_completionDate_prefix"' is not assignable to parameter of type 'keyof SiteSettings'.
+BKP/components/course-credit-manager.tsx(460,29): error TS18048: 'log.creditedVideos' is possibly 'undefined'.
+BKP/components/course-credit-manager.tsx(644,50): error TS2345: Argument of type '(prev: DateRange | undefined) => { to: Date | undefined; from?: Date | undefined; }' is not assignable to parameter of type 'SetStateAction<DateRange | undefined>'.
+  Type '(prev: DateRange | undefined) => { to: Date | undefined; from?: Date | undefined; }' is not assignable to type '(prevState: DateRange | undefined) => DateRange | undefined'.
+    Type '{ to: Date | undefined; from?: Date | undefined; }' is not assignable to type 'DateRange'.
+      Property 'from' is optional in type '{ to: Date | undefined; from?: Date | undefined; }' but required in type 'DateRange'.
+BKP/components/global-search.tsx(213,31): error TS2783: 'id' is specified more than once, so this usage will be overwritten.
+BKP/components/global-search.tsx(261,31): error TS2783: 'id' is specified more than once, so this usage will be overwritten.
+BKP/components/global-search.tsx(269,33): error TS2783: 'id' is specified more than once, so this usage will be overwritten.
+BKP/components/homepage-client.tsx(19,29): error TS2307: Cannot find module '@/hooks/use-mobile' or its corresponding type declarations.
+BKP/components/homepage-client.tsx(102,59): error TS2322: Type '{ key: string; course: CourseWithStatus; onUnenroll: () => void; }' is not assignable to type 'IntrinsicAttributes & CourseCardProps'.
+  Property 'onUnenroll' does not exist on type 'IntrinsicAttributes & CourseCardProps'.
+BKP/components/homepage-client.tsx(111,49): error TS2322: Type '{ course: CourseWithStatus; onUnenroll: () => void; }' is not assignable to type 'IntrinsicAttributes & CourseCardProps'.
+  Property 'onUnenroll' does not exist on type 'IntrinsicAttributes & CourseCardProps'.
+BKP/components/public-blank-form.tsx(186,42): error TS2339: Property 'min' does not exist on type 'ZodTypeAny'.
+BKP/components/public-blank-form.tsx(198,30): error TS2339: Property 'parent' does not exist on type 'RefinementCtx'.
+BKP/components/quiz-form.tsx(229,73): error TS2339: Property 'correctAnswerIndex' does not exist on type 'Merge<FieldError, FieldErrorsImpl<NonNullable<{ options: string[]; type: "multiple-choice"; id: string; questionText: string; correctAnswerIndex: number; } | { options: string[]; type: "multiple-select"; id: string; questionText: string; correctAnswerIndexes: number[]; } | { ...; }>>>'.
+BKP/components/quiz-form.tsx(229,178): error TS2339: Property 'correctAnswerIndex' does not exist on type 'Merge<FieldError, FieldErrorsImpl<NonNullable<{ options: string[]; type: "multiple-choice"; id: string; questionText: string; correctAnswerIndex: number; } | { options: string[]; type: "multiple-select"; id: string; questionText: string; correctAnswerIndexes: number[]; } | { ...; }>>>'.
+BKP/components/quiz-form.tsx(230,73): error TS2339: Property 'correctAnswerIndexes' does not exist on type 'Merge<FieldError, FieldErrorsImpl<NonNullable<{ options: string[]; type: "multiple-choice"; id: string; questionText: string; correctAnswerIndex: number; } | { options: string[]; type: "multiple-select"; id: string; questionText: string; correctAnswerIndexes: number[]; } | { ...; }>>>'.
+BKP/components/quiz-form.tsx(230,180): error TS2339: Property 'correctAnswerIndexes' does not exist on type 'Merge<FieldError, FieldErrorsImpl<NonNullable<{ options: string[]; type: "multiple-choice"; id: string; questionText: string; correctAnswerIndex: number; } | { options: string[]; type: "multiple-select"; id: string; questionText: string; correctAnswerIndexes: number[]; } | { ...; }>>>'.
+BKP/components/quiz-library.tsx(97,83): error TS2304: Cannot find name 'e'.
+BKP/components/teaching-card.tsx(11,23): error TS2307: Cannot find module 'cypress/types/lodash' or its corresponding type declarations.
+BKP/components/ui/sidebar.tsx(44,45): error TS2322: Type '(open: boolean) => void' is not assignable to type 'Dispatch<SetStateAction<boolean>>'.
+  Types of parameters 'open' and 'value' are incompatible.
+    Type 'SetStateAction<boolean>' is not assignable to type 'boolean'.
+      Type '(prevState: boolean) => boolean' is not assignable to type 'boolean'.
+BKP/components/unrestricted-video-player.tsx(108,48): error TS18048: 'course.attendanceLinks.length' is possibly 'undefined'.
+BKP/components/video-player.tsx(299,47): error TS18048: 'course.attendanceLinks.length' is possibly 'undefined'.
+BKP/components/video/comment-section.tsx(85,13): error TS2322: Type 'string | null' is not assignable to type 'string | undefined'.
+  Type 'null' is not assignable to type 'string | undefined'.
+BKP/functions/src/index.ts(2,28): error TS2307: Cannot find module 'firebase-functions' or its corresponding type declarations.
+BKP/functions/src/index.ts(4,25): error TS2307: Cannot find module '@sendgrid/mail' or its corresponding type declarations.
+BKP/functions/src/index.ts(283,49): error TS2339: Property 'name' does not exist on type '{ id: string; }'.
+BKP/functions/src/index.ts(286,50): error TS2339: Property 'name' does not exist on type '{ id: string; }'.
+BKP/functions/src/index.ts(302,102): error TS2339: Property 'name' does not exist on type '{ id: string; }'.
+BKP/functions/src/index.ts(330,54): error TS2339: Property 'name' does not exist on type '{ id: string; }'.
+BKP/functions/src/index.ts(333,38): error TS2339: Property 'name' does not exist on type '{ id: string; }'.
+BKP/functions/src/index.ts(336,45): error TS2339: Property 'name' does not exist on type '{ id: string; }'.
+BKP/functions/src/transcoding.ts(1,28): error TS2307: Cannot find module 'firebase-functions' or its corresponding type declarations.
+BKP/functions/src/transcoding.ts(3,41): error TS2307: Cannot find module '@google-cloud/video-transcoder' or its corresponding type declarations.
+BKP/functions/src/transcoding.ts(16,147): error TS7006: Parameter 'object' implicitly has an 'any' type.
+BKP/functions/src/transcoding.ts(96,109): error TS7006: Parameter 'message' implicitly has an 'any' type.
+BKP/functions/src/transcoding.ts(128,97): error TS7006: Parameter 'change' implicitly has an 'any' type.
+BKP/functions/src/transcoding.ts(128,105): error TS7006: Parameter 'context' implicitly has an 'any' type.
+BKP/functions/src/transcoding.ts(207,98): error TS7006: Parameter 'snap' implicitly has an 'any' type.
+BKP/hooks/use-auth.tsx(8,15): error TS2305: Module '"@/lib/types"' has no exported member 'AppUser'.
+BKP/hooks/use-auth.tsx(202,52): error TS2722: Cannot invoke an object which is possibly 'undefined'.
+BKP/lib/actions.ts(3,29): error TS2307: Cannot find module 'nodemailer' or its corresponding type declarations.
+BKP/lib/analytics.ts(2,10): error TS2305: Module '"@/lib/firebase"' has no exported member 'analytics'.
+BKP/lib/auth/server-actions.ts(6,13): error TS2339: Property 'delete' does not exist on type 'Promise<ReadonlyRequestCookies>'.
+BKP/lib/mux.ts(1,17): error TS2307: Cannot find module '@mux/mux-node' or its corresponding type declarations.
+BKP/lib/promotion.ts(10,9): error TS2739: Type '{ id: string; name: string; }' is missing the following properties from type 'Ladder': order, side, category
+BKP/lib/user-actions.ts(104,5): error TS2304: Cannot find name 'addDoc'.
+BKP/lib/user-actions.ts(104,49): error TS7006: Parameter 'err' implicitly has an 'any' type.
+src/app/admin/analytics/page.tsx(1152,58): error TS2345: Argument of type '(prev: DateRange | undefined) => { to: Date | undefined; from?: Date | undefined; }' is not assignable to parameter of type 'SetStateAction<DateRange | undefined>'.
+  Type '(prev: DateRange | undefined) => { to: Date | undefined; from?: Date | undefined; }' is not assignable to type '(prevState: DateRange | undefined) => DateRange | undefined'.
+    Type '{ to: Date | undefined; from?: Date | undefined; }' is not assignable to type 'DateRange'.
+      Property 'from' is optional in type '{ to: Date | undefined; from?: Date | undefined; }' but required in type 'DateRange'.
+src/app/admin/content/email-sender/page.tsx(381,43): error TS2345: Argument of type 'string | Promise<string>' is not assignable to parameter of type 'string'.
+  Type 'Promise<string>' is not assignable to type 'string'.
+src/app/admin/content/email-sender/page.tsx(795,51): error TS2345: Argument of type '(prev: DateRange | undefined) => { to: Date | undefined; from?: Date | undefined; }' is not assignable to parameter of type 'SetStateAction<DateRange | undefined>'.
+  Type '(prev: DateRange | undefined) => { to: Date | undefined; from?: Date | undefined; }' is not assignable to type '(prevState: DateRange | undefined) => DateRange | undefined'.
+    Type '{ to: Date | undefined; from?: Date | undefined; }' is not assignable to type 'DateRange'.
+      Property 'from' is optional in type '{ to: Date | undefined; from?: Date | undefined; }' but required in type 'DateRange'.
+src/app/admin/content/quizzes/page.tsx(146,9): error TS2322: Type 'number | null' is not assignable to type 'number | undefined'.
+  Type 'null' is not assignable to type 'number | undefined'.
+src/app/admin/content/quizzes/page.tsx(403,76): error TS2339: Property 'correctAnswerIndex' does not exist on type 'Merge<FieldError, FieldErrorsImpl<NonNullable<{ options: string[]; type: "multiple-choice"; id: string; questionText: string; correctAnswerIndex: number; minCharLength: number; } | { options: string[]; type: "multiple-select"; id: string; questionText: string; correctAnswerIndexes: number[]; minCharLength: number; }...'.
+src/app/admin/content/quizzes/page.tsx(403,181): error TS2339: Property 'correctAnswerIndex' does not exist on type 'Merge<FieldError, FieldErrorsImpl<NonNullable<{ options: string[]; type: "multiple-choice"; id: string; questionText: string; correctAnswerIndex: number; minCharLength: number; } | { options: string[]; type: "multiple-select"; id: string; questionText: string; correctAnswerIndexes: number[]; minCharLength: number; }...'.
+src/app/admin/content/quizzes/page.tsx(404,76): error TS2339: Property 'correctAnswerIndexes' does not exist on type 'Merge<FieldError, FieldErrorsImpl<NonNullable<{ options: string[]; type: "multiple-choice"; id: string; questionText: string; correctAnswerIndex: number; minCharLength: number; } | { options: string[]; type: "multiple-select"; id: string; questionText: string; correctAnswerIndexes: number[]; minCharLength: number; }...'.
+src/app/admin/content/quizzes/page.tsx(404,183): error TS2339: Property 'correctAnswerIndexes' does not exist on type 'Merge<FieldError, FieldErrorsImpl<NonNullable<{ options: string[]; type: "multiple-choice"; id: string; questionText: string; correctAnswerIndex: number; minCharLength: number; } | { options: string[]; type: "multiple-select"; id: string; questionText: string; correctAnswerIndexes: number[]; minCharLength: number; }...'.
+src/app/admin/courses/enrollment-issues/page.tsx(61,78): error TS2304: Cannot find name 'Enrollment'.
+src/app/admin/courses/enrollments/page.tsx(451,11): error TS7034: Variable 'videos' implicitly has type 'any[]' in some locations where its type cannot be determined.
+src/app/admin/courses/enrollments/page.tsx(465,11): error TS7034: Variable 'quizzes' implicitly has type 'any[]' in some locations where its type cannot be determined.
+src/app/admin/courses/enrollments/page.tsx(490,23): error TS7005: Variable 'videos' implicitly has an 'any[]' type.
+src/app/admin/courses/enrollments/page.tsx(490,31): error TS7005: Variable 'quizzes' implicitly has an 'any[]' type.
+src/app/admin/courses/enrollments/page.tsx(697,57): error TS2345: Argument of type '(prev: DateRange | undefined) => { to: Date | undefined; from?: Date | undefined; }' is not assignable to parameter of type 'SetStateAction<DateRange | undefined>'.
+  Type '(prev: DateRange | undefined) => { to: Date | undefined; from?: Date | undefined; }' is not assignable to type '(prevState: DateRange | undefined) => DateRange | undefined'.
+    Type '{ to: Date | undefined; from?: Date | undefined; }' is not assignable to type 'DateRange'.
+      Property 'from' is optional in type '{ to: Date | undefined; from?: Date | undefined; }' but required in type 'DateRange'.
+src/app/admin/courses/enrollments/page.tsx(713,58): error TS2345: Argument of type '(prev: DateRange | undefined) => { to: Date | undefined; from?: Date | undefined; }' is not assignable to parameter of type 'SetStateAction<DateRange | undefined>'.
+  Type '(prev: DateRange | undefined) => { to: Date | undefined; from?: Date | undefined; }' is not assignable to type '(prevState: DateRange | undefined) => DateRange | undefined'.
+    Type '{ to: Date | undefined; from?: Date | undefined; }' is not assignable to type 'DateRange'.
+      Property 'from' is optional in type '{ to: Date | undefined; from?: Date | undefined; }' but required in type 'DateRange'.
+src/app/admin/forms/builder/blank-form/page.tsx(599,93): error TS2561: Object literal may only specify known properties, but '_showDataSource' does not exist in type '{ type: "date" | "email" | "url" | "multiple-choice" | "multiple-select" | "image" | "text" | "phone" | "textarea" | "select" | "password" | "address" | "audio" | "file"; id: string; ... 8 more ...; userProfileField?: string | undefined; }'. Did you mean to write 'dataSource'?
+src/app/admin/inventory/page.tsx(25,55): error TS2305: Module '"@/lib/types"' has no exported member 'Campus'.
+src/app/admin/inventory/page.tsx(794,51): error TS2322: Type 'string | undefined' is not assignable to type 'string'.
+  Type 'undefined' is not assignable to type 'string'.
+src/app/admin/inventory/page.tsx(866,50): error TS2345: Argument of type '(prev: DateRange | undefined) => { to: Date | undefined; from?: Date | undefined; }' is not assignable to parameter of type 'SetStateAction<DateRange | undefined>'.
+  Type '(prev: DateRange | undefined) => { to: Date | undefined; from?: Date | undefined; }' is not assignable to type '(prevState: DateRange | undefined) => DateRange | undefined'.
+    Type '{ to: Date | undefined; from?: Date | undefined; }' is not assignable to type 'DateRange'.
+      Property 'from' is optional in type '{ to: Date | undefined; from?: Date | undefined; }' but required in type 'DateRange'.
+src/app/admin/promotions/page.tsx(231,66): error TS2322: Type 'string | undefined' is not assignable to type 'string'.
+  Type 'undefined' is not assignable to type 'string'.
+src/app/admin/reports/courses/page.tsx(235,29): error TS2339: Property 'createdAt' does not exist on type 'User'.
+src/app/admin/reports/courses/page.tsx(683,69): error TS2345: Argument of type '(prev: DateRange | undefined) => { to: Date | undefined; from?: Date | undefined; }' is not assignable to parameter of type 'SetStateAction<DateRange | undefined>'.
+  Type '(prev: DateRange | undefined) => { to: Date | undefined; from?: Date | undefined; }' is not assignable to type '(prevState: DateRange | undefined) => DateRange | undefined'.
+    Type '{ to: Date | undefined; from?: Date | undefined; }' is not assignable to type 'DateRange'.
+      Property 'from' is optional in type '{ to: Date | undefined; from?: Date | undefined; }' but required in type 'DateRange'.
+src/app/admin/reports/courses/page.tsx(817,56): error TS2345: Argument of type '(prev: DateRange | undefined) => { to: Date | undefined; from?: Date | undefined; }' is not assignable to parameter of type 'SetStateAction<DateRange | undefined>'.
+  Type '(prev: DateRange | undefined) => { to: Date | undefined; from?: Date | undefined; }' is not assignable to type '(prevState: DateRange | undefined) => DateRange | undefined'.
+    Type '{ to: Date | undefined; from?: Date | undefined; }' is not assignable to type 'DateRange'.
+      Property 'from' is optional in type '{ to: Date | undefined; from?: Date | undefined; }' but required in type 'DateRange'.
+src/app/admin/reports/quizzes/page.tsx(412,38): error TS2345: Argument of type '(prev: DateRange | undefined) => { to: Date | undefined; from?: Date | undefined; }' is not assignable to parameter of type 'SetStateAction<DateRange | undefined>'.
+  Type '(prev: DateRange | undefined) => { to: Date | undefined; from?: Date | undefined; }' is not assignable to type '(prevState: DateRange | undefined) => DateRange | undefined'.
+    Type '{ to: Date | undefined; from?: Date | undefined; }' is not assignable to type 'DateRange'.
+      Property 'from' is optional in type '{ to: Date | undefined; from?: Date | undefined; }' but required in type 'DateRange'.
+src/app/admin/users/completions/page.tsx(62,35): error TS2554: Expected 0 arguments, but got 1.
+src/app/admin/users/completions/page.tsx(719,46): error TS2345: Argument of type '(prev: DateRange | undefined) => { to: Date | undefined; from?: Date | undefined; }' is not assignable to parameter of type 'SetStateAction<DateRange | undefined>'.
+  Type '(prev: DateRange | undefined) => { to: Date | undefined; from?: Date | undefined; }' is not assignable to type '(prevState: DateRange | undefined) => DateRange | undefined'.
+    Type '{ to: Date | undefined; from?: Date | undefined; }' is not assignable to type 'DateRange'.
+      Property 'from' is optional in type '{ to: Date | undefined; from?: Date | undefined; }' but required in type 'DateRange'.
+src/app/admin/users/hp-requests/page.tsx(241,66): error TS2322: Type 'string | undefined' is not assignable to type 'string'.
+  Type 'undefined' is not assignable to type 'string'.
+src/app/api/auth/session/route.ts(6,29): error TS2339: Property 'get' does not exist on type 'Promise<ReadonlyRequestCookies>'.
+src/app/api/live-events/[eventId]/route.ts(22,26): error TS2769: No overload matches this call.
+  Overload 1 of 3, '(firestore: Firestore, path: string, ...pathSegments: string[]): DocumentReference<DocumentData, DocumentData>', gave the following error.
+    Argument of type 'FirebaseFirestore.Firestore' is not assignable to parameter of type 'import("/Users/ing.sylvensonrichard/Documents/GitHub/edustream/node_modules/@firebase/firestore/dist/index").Firestore'.
+      Type 'Firestore' is missing the following properties from type 'Firestore': type, app, toJSON
+  Overload 2 of 3, '(reference: CollectionReference<unknown, DocumentData>, path?: string | undefined, ...pathSegments: string[]): DocumentReference<unknown, DocumentData>', gave the following error.
+    Argument of type 'Firestore' is not assignable to parameter of type 'CollectionReference<unknown, DocumentData>'.
+      Type 'Firestore' is missing the following properties from type 'CollectionReference<unknown, DocumentData>': type, id, path, parent, and 3 more.
+  Overload 3 of 3, '(reference: DocumentReference<unknown, DocumentData>, path: string, ...pathSegments: string[]): DocumentReference<DocumentData, DocumentData>', gave the following error.
+    Argument of type 'Firestore' is not assignable to parameter of type 'DocumentReference<unknown, DocumentData>'.
+      Type 'Firestore' is missing the following properties from type 'DocumentReference<unknown, DocumentData>': converter, type, firestore, id, and 4 more.
+src/app/api/live-events/[eventId]/route.ts(43,26): error TS2769: No overload matches this call.
+  Overload 1 of 3, '(firestore: Firestore, path: string, ...pathSegments: string[]): DocumentReference<DocumentData, DocumentData>', gave the following error.
+    Argument of type 'FirebaseFirestore.Firestore' is not assignable to parameter of type 'import("/Users/ing.sylvensonrichard/Documents/GitHub/edustream/node_modules/@firebase/firestore/dist/index").Firestore'.
+      Type 'Firestore' is missing the following properties from type 'Firestore': type, app, toJSON
+  Overload 2 of 3, '(reference: CollectionReference<unknown, DocumentData>, path?: string | undefined, ...pathSegments: string[]): DocumentReference<unknown, DocumentData>', gave the following error.
+    Argument of type 'Firestore' is not assignable to parameter of type 'CollectionReference<unknown, DocumentData>'.
+      Type 'Firestore' is missing the following properties from type 'CollectionReference<unknown, DocumentData>': type, id, path, parent, and 3 more.
+  Overload 3 of 3, '(reference: DocumentReference<unknown, DocumentData>, path: string, ...pathSegments: string[]): DocumentReference<DocumentData, DocumentData>', gave the following error.
+    Argument of type 'Firestore' is not assignable to parameter of type 'DocumentReference<unknown, DocumentData>'.
+      Type 'Firestore' is missing the following properties from type 'DocumentReference<unknown, DocumentData>': converter, type, firestore, id, and 4 more.
+src/app/api/live-events/route.ts(24,11): error TS2741: Property 'platform' is missing in type '{ id: string; title: any; description: any; status: "upcoming"; startTime: string; }' but required in type 'LiveEvent'.
+src/app/external/[formId]/page.tsx(286,9): error TS2353: Object literal may only specify known properties, and 'createdAt' does not exist in type 'Partial<User>'.
+src/app/live/page.tsx(284,66): error TS2345: Argument of type '(prev: DateRange | undefined) => { to: Date | undefined; from?: Date | undefined; }' is not assignable to parameter of type 'SetStateAction<DateRange | undefined>'.
+  Type '(prev: DateRange | undefined) => { to: Date | undefined; from?: Date | undefined; }' is not assignable to type '(prevState: DateRange | undefined) => DateRange | undefined'.
+    Type '{ to: Date | undefined; from?: Date | undefined; }' is not assignable to type 'DateRange'.
+      Property 'from' is optional in type '{ to: Date | undefined; from?: Date | undefined; }' but required in type 'DateRange'.
+src/app/settings/page.tsx(215,39): error TS2345: Argument of type 'undefined' is not assignable to parameter of type 'string'.
+src/app/settings/page.tsx(216,40): error TS2345: Argument of type 'undefined' is not assignable to parameter of type 'string'.
+src/app/settings/page.tsx(533,49): error TS2339: Property 'hpAvailabilityDay' does not exist on type 'FieldErrors<{ role: string; campus: string; firstName: string; lastName: string; language: string; hpNumber: string; facilitatorName: string; gender: string; ageRange: string; locationPreference: "Onsite" | "Online"; ... 8 more ...; bio?: string | undefined; } | { ...; }>'.
+  Property 'hpAvailabilityDay' does not exist on type 'Partial<FieldErrorsImpl<{ role: string; campus: string; firstName: string; lastName: string; language: string; hpNumber: string; facilitatorName: string; gender: string; ageRange: string; locationPreference: NonNullable<"Onsite" | "Online">; ... 8 more ...; bio: string; }>> & { ...; }'.
+src/app/settings/page.tsx(533,118): error TS2339: Property 'hpAvailabilityDay' does not exist on type 'FieldErrors<{ role: string; campus: string; firstName: string; lastName: string; language: string; hpNumber: string; facilitatorName: string; gender: string; ageRange: string; locationPreference: "Onsite" | "Online"; ... 8 more ...; bio?: string | undefined; } | { ...; }>'.
+  Property 'hpAvailabilityDay' does not exist on type 'Partial<FieldErrorsImpl<{ role: string; campus: string; firstName: string; lastName: string; language: string; hpNumber: string; facilitatorName: string; gender: string; ageRange: string; locationPreference: NonNullable<"Onsite" | "Online">; ... 8 more ...; bio: string; }>> & { ...; }'.
+src/app/settings/page.tsx(538,49): error TS2339: Property 'hpAvailabilityTime' does not exist on type 'FieldErrors<{ role: string; campus: string; firstName: string; lastName: string; language: string; hpNumber: string; facilitatorName: string; gender: string; ageRange: string; locationPreference: "Onsite" | "Online"; ... 8 more ...; bio?: string | undefined; } | { ...; }>'.
+  Property 'hpAvailabilityTime' does not exist on type 'Partial<FieldErrorsImpl<{ role: string; campus: string; firstName: string; lastName: string; language: string; hpNumber: string; facilitatorName: string; gender: string; ageRange: string; locationPreference: NonNullable<"Onsite" | "Online">; ... 8 more ...; bio: string; }>> & { ...; }'.
+src/app/settings/page.tsx(538,119): error TS2339: Property 'hpAvailabilityTime' does not exist on type 'FieldErrors<{ role: string; campus: string; firstName: string; lastName: string; language: string; hpNumber: string; facilitatorName: string; gender: string; ageRange: string; locationPreference: "Onsite" | "Online"; ... 8 more ...; bio?: string | undefined; } | { ...; }>'.
+  Property 'hpAvailabilityTime' does not exist on type 'Partial<FieldErrorsImpl<{ role: string; campus: string; firstName: string; lastName: string; language: string; hpNumber: string; facilitatorName: string; gender: string; ageRange: string; locationPreference: NonNullable<"Onsite" | "Online">; ... 8 more ...; bio: string; }>> & { ...; }'.
+src/components/add-course-form.tsx(1070,49): error TS2322: Type 'FieldArrayWithId<{ status: "published" | "draft"; title: string; description: string; Category: string[]; videos: { title: string; id: string; type?: string | undefined; url?: string | undefined; Thumbnail?: string | undefined; }[]; ... 14 more ...; contentItems?: { ...; }[] | undefined; }, "videos", "id">[]' is not assignable to type 'Video[]'.
+  Type 'FieldArrayWithId<{ status: "published" | "draft"; title: string; description: string; Category: string[]; videos: { title: string; id: string; type?: string | undefined; url?: string | undefined; Thumbnail?: string | undefined; }[]; ... 14 more ...; contentItems?: { ...; }[] | undefined; }, "videos", "id">' is missing the following properties from type 'Video': duration, path, thumbnailPath, createdAt
+src/components/add-user-form.tsx(134,9): error TS2304: Cannot find name 'setCharges'.
+src/components/add-user-form.tsx(238,13): error TS2304: Cannot find name 'setCharges'.
+src/components/add-user-form.tsx(238,24): error TS7006: Parameter 'prev' implicitly has an 'any' type.
+src/components/add-user-form.tsx(250,34): error TS2304: Cannot find name 'charges'.
+src/components/add-user-form.tsx(250,49): error TS7006: Parameter 'item' implicitly has an 'any' type.
+src/components/add-user-form.tsx(251,13): error TS2304: Cannot find name 'setCharges'.
+src/components/add-user-form.tsx(252,37): error TS2304: Cannot find name 'charges'.
+src/components/add-user-form.tsx(252,50): error TS7006: Parameter 'item' implicitly has an 'any' type.
+src/components/add-user-form.tsx(586,30): error TS2304: Cannot find name 'charges'.
+src/components/add-user-form.tsx(586,43): error TS7006: Parameter 'c' implicitly has an 'any' type.
+src/components/add-user-form.tsx(606,34): error TS2304: Cannot find name 'charges'.
+src/components/add-user-form.tsx(606,46): error TS7006: Parameter 'c' implicitly has an 'any' type.
+src/components/ai-assistant.tsx(10,8): error TS2724: '"@/ai/flows/global-search"' has no exported member named 'GlobalSearchInput'. Did you mean 'globalSearch'?
+src/components/ai-assistant.tsx(29,30): error TS2305: Module '"@/lib/types"' has no exported member 'Documentation'.
+src/components/ai-assistant.tsx(118,41): error TS2345: Argument of type '{ query: string; }' is not assignable to parameter of type '{ query: string; courses: { title: string; description: string; id: string; Category: string[]; tags: string[]; }[]; videos: { title: string; id: string; courseId: string; courseTitle: string; }[]; documentation: { ...; }[]; users: { ...; }[]; }'.
+  Type '{ query: string; }' is missing the following properties from type '{ query: string; courses: { title: string; description: string; id: string; Category: string[]; tags: string[]; }[]; videos: { title: string; id: string; courseId: string; courseTitle: string; }[]; documentation: { ...; }[]; users: { ...; }[]; }': courses, videos, documentation, users
+src/components/analytics-dashboard.tsx(234,17): error TS2322: Type 'string | null | undefined' is not assignable to type 'string | undefined'.
+  Type 'null' is not assignable to type 'string | undefined'.
+src/components/analytics-dashboard.tsx(235,17): error TS2322: Type 'string | null | undefined' is not assignable to type 'string | undefined'.
+  Type 'null' is not assignable to type 'string | undefined'.
+src/components/certificate.tsx(138,18): error TS2345: Argument of type '"cert_show_completionDate"' is not assignable to parameter of type 'keyof SiteSettings'.
+src/components/certificate.tsx(142,37): error TS2345: Argument of type '"cert_completionDate_size"' is not assignable to parameter of type 'keyof SiteSettings'.
+src/components/certificate.tsx(143,38): error TS2345: Argument of type '"cert_spacing_userName_completionDate"' is not assignable to parameter of type 'keyof SiteSettings'.
+src/components/certificate.tsx(147,23): error TS2345: Argument of type '"cert_completionDate_prefix"' is not assignable to parameter of type 'keyof SiteSettings'.
+src/components/course-credit-manager.tsx(460,29): error TS18048: 'log.creditedVideos' is possibly 'undefined'.
+src/components/course-credit-manager.tsx(644,50): error TS2345: Argument of type '(prev: DateRange | undefined) => { to: Date | undefined; from?: Date | undefined; }' is not assignable to parameter of type 'SetStateAction<DateRange | undefined>'.
+  Type '(prev: DateRange | undefined) => { to: Date | undefined; from?: Date | undefined; }' is not assignable to type '(prevState: DateRange | undefined) => DateRange | undefined'.
+    Type '{ to: Date | undefined; from?: Date | undefined; }' is not assignable to type 'DateRange'.
+      Property 'from' is optional in type '{ to: Date | undefined; from?: Date | undefined; }' but required in type 'DateRange'.
+src/components/global-search.tsx(213,31): error TS2783: 'id' is specified more than once, so this usage will be overwritten.
+src/components/global-search.tsx(261,31): error TS2783: 'id' is specified more than once, so this usage will be overwritten.
+src/components/global-search.tsx(269,33): error TS2783: 'id' is specified more than once, so this usage will be overwritten.
+src/components/homepage-client.tsx(19,29): error TS2307: Cannot find module '@/hooks/use-mobile' or its corresponding type declarations.
+src/components/homepage-client.tsx(102,59): error TS2322: Type '{ key: string; course: CourseWithStatus; onUnenroll: () => void; }' is not assignable to type 'IntrinsicAttributes & CourseCardProps'.
+  Property 'onUnenroll' does not exist on type 'IntrinsicAttributes & CourseCardProps'.
+src/components/homepage-client.tsx(111,49): error TS2322: Type '{ course: CourseWithStatus; onUnenroll: () => void; }' is not assignable to type 'IntrinsicAttributes & CourseCardProps'.
+  Property 'onUnenroll' does not exist on type 'IntrinsicAttributes & CourseCardProps'.
+src/components/public-blank-form.tsx(188,42): error TS2339: Property 'min' does not exist on type 'ZodTypeAny'.
+src/components/public-blank-form.tsx(200,30): error TS2339: Property 'parent' does not exist on type 'RefinementCtx'.
+src/components/quiz-form.tsx(229,73): error TS2339: Property 'correctAnswerIndex' does not exist on type 'Merge<FieldError, FieldErrorsImpl<NonNullable<{ options: string[]; type: "multiple-choice"; id: string; questionText: string; correctAnswerIndex: number; } | { options: string[]; type: "multiple-select"; id: string; questionText: string; correctAnswerIndexes: number[]; } | { ...; }>>>'.
+src/components/quiz-form.tsx(229,178): error TS2339: Property 'correctAnswerIndex' does not exist on type 'Merge<FieldError, FieldErrorsImpl<NonNullable<{ options: string[]; type: "multiple-choice"; id: string; questionText: string; correctAnswerIndex: number; } | { options: string[]; type: "multiple-select"; id: string; questionText: string; correctAnswerIndexes: number[]; } | { ...; }>>>'.
+src/components/quiz-form.tsx(230,73): error TS2339: Property 'correctAnswerIndexes' does not exist on type 'Merge<FieldError, FieldErrorsImpl<NonNullable<{ options: string[]; type: "multiple-choice"; id: string; questionText: string; correctAnswerIndex: number; } | { options: string[]; type: "multiple-select"; id: string; questionText: string; correctAnswerIndexes: number[]; } | { ...; }>>>'.
+src/components/quiz-form.tsx(230,180): error TS2339: Property 'correctAnswerIndexes' does not exist on type 'Merge<FieldError, FieldErrorsImpl<NonNullable<{ options: string[]; type: "multiple-choice"; id: string; questionText: string; correctAnswerIndex: number; } | { options: string[]; type: "multiple-select"; id: string; questionText: string; correctAnswerIndexes: number[]; } | { ...; }>>>'.
+src/components/quiz-library.tsx(97,83): error TS2304: Cannot find name 'e'.
+src/components/teaching-card.tsx(11,23): error TS2307: Cannot find module 'cypress/types/lodash' or its corresponding type declarations.
+src/components/ui/sidebar.tsx(44,45): error TS2322: Type '(open: boolean) => void' is not assignable to type 'Dispatch<SetStateAction<boolean>>'.
+  Types of parameters 'open' and 'value' are incompatible.
+    Type 'SetStateAction<boolean>' is not assignable to type 'boolean'.
+      Type '(prevState: boolean) => boolean' is not assignable to type 'boolean'.
+src/components/unrestricted-video-player.tsx(108,48): error TS18048: 'course.attendanceLinks.length' is possibly 'undefined'.
+src/components/video-player.tsx(302,47): error TS18048: 'course.attendanceLinks.length' is possibly 'undefined'.
+src/components/video/comment-section.tsx(85,13): error TS2322: Type 'string | null' is not assignable to type 'string | undefined'.
+  Type 'null' is not assignable to type 'string | undefined'.
+src/functions/src/index.ts(2,28): error TS2307: Cannot find module 'firebase-functions' or its corresponding type declarations.
+src/functions/src/index.ts(4,25): error TS2307: Cannot find module '@sendgrid/mail' or its corresponding type declarations.
+src/functions/src/index.ts(283,49): error TS2339: Property 'name' does not exist on type '{ id: string; }'.
+src/functions/src/index.ts(286,50): error TS2339: Property 'name' does not exist on type '{ id: string; }'.
+src/functions/src/index.ts(302,102): error TS2339: Property 'name' does not exist on type '{ id: string; }'.
+src/functions/src/index.ts(330,54): error TS2339: Property 'name' does not exist on type '{ id: string; }'.
+src/functions/src/index.ts(333,38): error TS2339: Property 'name' does not exist on type '{ id: string; }'.
+src/functions/src/index.ts(336,45): error TS2339: Property 'name' does not exist on type '{ id: string; }'.
+src/functions/src/transcoding.ts(1,28): error TS2307: Cannot find module 'firebase-functions' or its corresponding type declarations.
+src/functions/src/transcoding.ts(3,41): error TS2307: Cannot find module '@google-cloud/video-transcoder' or its corresponding type declarations.
+src/functions/src/transcoding.ts(16,147): error TS7006: Parameter 'object' implicitly has an 'any' type.
+src/functions/src/transcoding.ts(96,109): error TS7006: Parameter 'message' implicitly has an 'any' type.
+src/functions/src/transcoding.ts(128,97): error TS7006: Parameter 'change' implicitly has an 'any' type.
+src/functions/src/transcoding.ts(128,105): error TS7006: Parameter 'context' implicitly has an 'any' type.
+src/functions/src/transcoding.ts(207,98): error TS7006: Parameter 'snap' implicitly has an 'any' type.
+src/hooks/use-auth.tsx(8,15): error TS2305: Module '"@/lib/types"' has no exported member 'AppUser'.
+src/hooks/use-auth.tsx(165,52): error TS2722: Cannot invoke an object which is possibly 'undefined'.
+src/lib/actions.ts(3,29): error TS2307: Cannot find module 'nodemailer' or its corresponding type declarations.
+src/lib/analytics.ts(2,10): error TS2305: Module '"@/lib/firebase"' has no exported member 'analytics'.
+src/lib/auth/server-actions.ts(6,13): error TS2339: Property 'delete' does not exist on type 'Promise<ReadonlyRequestCookies>'.
+src/lib/mux.ts(1,17): error TS2307: Cannot find module '@mux/mux-node' or its corresponding type declarations.
+src/lib/promotion.ts(10,9): error TS2739: Type '{ id: string; name: string; }' is missing the following properties from type 'Ladder': order, side, category
+src/lib/user-actions.ts(104,5): error TS2304: Cannot find name 'addDoc'.
+src/lib/user-actions.ts(104,49): error TS7006: Parameter 'err' implicitly has an 'any' type.

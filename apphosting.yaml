@@ -1,0 +1,6 @@
+# See https://firebase.google.com/docs/hosting/app-hosting/app-hosting-yaml-schema
+runConfig:
+  minInstances: 0
+  maxInstances: 100
+buildConfig:
+  buildCommand: npm run build

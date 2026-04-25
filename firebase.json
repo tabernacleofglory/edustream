@@ -1,0 +1,40 @@
+
+{
+  "hosting": [
+    {
+      "site": "gloryhub",
+      "source": ".",
+      "ignore": [
+        "firebase-debug.log",
+        "firebase-debug.*.log",
+        "firestore.rules"
+      ],
+      "headers": [
+        {
+          "source": "**",
+          "headers": [
+            {
+              "key": "Cache-Control",
+              "value": "no-cache, no-store, must-revalidate"
+            }
+          ]
+        }
+      ],
+      "app": {
+        "backend": "studio"
+      }
+    }
+  ],
+  "functions": {
+    "source": "functions",
+    "runtime": "nodejs20"
+  },
+  "firestore": {
+    "rules": "firestore.rules"
+  },
+  "storage": {
+    "rules": "storage.rules"
+  }
+}
+
+    
