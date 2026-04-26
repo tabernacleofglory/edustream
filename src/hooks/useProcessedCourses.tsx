@@ -69,9 +69,9 @@ export function useProcessedCourses(forAllCoursesPage: boolean = false) {
         collection(db, "courses"),
         where("status", "==", "published")
       );
-      
+
       const coursesSnapshot = await getDocs(coursesQuery);
-      
+
       const coursesList: Course[] = coursesSnapshot.docs.map((doc) => {
         const raw = { id: doc.id, ...doc.data() } as Course;
         const ladderIds = getLadderIds(raw);
@@ -98,7 +98,7 @@ export function useProcessedCourses(forAllCoursesPage: boolean = false) {
         setLoading(false);
         return;
       }
-      
+
       const enrollmentsQuery = query(collection(db, "enrollments"), where("userId", "==", user.uid));
       const progressQuery = query(collection(db, "userVideoProgress"), where("userId", "==", user.uid));
       const quizResultsQuery = query(collection(db, 'userQuizResults'), where('userId', '==', user.uid), where('passed', '==', true));
@@ -119,38 +119,38 @@ export function useProcessedCourses(forAllCoursesPage: boolean = false) {
           return [data.courseId, data];
         })
       );
-      
+
       const progressMap = new Map<string, UserProgressType>(
         progressSnapshot.docs.map((doc) => [
           (doc.data() as UserProgressType).courseId,
           doc.data() as UserProgressType,
         ])
       );
-      
+
       const globalCompletedItems = new Set<string>(
-          globalProgressSnapshot.exists() ? Object.keys(globalProgressSnapshot.data()?.completedItems || {}) : []
+        globalProgressSnapshot.exists() ? Object.keys(globalProgressSnapshot.data()?.completedItems || {}) : []
       );
 
       // Add extra robustness by also checking the actual sub-collections in case global log is out of sync
       quizResultsSnapshot.docs.forEach(doc => {
-          globalCompletedItems.add(doc.data().quizId);
+        globalCompletedItems.add(doc.data().quizId);
       });
       formSubmissionsSnapshot.docs.forEach(doc => {
-          globalCompletedItems.add(doc.data().formId);
+        globalCompletedItems.add(doc.data().formId);
       });
       progressSnapshot.docs.forEach(doc => {
-          doc.data().videoProgress?.forEach((vp: any) => { if (vp.completed) globalCompletedItems.add(vp.videoId); });
+        doc.data().videoProgress?.forEach((vp: any) => { if (vp.completed) globalCompletedItems.add(vp.videoId); });
       });
 
       const completedCourseIds = new Set<string>();
 
       for (const course of coursesInLanguage) {
         if (!course.id) continue;
-        
+
         // Primary Check: Course is explicitly marked as complete in the global log
         if (globalCompletedItems.has(course.id)) {
-            completedCourseIds.add(course.id);
-            continue;
+          completedCourseIds.add(course.id);
+          continue;
         }
 
         // Secondary Check: Primitives (Videos, Quizzes, Forms)
@@ -165,11 +165,11 @@ export function useProcessedCourses(forAllCoursesPage: boolean = false) {
         const hasRequirements = requiredVideos.length > 0 || requiredQuizzes.length > 0 || !!requiredForm;
 
         if (allVideosDone && allQuizzesDone && formDone && hasRequirements) {
-            completedCourseIds.add(course.id);
+          completedCourseIds.add(course.id);
         } else {
-            // Also check formal enrollment completion timestamp
-            const enroll = enrollmentData.get(course.id);
-            if (enroll?.completedAt) completedCourseIds.add(course.id);
+          // Also check formal enrollment completion timestamp
+          const enroll = enrollmentData.get(course.id);
+          if (enroll?.completedAt) completedCourseIds.add(course.id);
         }
       }
 
@@ -179,36 +179,36 @@ export function useProcessedCourses(forAllCoursesPage: boolean = false) {
       const coursesWithStatus: CourseWithStatus[] = coursesInLanguage.map((course) => {
         const enrollment = enrollmentData.get(course.id!);
         const progressData = progressMap.get(course.id!);
-        
+
         const totalVideos = course.videos?.length || 0;
         const completedVideosCount = (course.videos || []).filter(id => globalCompletedItems.has(id)).length;
-        
+
         let isLocked = false;
         let prerequisiteCourse: CourseWithStatus['prerequisiteCourse'] | undefined;
-        
+
         const courseLadderObjs = (course.ladderIds || []).map(id => laddersList.find(l => l.id === id)).filter(Boolean) as Ladder[];
-        const courseMinLadderOrder = courseLadderObjs.length > 0 
-            ? Math.min(...courseLadderObjs.map(l => l.order))
-            : Infinity;
+        const courseMinLadderOrder = courseLadderObjs.length > 0
+          ? Math.min(...courseLadderObjs.map(l => l.order))
+          : Infinity;
 
         if (courseMinLadderOrder > userLadderOrder) {
           isLocked = true;
         }
-        
+
         if (!isLocked && course.order !== undefined && course.order > 0) {
-            const trackCourses = coursesInLanguage.filter(c => 
-                c.id !== course.id &&
-                c.ladderIds?.some(lId => course.ladderIds.includes(lId)) &&
-                (c.order ?? 0) < course.order!
-            );
-            
-            const unfinishedTrackCourses = trackCourses.filter(c => !completedCourseIds.has(c.id));
-            
-            if (unfinishedTrackCourses.length > 0) {
-                isLocked = true;
-                const immediatePrereq = unfinishedTrackCourses.sort((a,b) => (b.order ?? 0) - (a.order ?? 0))[0];
-                prerequisiteCourse = { id: immediatePrereq.id, title: immediatePrereq.title };
-            }
+          const trackCourses = coursesInLanguage.filter(c =>
+            c.id !== course.id &&
+            c.ladderIds?.some(lId => course.ladderIds.includes(lId)) &&
+            (c.order ?? 0) < course.order!
+          );
+
+          const unfinishedTrackCourses = trackCourses.filter(c => !completedCourseIds.has(c.id));
+
+          if (unfinishedTrackCourses.length > 0) {
+            isLocked = true;
+            const immediatePrereq = unfinishedTrackCourses.sort((a, b) => (b.order ?? 0) - (a.order ?? 0))[0];
+            prerequisiteCourse = { id: immediatePrereq.id, title: immediatePrereq.title };
+          }
         }
 
         return {
@@ -231,7 +231,7 @@ export function useProcessedCourses(forAllCoursesPage: boolean = false) {
   }, [user?.uid, currentLanguage, db, processedCourses.length]);
 
   useEffect(() => {
-      fetchAndProcessCourses();
+    fetchAndProcessCourses();
   }, [fetchAndProcessCourses]);
 
   const refresh = () => {

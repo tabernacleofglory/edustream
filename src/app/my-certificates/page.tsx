@@ -33,12 +33,12 @@ const CertificateCard = ({ item, settings }: { item: GroupedCertificate | Course
     const isGroup = 'courseIds' in item;
 
     const handleShareLinkedIn = () => {
-        const certUrl = `${window.location.origin}/certificate/${item.id}`; 
-        
+        const certUrl = `${window.location.origin}/certificate/${item.id}`;
+
         const linkedInUrl = `https://www.linkedin.com/profile/add?startTask=CERTIFICATION_NAME&name=${encodeURIComponent(item.title)}&organizationName=${encodeURIComponent("Glory Training Hub")}&certUrl=${encodeURIComponent(certUrl)}`;
         window.open(linkedInUrl, '_blank');
     };
-    
+
     const handleCopyLink = () => {
         const certUrl = `${window.location.origin}/certificate/${item.id}`;
         navigator.clipboard.writeText(certUrl);
@@ -55,7 +55,7 @@ const CertificateCard = ({ item, settings }: { item: GroupedCertificate | Course
             <CardHeader>
                 <div className="relative aspect-[11/8.5] w-full bg-muted rounded-md overflow-hidden">
                     {item.certificateTemplateUrl ? (
-                         <Image src={item.certificateTemplateUrl} alt={`Certificate for ${item.title}`} fill style={{objectFit:"cover"}} />
+                        <Image src={item.certificateTemplateUrl} alt={`Certificate for ${item.title}`} fill style={{ objectFit: "cover" }} />
                     ) : (
                         <div className="flex items-center justify-center h-full">
                             <Award className="h-16 w-16 text-muted-foreground" />
@@ -68,9 +68,9 @@ const CertificateCard = ({ item, settings }: { item: GroupedCertificate | Course
                 <Badge variant="secondary" className="mt-1">{isGroup ? 'Learning Path' : 'Course'}</Badge>
             </CardContent>
             <CardFooter className="flex flex-col sm:flex-row gap-2">
-                 <Dialog>
+                <Dialog>
                     <DialogTrigger asChild>
-                       <Button className="w-full">
+                        <Button className="w-full">
                             <Eye className="mr-2 h-4 w-4" /> View
                         </Button>
                     </DialogTrigger>
@@ -78,16 +78,16 @@ const CertificateCard = ({ item, settings }: { item: GroupedCertificate | Course
                         <DialogHeader>
                             <DialogTitle>Certificate of Completion</DialogTitle>
                         </DialogHeader>
-                        <CertificatePrint 
-                            userName={user?.displayName || "Student"} 
-                            course={certificateCourse} 
+                        <CertificatePrint
+                            userName={user?.displayName || "Student"}
+                            course={certificateCourse}
                             completionDate={completionDate}
                             templateUrl={certificateTemplateUrl}
                             logoUrl={logoUrl}
                             settings={settings}
                         />
                     </DialogContent>
-                 </Dialog>
+                </Dialog>
                 <DropdownMenu>
                     <DropdownMenuTrigger asChild>
                         <Button variant="outline" className="w-full">
@@ -99,7 +99,7 @@ const CertificateCard = ({ item, settings }: { item: GroupedCertificate | Course
                             <Linkedin className="mr-2 h-4 w-4" />
                             Share on LinkedIn
                         </DropdownMenuItem>
-                         <DropdownMenuItem onClick={handleCopyLink}>
+                        <DropdownMenuItem onClick={handleCopyLink}>
                             <LinkIcon className="mr-2 h-4 w-4" />
                             Copy Link
                         </DropdownMenuItem>
@@ -121,10 +121,10 @@ const LoadingSkeleton = () => (
                     <Skeleton className="h-6 w-3/4 mb-2" />
                     <Skeleton className="h-4 w-1/2" />
                 </CardContent>
-                 <CardFooter className="gap-2">
+                <CardFooter className="gap-2">
                     <Skeleton className="h-10 w-full" />
                     <Skeleton className="h-10 w-full" />
-                 </CardFooter>
+                </CardFooter>
             </Card>
         ))}
     </div>
@@ -140,7 +140,7 @@ export default function MyCertificatesPage() {
     const [siteSettings, setSiteSettings] = useState<SiteSettings | null>(null);
 
 
-    const canViewPage = hasPermission('viewDashboard'); 
+    const canViewPage = hasPermission('viewDashboard');
     const loading = authLoading || coursesLoading || loadingGroups;
 
     useEffect(() => {
@@ -159,7 +159,7 @@ export default function MyCertificatesPage() {
             const groupedCerts = courseGroups.map(group => {
                 const coursesInGroup = group.courseIds.map(id => processedCourses.find(c => c.id === id)).filter(Boolean) as CourseWithStatus[];
                 const allInGroupCompleted = group.courseIds.every(id => completedCourseIds.has(id));
-                
+
                 let maxCompletedAt: string | undefined;
                 if (allInGroupCompleted) {
                     const dates = coursesInGroup.map(c => c.completedAt).filter(Boolean) as string[];
@@ -175,9 +175,9 @@ export default function MyCertificatesPage() {
                     completedAt: maxCompletedAt
                 } as GroupedCertificate;
             }).filter(group => group.isCompleted);
-            
+
             setGroupedCertificates(groupedCerts);
-            
+
             const individualCerts = processedCourses.filter(c => c.isCompleted && c.certificateEnabled);
             setIndividualCertCourses(individualCerts);
 
@@ -185,7 +185,7 @@ export default function MyCertificatesPage() {
         }
         fetchCourseGroups();
     }, [coursesLoading, processedCourses, user]);
-    
+
     const allCertificates = useMemo(() => {
         return [...groupedCertificates, ...individualCertCourses];
     }, [groupedCertificates, individualCertCourses]);
@@ -197,7 +197,7 @@ export default function MyCertificatesPage() {
 
     if (!user) {
         return (
-             <Alert variant="destructive">
+            <Alert variant="destructive">
                 <Lock className="h-4 w-4" />
                 <AlertTitle>Access Denied</AlertTitle>
                 <AlertDescription>You must be logged in to view your certificates.</AlertDescription>

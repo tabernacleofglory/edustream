@@ -46,6 +46,8 @@ import GlobalSearch from "@/components/global-search";
 import LanguageSwitcher from "@/components/language-switcher";
 import { useI18n } from "@/hooks/use-i18n";
 import MobileNav from "@/components/mobile-nav";
+import { AutomationRunner } from "@/components/automation-runner";
+
 
 
 const navItems = [
@@ -374,5 +376,10 @@ function AppContentInternal({ children }: { children: React.ReactNode }) {
 }
 
 export default function AppContent({ children }: { children: React.ReactNode }) {
-  return <AppContentInternal>{children}</AppContentInternal>;
+  return (
+    <>
+      <AutomationRunner />
+      <AppContentInternal>{children}</AppContentInternal>
+    </>
+  );
 }

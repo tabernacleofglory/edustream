@@ -38,6 +38,12 @@ export interface User {
   baptismDate?: string;
   denomination?: string;
   lastActiveAt?: any;
+  notificationSettings?: UserNotificationSettings;
+}
+
+export interface UserNotificationSettings {
+    communityReplies: boolean;
+    communityMentions: boolean;
 }
 
 export interface Speaker {
@@ -430,6 +436,13 @@ export interface SiteSettings {
     quiz_pass_threshold?: number;
     emailLayout?: EmailLayoutSettings;
     maintenanceModeEnabled?: boolean;
+    automation?: AutomationSettings;
+}
+
+export interface AutomationSettings {
+    enrollmentSyncEnabled: boolean;
+    enrollmentSyncIntervalMinutes: number;
+    lastRunAt?: any;
 }
 
 export interface InventoryItem {

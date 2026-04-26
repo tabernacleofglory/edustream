@@ -28,6 +28,8 @@ import { useProcessedCourses, CourseWithStatus } from "@/hooks/useProcessedCours
 import { Skeleton } from "@/components/ui/skeleton";
 import { useI18n } from "@/hooks/use-i18n";
 import allLanguagesList from "@/lib/languages.json";
+import { Switch } from "@/components/ui/switch";
+import { Bell } from "lucide-react";
 
 
 interface StoredItem {
@@ -62,6 +64,8 @@ const settingsSchema = z.discriminatedUnion("isInHpGroup", [
         role: z.string(),
         classLadderId: z.string().optional(),
         side: z.string().optional(),
+        notificationCommunityReplies: z.boolean().default(true),
+        notificationCommunityMentions: z.boolean().default(true),
     }),
     z.object({
         isInHpGroup: z.literal(false),
@@ -85,6 +89,8 @@ const settingsSchema = z.discriminatedUnion("isInHpGroup", [
         role: z.string(),
         classLadderId: z.string().optional(),
         side: z.string().optional(),
+        notificationCommunityReplies: z.boolean().default(true),
+        notificationCommunityMentions: z.boolean().default(true),
     })
 ]);
 
@@ -198,6 +204,8 @@ export default function SettingsPage() {
         side: "hp",
         gender: "",
         ageRange: "",
+        notificationCommunityReplies: true,
+        notificationCommunityMentions: true,
     },
   });
   
@@ -276,6 +284,8 @@ export default function SettingsPage() {
             gender: user.gender || "",
             ageRange: user.ageRange || "",
             facilitatorName: user.facilitatorName || '',
+            notificationCommunityReplies: user.notificationSettings?.communityReplies !== false,
+            notificationCommunityMentions: user.notificationSettings?.communityMentions !== false,
         });
     }
   }, [user, dataLoading, reset]);
@@ -328,6 +338,10 @@ export default function SettingsPage() {
         classLadder: data.isInHpGroup ? (selectedLadder ? selectedLadder.name : '') : user.classLadder,
         hpAvailabilityDay: !data.isInHpGroup ? data.hpAvailabilityDay : null,
         hpAvailabilityTime: !data.isInHpGroup ? data.hpAvailabilityTime : null,
+        notificationSettings: {
+            communityReplies: data.notificationCommunityReplies,
+            communityMentions: data.notificationCommunityMentions,
+        }
       };
 
       for (const key in dataToUpdate) {
@@ -378,9 +392,10 @@ export default function SettingsPage() {
         </CardHeader>
         <CardContent>
             <Tabs defaultValue="profile">
-                <TabsList className="grid w-full grid-cols-2 mb-6">
+                <TabsList className="grid w-full grid-cols-3 mb-6">
                     <TabsTrigger value="profile"><span>{t('settings.tabs.profile', 'Profile')}</span></TabsTrigger>
                     <TabsTrigger value="achievements"><span>{t('settings.tabs.achievements', 'My Achievements')}</span></TabsTrigger>
+                    <TabsTrigger value="notifications"><span>{t('settings.tabs.notifications', 'Notifications')}</span></TabsTrigger>
                 </TabsList>
                 <TabsContent value="profile">
                     {!showProfileForm ? (
@@ -690,6 +705,50 @@ export default function SettingsPage() {
                 </TabsContent>
                 <TabsContent value="achievements">
                     {user && <AchievementsTab userId={user.uid} />}
+                </TabsContent>
+                <TabsContent value="notifications">
+                    <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
+                        <div className="space-y-4">
+                            <div className="flex items-center justify-between p-4 border rounded-lg bg-card">
+                                <div className="space-y-0.5">
+                                    <Label className="text-base">Community Replies</Label>
+                                    <p className="text-sm text-muted-foreground">Receive an email when someone replies to your community posts.</p>
+                                </div>
+                                <Controller
+                                    name="notificationCommunityReplies"
+                                    control={control}
+                                    render={({ field }) => (
+                                        <Switch
+                                            checked={field.value}
+                                            onCheckedChange={field.onChange}
+                                        />
+                                    )}
+                                />
+                            </div>
+                            <div className="flex items-center justify-between p-4 border rounded-lg bg-card">
+                                <div className="space-y-0.5">
+                                    <Label className="text-base">Community Mentions</Label>
+                                    <p className="text-sm text-muted-foreground">Receive an email when someone tags you in the community.</p>
+                                </div>
+                                <Controller
+                                    name="notificationCommunityMentions"
+                                    control={control}
+                                    render={({ field }) => (
+                                        <Switch
+                                            checked={field.value}
+                                            onCheckedChange={field.onChange}
+                                        />
+                                    )}
+                                />
+                            </div>
+                        </div>
+                        <div className="flex justify-end gap-2">
+                             <Button type="submit" disabled={isSubmitting}>
+                                {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                                <span>{t('settings.button.save', 'Save Preferences')}</span>
+                            </Button>
+                        </div>
+                    </form>
                 </TabsContent>
             </Tabs>
         </CardContent>

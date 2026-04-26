@@ -48,6 +48,7 @@ import {
   Palette,
   Sparkles,
   Package,
+  RefreshCw,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
@@ -232,6 +233,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
         { href: "/admin/live", label: t('admin.nav.platform.live', "Live"), icon: Tv, permission: 'viewLiveManagement' },
         { href: "/my-certificates", label: t('admin.nav.platform.my_certificates', "My Certificates"), icon: Award, permission: 'viewDashboard' },
         { href: "/admin/maintenance", label: t('admin.nav.platform.maintenance', "Maintenance Mode"), icon: AlertTriangle, permission: 'manageMaintenance' },
+        { href: "/admin/platform/automation", label: t('admin.nav.platform.automation', "Automation Manager"), icon: RefreshCw, permission: 'manageAutomation' },
         {
           label: t('nav.admin_panel', "Developer"),
           icon: Code,

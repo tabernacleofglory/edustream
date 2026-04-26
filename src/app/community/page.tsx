@@ -41,6 +41,7 @@ import {
   CarouselNext,
   CarouselPrevious,
 } from "@/components/ui/carousel";
+import { notifyReply, notifyMentions } from '@/lib/community-notifications';
 
 const getInitials = (name?: string | null) => {
     if (!name) return "U";
@@ -173,9 +174,16 @@ const ReplyFormComponent = ({ parentComment, onReplyPosted, onCancel }: { parent
         };
 
         try {
-            await addDoc(collection(db, "communityPosts", parentComment.id, "replies"), replyData);
+            const docRef = await addDoc(collection(db, "communityPosts", parentComment.id, "replies"), replyData);
             setReplyText('');
             onReplyPosted();
+
+            // Send Notifications
+            if (parentComment.authorId !== user.uid) {
+                notifyReply(parentComment.authorId, user.displayName || 'Someone', replyText.trim(), parentComment.id);
+            }
+            notifyMentions(replyText.trim(), user.displayName || 'Someone', parentComment.id);
+
         } catch(err) {
             console.error("Error posting reply: ", err);
             toast({ variant: 'destructive', title: t('community.create.error', 'Failed to create post.') });
@@ -589,7 +597,7 @@ const CommunityPostEditor = ({
                     await updateDoc(originalPostRef, { repostCount: increment(1) });
                 }
 
-                await addDoc(collection(db, 'communityPosts'), {
+                const docRef = await addDoc(collection(db, 'communityPosts'), {
                     authorId: user.uid,
                     authorName: user.displayName,
                     authorPhotoURL: user.photoURL,
@@ -609,6 +617,10 @@ const CommunityPostEditor = ({
                         originalAttachments: targetPost.attachments || []
                     })
                 });
+                
+                // Notify Mentions
+                notifyMentions(newPostContent.trim(), user.displayName || 'Someone', docRef.id);
+
                 toast({ title: t('community.create.success', 'Post created successfully!') });
             }
             

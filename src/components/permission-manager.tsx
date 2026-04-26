@@ -65,6 +65,7 @@ const ALL_PERMISSIONS: Permission[] = [
   { id: 'downloadContent', name: 'Download Content', description: 'Allows downloading videos and other course materials.' },
   { id: 'manageMaintenance', name: 'Manage Maintenance Mode', description: 'Can enable or disable the platform maintenance mode.' },
   { id: 'bypassMaintenance', name: 'Bypass Maintenance', description: 'Can access the platform while maintenance mode is active.' },
+  { id: 'manageAutomation', name: 'Manage Automation', description: 'Can configure background sync and bots' },
   { id: 'developer', name: 'Developer Access', description: 'Full access to all platform features. (Grant with caution)' },
 ];
 

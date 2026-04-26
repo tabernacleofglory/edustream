@@ -59,9 +59,9 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html 
-      lang="en" 
-      className={`${inter.variable} ${spaceGrotesk.variable} ${dancingScript.variable} ${greatVibes.variable} ${sourceSerif.variable}`} 
+    <html
+      lang="en"
+      className={`${inter.variable} ${spaceGrotesk.variable} ${dancingScript.variable} ${greatVibes.variable} ${sourceSerif.variable}`}
       suppressHydrationWarning
       translate="no"
     >
@@ -70,7 +70,7 @@ export default function RootLayout({
       </head>
       <body>
         <Providers>
-            {children}
+          {children}
         </Providers>
         <LiveChatLoader />
       </body>
