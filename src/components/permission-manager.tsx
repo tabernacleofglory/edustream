@@ -32,13 +32,13 @@ const ALL_PERMISSIONS: Permission[] = [
   { id: 'viewUserManagement', name: 'View User Management Section', description: 'Can view all pages under the "Users" section in the admin panel.' },
   { id: 'viewCourseManagement', name: 'View Course Management Section', description: 'Can view all pages under the "Courses" section in the admin panel.' },
   { id: 'viewContentLibraries', name: 'View Content Libraries', description: 'Can view all content library pages (videos, images, etc.).' },
-  { id: 'viewCampusManagement', name: 'View Campus Management', description: 'Can view the campus management page.'},
+  { id: 'viewCampusManagement', name: 'View Campus Management', description: 'Can view the campus management page.' },
   { id: 'viewLiveManagement', name: 'View Live Management', description: 'Can view the live event scheduling page.' },
   { id: 'viewInventory', name: 'View Inventory', description: 'Can view the church assets inventory page.' },
   { id: 'viewReports', name: 'View Reports Section', description: 'Can access all pages within the Reports section.' },
   { id: 'viewForms', name: 'View Forms Section', description: 'Can view the form management page and submitted responses.' },
   { id: 'viewDeveloperTools', name: 'View Developer Tools Section', description: 'Gives access to all pages under the "Developer" section.' },
-  
+
   // --- Action-Based Permissions ---
   { id: 'addCourses', name: 'Add/Edit Courses', description: 'Can access the form to add or edit courses.' },
   { id: 'manageQuizzes', name: 'Manage Quizzes', description: 'Can create, edit, and delete quizzes.' },
@@ -48,7 +48,7 @@ const ALL_PERMISSIONS: Permission[] = [
   { id: 'manageLinks', name: 'Manage Nav Links', description: 'Can add/remove header navigation links.' },
   { id: 'managePermissions', name: 'Manage Permissions', description: 'Can edit role permissions on this page.' },
   { id: 'manageLocalization', name: 'Manage Localization', description: 'Can add, edit, or delete translations for different languages.' },
-  { id: 'manageCampus', name: 'Manage Campus', description: 'Can add, edit, and delete campus locations.'},
+  { id: 'manageCampus', name: 'Manage Campus', description: 'Can add, edit, and delete campus locations.' },
   { id: 'manageLive', name: 'Manage Live Events', description: 'Can create, schedule, and start live events.' },
   { id: 'manageInventory', name: 'Manage Inventory', description: 'Can add and remove items from the inventory.' },
   { id: 'participateInLiveEvents', name: 'Participate In Live Events', description: 'Allows user to be a speaker/participant in a live event.' },
@@ -74,17 +74,17 @@ const ALL_ROLES = ['admin', 'moderator', 'team', 'user'];
 
 export default function PermissionManager() {
   const [roles, setRoles] = useState<string[]>([]);
-  const [permissions, setPermissions] = useState<{[role: string]: string[]}>({});
+  const [permissions, setPermissions] = useState<{ [role: string]: string[] }>({});
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const { toast } = useToast();
-  const { hasPermission } = useAuth();
-  const db = getFirebaseFirestore();
+  const { hasPermission, loading: authLoading } = useAuth();
 
   const canManagePermissions = hasPermission('managePermissions');
 
   useEffect(() => {
     const fetchData = async () => {
+      const db = getFirebaseFirestore();
       setIsLoading(true);
       try {
         const rolesList = ALL_ROLES;
@@ -94,7 +94,7 @@ export default function PermissionManager() {
         setRoles(['developer', ...filteredRoles]);
 
         const permissionsSnapshot = await getDocs(collection(db, 'rolePermissions'));
-        const permissionsData: {[role: string]: string[]} = {};
+        const permissionsData: { [role: string]: string[] } = {};
         permissionsSnapshot.forEach(d => {
           const data = d.data() as RolePermission;
           permissionsData[data.role] = (data as any).permissions || [];
@@ -118,7 +118,7 @@ export default function PermissionManager() {
 
     if (canManagePermissions) fetchData();
     else setIsLoading(false);
-  }, [toast, canManagePermissions, db]);
+  }, [toast, canManagePermissions]);
 
   const handlePermissionChange = (role: string, permissionId: string, checked: boolean) => {
     setPermissions(prev => {
@@ -138,6 +138,7 @@ export default function PermissionManager() {
   const handleSaveChanges = async () => {
     setIsSaving(true);
     try {
+      const db = getFirebaseFirestore();
       const writes = Object.entries(permissions).map(([role, perms]) => {
         if (role === 'developer') return null; // computed, not stored
         const ref = doc(db, 'rolePermissions', role);
@@ -153,7 +154,7 @@ export default function PermissionManager() {
     }
   };
 
-  if (!canManagePermissions) {
+  if (!authLoading && !canManagePermissions) {
     return (
       <Card>
         <CardHeader>
@@ -171,6 +172,14 @@ export default function PermissionManager() {
     );
   }
 
+  if (authLoading || isLoading) {
+    return (
+      <Card>
+        <CardHeader><CardTitle>Role Permissions</CardTitle></CardHeader>
+        <CardContent><Skeleton className="h-48 w-full" /></CardContent>
+      </Card>
+    )
+  }
   return (
     <Card>
       <CardHeader>
@@ -189,16 +198,7 @@ export default function PermissionManager() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {isLoading ? (
-                Array.from({ length: 5 }).map((_, i) => (
-                  <TableRow key={i}>
-                    <TableCell><Skeleton className="h-5 w-3/4" /></TableCell>
-                    {roles.map(role => (
-                      <TableCell key={role} className="text-center"><Skeleton className="h-5 w-5 mx-auto" /></TableCell>
-                    ))}
-                  </TableRow>
-                ))
-              ) : (
+              {
                 ALL_PERMISSIONS.map(permission => (
                   <TableRow key={permission.id}>
                     <TableCell>
@@ -216,7 +216,7 @@ export default function PermissionManager() {
                     ))}
                   </TableRow>
                 ))
-              )}
+              }
             </TableBody>
           </Table>
         </div>

@@ -63,8 +63,6 @@ export default function SiteSettingsPage() {
     const { user, loading: authLoading, hasPermission } = useAuth();
     const router = useRouter();
     const { toast } = useToast();
-    const db = getFirebaseFirestore();
-    const storage = getStorage();
     const [isLoading, setIsLoading] = useState(true);
     const [faviconPreview, setFaviconPreview] = useState<string | null>(null);
     const [backgroundPreview, setBackgroundPreview] = useState<string | null>(null);
@@ -104,6 +102,7 @@ export default function SiteSettingsPage() {
 
     useEffect(() => {
         const fetchSettings = async () => {
+            const db = getFirebaseFirestore();
             const docRef = doc(db, "siteSettings", "main");
             try {
                 const docSnap = await getDoc(docRef);
@@ -134,7 +133,7 @@ export default function SiteSettingsPage() {
         } else {
             fetchSettings();
         }
-    }, [user, reset, db, toast, canAccess, authLoading, router]);
+    }, [user, reset, toast, canAccess, authLoading, router]);
 
     const handleGenerateKeywords = async () => {
         setIsGeneratingKeywords(true);
@@ -188,6 +187,8 @@ export default function SiteSettingsPage() {
         }
 
         setIsLoading(true);
+        const db = getFirebaseFirestore();
+        const storage = getStorage();
         try {
             let faviconUrl = faviconPreview;
             if (values.favicon && values.favicon.length > 0) {

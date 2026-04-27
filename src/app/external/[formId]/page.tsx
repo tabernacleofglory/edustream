@@ -76,7 +76,6 @@ const DynamicForm = ({ formConfig }: { formConfig: CustomForm }) => {
   const { t } = useI18n();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submissionSuccess, setSubmissionSuccess] = useState(false);
-  const [db] = useState(() => getFirebaseFirestore());
 
   const [selectOptions, setSelectOptions] = useState<{ [key: string]: any[] }>(
     {}
@@ -122,25 +121,25 @@ const DynamicForm = ({ formConfig }: { formConfig: CustomForm }) => {
     }, {} as Record<string, z.ZodType<any>>);
 
     return z.object(shape).superRefine((data, ctx) => {
-        const isInHpGroupField = formConfig.fields.find((f) => f.fieldId === "isInHpGroup");
-        if (isInHpGroupField?.visible && data.isInHpGroup === "true") {
-            const hpNumberRequired = formConfig.fields.find((f) => f.fieldId === "hpNumber")?.required;
-            if (hpNumberRequired && !data.hpNumber) {
-                 ctx.addIssue({ code: z.ZodIssueCode.custom, message: "HP Number is required if you are in a prayer group.", path: ["hpNumber"] });
-            }
-            const facilitatorNameRequired = formConfig.fields.find((f) => f.fieldId === "facilitatorName")?.required;
-            if (facilitatorNameRequired && !data.facilitatorName) {
-                ctx.addIssue({ code: z.ZodIssueCode.custom, message: "Facilitator's Name is required if you are in a prayer group.", path: ["facilitatorName"] });
-            }
+      const isInHpGroupField = formConfig.fields.find((f) => f.fieldId === "isInHpGroup");
+      if (isInHpGroupField?.visible && data.isInHpGroup === "true") {
+        const hpNumberRequired = formConfig.fields.find((f) => f.fieldId === "hpNumber")?.required;
+        if (hpNumberRequired && !data.hpNumber) {
+          ctx.addIssue({ code: z.ZodIssueCode.custom, message: "HP Number is required if you are in a prayer group.", path: ["hpNumber"] });
         }
+        const facilitatorNameRequired = formConfig.fields.find((f) => f.fieldId === "facilitatorName")?.required;
+        if (facilitatorNameRequired && !data.facilitatorName) {
+          ctx.addIssue({ code: z.ZodIssueCode.custom, message: "Facilitator's Name is required if you are in a prayer group.", path: ["facilitatorName"] });
+        }
+      }
 
-        const isBaptizedField = formConfig.fields.find((f) => f.fieldId === "isBaptized");
-        if (isBaptizedField?.visible && data.isBaptized === "true") {
-            const denominationRequired = formConfig.fields.find((f) => f.fieldId === "denomination")?.required;
-            if (denominationRequired && !data.denomination) {
-                ctx.addIssue({ code: z.ZodIssueCode.custom, message: "Denomination is required if you are baptized.", path: ["denomination"] });
-            }
+      const isBaptizedField = formConfig.fields.find((f) => f.fieldId === "isBaptized");
+      if (isBaptizedField?.visible && data.isBaptized === "true") {
+        const denominationRequired = formConfig.fields.find((f) => f.fieldId === "denomination")?.required;
+        if (denominationRequired && !data.denomination) {
+          ctx.addIssue({ code: z.ZodIssueCode.custom, message: "Denomination is required if you are baptized.", path: ["denomination"] });
         }
+      }
     });
   }, [formConfig.fields]);
 
@@ -154,11 +153,11 @@ const DynamicForm = ({ formConfig }: { formConfig: CustomForm }) => {
   useEffect(() => {
     const savedDraft = localStorage.getItem(`form-draft-${formConfig.id}`);
     if (savedDraft) {
-        try {
-            form.reset(JSON.parse(savedDraft));
-        } catch(e) {
-            console.error("Failed to parse form draft", e);
-        }
+      try {
+        form.reset(JSON.parse(savedDraft));
+      } catch (e) {
+        console.error("Failed to parse form draft", e);
+      }
     }
   }, [formConfig.id, form]);
 
@@ -168,9 +167,10 @@ const DynamicForm = ({ formConfig }: { formConfig: CustomForm }) => {
 
   useEffect(() => {
     const fetchOptions = async () => {
+      const db = getFirebaseFirestore();
       const options: { [key: string]: any[] } = {};
       const laddersSnap = await getDocs(query(collection(db, "courseLevels"), orderBy("order")));
-      const laddersData = laddersSnap.docs.map(d => ({id: d.id, ...d.data()} as Ladder));
+      const laddersData = laddersSnap.docs.map(d => ({ id: d.id, ...d.data() } as Ladder));
       setLadders(laddersData);
 
       if (formConfig.fields.find((f) => f.fieldId === "campus" && f.visible)) {
@@ -195,7 +195,7 @@ const DynamicForm = ({ formConfig }: { formConfig: CustomForm }) => {
           label: d.data().name,
         }));
       }
-      
+
       if (formConfig.fields.find((f) => f.fieldId === "classLadderId" && f.visible)) {
         options["classLadderId"] = laddersData.map(l => ({ value: l.id, label: l.name }));
       }
@@ -236,7 +236,7 @@ const DynamicForm = ({ formConfig }: { formConfig: CustomForm }) => {
       setSelectOptions(options);
       setLoadingOptions(false);
     };
-    fetchOptions();
+    if (formConfig.fields.length > 0) fetchOptions();
   }, [db, formConfig.fields, t]);
 
   const onSubmit = async (data: any) => {
@@ -249,7 +249,8 @@ const DynamicForm = ({ formConfig }: { formConfig: CustomForm }) => {
       if (!finalEmail || finalEmail.trim() === '') {
         finalEmail = `user${Date.now()}@tg.admin`;
       }
-      
+
+      const db = getFirebaseFirestore();
       const userCredential = await createUserWithEmailAndPassword(
         secondaryAuth,
         finalEmail,
@@ -262,19 +263,19 @@ const DynamicForm = ({ formConfig }: { formConfig: CustomForm }) => {
 
       let ladderId = data.classLadderId;
       let ladderName = 'New Member';
-      
+
       if (ladderId) {
-          const selectedLadder = ladders.find(l => l.id === ladderId);
-          if (selectedLadder) {
-              ladderName = selectedLadder.name;
-          }
+        const selectedLadder = ladders.find(l => l.id === ladderId);
+        if (selectedLadder) {
+          ladderName = selectedLadder.name;
+        }
       } else {
-          const defaultLadderSnap = await getDocs(query(collection(db, "courseLevels"), orderBy("order"), limit(1)));
-          if (!defaultLadderSnap.empty) {
-              const defaultLadderDoc = defaultLadderSnap.docs[0];
-              ladderId = defaultLadderDoc.id;
-              ladderName = defaultLadderDoc.data().name;
-          }
+        const defaultLadderSnap = await getDocs(query(collection(db, "courseLevels"), orderBy("order"), limit(1)));
+        if (!defaultLadderSnap.empty) {
+          const defaultLadderDoc = defaultLadderSnap.docs[0];
+          ladderId = defaultLadderDoc.id;
+          ladderName = defaultLadderDoc.data().name;
+        }
       }
 
       const newUser: Partial<User> = {
@@ -349,7 +350,7 @@ const DynamicForm = ({ formConfig }: { formConfig: CustomForm }) => {
     const isHpField = ["hpNumber", "facilitatorName"].includes(fieldId);
     const isAvailabilityField = ["hpAvailabilityDay", "hpAvailabilityTime"].includes(fieldId);
     const isInHpGroupValue = form.watch("isInHpGroup");
-    
+
     const isDenominationField = fieldId === "denomination";
     const isBaptizedValue = form.watch("isBaptized");
 
@@ -396,25 +397,25 @@ const DynamicForm = ({ formConfig }: { formConfig: CustomForm }) => {
     }
 
     if (["isInHpGroup", "isBaptized"].includes(fieldId)) {
-        return (
-            <div key={fieldId} className="space-y-2">
-                <Label>{label} {required && <span className="text-destructive">*</span>}</Label>
-                <Controller
-                    name={fieldId as any}
-                    control={form.control}
-                    render={({ field }) => (
-                        <Select onValueChange={field.onChange} value={field.value}>
-                            <SelectTrigger><SelectValue placeholder="Select an option" /></SelectTrigger>
-                            <SelectContent>
-                                <SelectItem value="true">{t('common.yes', 'Yes')}</SelectItem>
-                                <SelectItem value="false">{t('common.no', 'No')}</SelectItem>
-                            </SelectContent>
-                        </Select>
-                    )}
-                />
-                 {formError && <p className="text-sm text-destructive">{formError.message as string}</p>}
-            </div>
-        )
+      return (
+        <div key={fieldId} className="space-y-2">
+          <Label>{label} {required && <span className="text-destructive">*</span>}</Label>
+          <Controller
+            name={fieldId as any}
+            control={form.control}
+            render={({ field }) => (
+              <Select onValueChange={field.onChange} value={field.value}>
+                <SelectTrigger><SelectValue placeholder="Select an option" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="true">{t('common.yes', 'Yes')}</SelectItem>
+                  <SelectItem value="false">{t('common.no', 'No')}</SelectItem>
+                </SelectContent>
+              </Select>
+            )}
+          />
+          {formError && <p className="text-sm text-destructive">{formError.message as string}</p>}
+        </div>
+      )
     }
 
     if (fieldId === "phoneNumber") {
@@ -532,7 +533,6 @@ export default function PublicFormPage() {
   const [formConfig, setFormConfig] = useState<CustomForm | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const db = getFirebaseFirestore();
 
   useEffect(() => {
     if (!formId) {
@@ -542,6 +542,7 @@ export default function PublicFormPage() {
     }
 
     const fetchFormConfig = async () => {
+      const db = getFirebaseFirestore();
       try {
         const formDocRef = doc(db, "forms", formId);
         const docSnap = await getDoc(formDocRef);
