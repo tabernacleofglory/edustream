@@ -488,12 +488,12 @@ service cloud.firestore {
       allow read, write: if permAllows('manageContent');
     }
 
-    // ---------- External (public read for anything under /external/...) ----------
+    // ---------- External (public create for guest form submissions; admin-only for all else) ----------
+    // Guests and authenticated users can submit new documents (e.g. public registration forms).
+    // Only admins can read, update, or delete entries.
     match /external/{document=**} {
-      allow read: if true;
-      allow get: if true;
-      allow update: if true;
-      allow write: if true;
+      allow create: if true;
+      allow read, update, delete: if isAdmin();
     }
 
     // ---------- Reports (read-only access gated by 'viewReports') ----------

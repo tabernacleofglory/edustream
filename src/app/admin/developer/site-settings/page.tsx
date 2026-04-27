@@ -6,13 +6,13 @@ import { useForm, Controller } from "react-hook-form";
 import * as z from "zod";
 import { Button } from "@/components/ui/button";
 import {
-  Form,
-  FormControl,
-  FormDescription,
-  FormField,
-  FormItem,
-  FormLabel,
-  FormMessage,
+    Form,
+    FormControl,
+    FormDescription,
+    FormField,
+    FormItem,
+    FormLabel,
+    FormMessage,
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -31,9 +31,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import DynamicIcon from "@/components/dynamic-icon";
 import { generateKeywords } from "@/ai/flows/keyword-generator";
 import { Badge } from "@/components/ui/badge";
-import Image from "next/image";
-
-
+import Image from "next/image";;
 const formSchema = z.object({
     websiteName: z.string().min(2, "Website name must be at least 2 characters."),
     metaDescription: z.string().min(10, "Meta description must be at least 10 characters."),
@@ -98,10 +96,10 @@ export default function SiteSettingsPage() {
             feature3Description: "Access our extensive library of video resources anytime, anywhere.",
         },
     });
-    
+
     const { reset, watch, setValue, control } = form;
     const currentKeywords = watch('seoKeywords');
-    
+
     const canAccess = hasPermission('developer');
 
     useEffect(() => {
@@ -132,7 +130,7 @@ export default function SiteSettingsPage() {
         }
 
         if (!canAccess) {
-             setIsLoading(false);
+            setIsLoading(false);
         } else {
             fetchSettings();
         }
@@ -181,7 +179,7 @@ export default function SiteSettingsPage() {
 
     const onSubmit = async (values: z.infer<typeof formSchema>) => {
         if (!canAccess) {
-             toast({
+            toast({
                 variant: "destructive",
                 title: "Permission Denied",
                 description: "You do not have permission to save settings.",
@@ -215,7 +213,7 @@ export default function SiteSettingsPage() {
                 faviconUrl,
                 homepageBackgroundImageUrl,
             }, { merge: true });
-            
+
             toast({
                 title: "Settings saved!",
                 description: "Your website settings have been updated.",
@@ -231,7 +229,7 @@ export default function SiteSettingsPage() {
             setIsLoading(false);
         }
     };
-    
+
     const IconSelect = ({ field }: { field: any }) => (
         <Select onValueChange={field.onChange} defaultValue={field.value}>
             <FormControl>
@@ -243,8 +241,8 @@ export default function SiteSettingsPage() {
                 {ICON_NAMES.map(iconName => (
                     <SelectItem key={iconName} value={iconName}>
                         <div className="flex items-center gap-2">
-                           <DynamicIcon name={iconName} className="h-4 w-4" />
-                           <span>{iconName}</span>
+                            <DynamicIcon name={iconName} className="h-4 w-4" />
+                            <span>{iconName}</span>
                         </div>
                     </SelectItem>
                 ))}
@@ -262,7 +260,7 @@ export default function SiteSettingsPage() {
 
     if (!canAccess) {
         return (
-             <Card>
+            <Card>
                 <CardHeader>
                     <CardTitle>Access Denied</CardTitle>
                 </CardHeader>
@@ -288,18 +286,18 @@ export default function SiteSettingsPage() {
                         <h1 className="text-3xl font-bold">Site Settings</h1>
                         <p className="text-muted-foreground">Manage your website's core settings.</p>
                     </div>
-                     <Button type="submit" disabled={form.formState.isSubmitting}>
+                    <Button type="submit" disabled={form.formState.isSubmitting}>
                         {form.formState.isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                         Save All Settings
                     </Button>
                 </div>
-                 <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 items-start">
+                <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 items-start">
                     <Card className="lg:col-span-1">
                         <CardHeader>
                             <CardTitle>General Settings</CardTitle>
                         </CardHeader>
                         <CardContent className="space-y-6">
-                             <FormField
+                            <FormField
                                 control={form.control}
                                 name="websiteName"
                                 render={({ field }) => (
@@ -312,15 +310,15 @@ export default function SiteSettingsPage() {
                                     </FormItem>
                                 )}
                             />
-                             <FormField
+                            <FormField
                                 control={form.control}
                                 name="favicon"
                                 render={({ field }) => (
                                     <FormItem>
                                         <FormLabel>Favicon</FormLabel>
                                         <FormControl>
-                                            <Input 
-                                                type="file" 
+                                            <Input
+                                                type="file"
                                                 accept="image/x-icon, image/png, image/svg+xml"
                                                 onChange={(e) => {
                                                     const file = e.target.files ? e.target.files[0] : null;
@@ -389,15 +387,15 @@ export default function SiteSettingsPage() {
                             <CardTitle>Homepage Hero Section</CardTitle>
                         </CardHeader>
                         <CardContent className="space-y-6">
-                              <FormField
+                            <FormField
                                 control={form.control}
                                 name="homepageBackgroundImage"
                                 render={({ field }) => (
                                     <FormItem>
                                         <FormLabel>Background Image</FormLabel>
                                         <FormControl>
-                                            <Input 
-                                                type="file" 
+                                            <Input
+                                                type="file"
                                                 accept="image/png, image/jpeg, image/webp"
                                                 onChange={(e) => {
                                                     const file = e.target.files ? e.target.files[0] : null;
@@ -408,7 +406,7 @@ export default function SiteSettingsPage() {
                                                 }}
                                             />
                                         </FormControl>
-                                        {backgroundPreview && <Image src={backgroundPreview} alt="Background preview" className="w-full h-auto mt-2 rounded-md" width={400} height={225} style={{objectFit: 'cover'}}/>}
+                                        {backgroundPreview && <Image src={backgroundPreview} alt="Background preview" className="w-full h-auto mt-2 rounded-md" width={400} height={225} style={{ objectFit: 'cover' }} />}
                                         <FormMessage />
                                     </FormItem>
                                 )}
@@ -439,7 +437,7 @@ export default function SiteSettingsPage() {
                                     </FormItem>
                                 )}
                             />
-                             <FormField
+                            <FormField
                                 control={form.control}
                                 name="enrollButtonText"
                                 render={({ field }) => (
@@ -452,7 +450,7 @@ export default function SiteSettingsPage() {
                                     </FormItem>
                                 )}
                             />
-                             <FormField
+                            <FormField
                                 control={form.control}
                                 name="enrollButtonLink"
                                 render={({ field }) => (
@@ -466,7 +464,7 @@ export default function SiteSettingsPage() {
                                     </FormItem>
                                 )}
                             />
-                             <FormField
+                            <FormField
                                 control={form.control}
                                 name="exploreButtonText"
                                 render={({ field }) => (
@@ -514,7 +512,7 @@ export default function SiteSettingsPage() {
                                     </FormItem>
                                 )}
                             />
-                             <FormField
+                            <FormField
                                 control={form.control}
                                 name="featuresSubtitle"
                                 render={({ field }) => (
@@ -529,24 +527,25 @@ export default function SiteSettingsPage() {
                             />
                             <Separator />
                             <h4 className="font-semibold text-md">Feature 1</h4>
-                             <FormField control={form.control} name="feature1Icon" render={({ field }) => (<FormItem><FormLabel>Icon</FormLabel><IconSelect field={field} /><FormMessage /></FormItem>)} />
-                             <FormField control={form.control} name="feature1Title" render={({ field }) => (<FormItem><FormLabel>Title</FormLabel><FormControl><Input {...field} /></FormControl><FormMessage /></FormItem>)} />
-                             <FormField control={form.control} name="feature1Description" render={({ field }) => (<FormItem><FormLabel>Description</FormLabel><FormControl><Textarea {...field} /></FormControl><FormMessage /></FormItem>)} />
+                            <FormField control={form.control} name="feature1Icon" render={({ field }) => (<FormItem><FormLabel>Icon</FormLabel><IconSelect field={field} /><FormMessage /></FormItem>)} />
+                            <FormField control={form.control} name="feature1Title" render={({ field }) => (<FormItem><FormLabel>Title</FormLabel><FormControl><Input {...field} /></FormControl><FormMessage /></FormItem>)} />
+                            <FormField control={form.control} name="feature1Description" render={({ field }) => (<FormItem><FormLabel>Description</FormLabel><FormControl><Textarea {...field} /></FormControl><FormMessage /></FormItem>)} />
 
-                             <Separator />
-                             <h4 className="font-semibold text-md">Feature 2</h4>
-                             <FormField control={form.control} name="feature2Icon" render={({ field }) => (<FormItem><FormLabel>Icon</FormLabel><IconSelect field={field} /><FormMessage /></FormItem>)} />
-                             <FormField control={form.control} name="feature2Title" render={({ field }) => (<FormItem><FormLabel>Title</FormLabel><FormControl><Input {...field} /></FormControl><FormMessage /></FormItem>)} />
-                             <FormField control={form.control} name="feature2Description" render={({ field }) => (<FormItem><FormLabel>Description</FormLabel><FormControl><Textarea {...field} /></FormControl><FormMessage /></FormItem>)} />
+                            <Separator />
+                            <h4 className="font-semibold text-md">Feature 2</h4>
+                            <FormField control={form.control} name="feature2Icon" render={({ field }) => (<FormItem><FormLabel>Icon</FormLabel><IconSelect field={field} /><FormMessage /></FormItem>)} />
+                            <FormField control={form.control} name="feature2Title" render={({ field }) => (<FormItem><FormLabel>Title</FormLabel><FormControl><Input {...field} /></FormControl><FormMessage /></FormItem>)} />
+                            <FormField control={form.control} name="feature2Description" render={({ field }) => (<FormItem><FormLabel>Description</FormLabel><FormControl><Textarea {...field} /></FormControl><FormMessage /></FormItem>)} />
 
-                             <Separator />
-                             <h4 className="font-semibold text-md">Feature 3</h4>
-                              <FormField control={form.control} name="feature3Icon" render={({ field }) => (<FormItem><FormLabel>Icon</FormLabel><IconSelect field={field} /><FormMessage /></FormItem>)} />
-                             <FormField control={form.control} name="feature3Title" render={({ field }) => (<FormItem><FormLabel>Title</FormLabel><FormControl><Input {...field} /></FormControl><FormMessage /></FormItem>)} />
-                             <FormField control={form.control} name="feature3Description" render={({ field }) => (<FormItem><FormLabel>Description</FormLabel><FormControl><Textarea {...field} /></FormControl><FormMessage /></FormItem>)} />
+                            <Separator />
+                            <h4 className="font-semibold text-md">Feature 3</h4>
+                            <FormField control={form.control} name="feature3Icon" render={({ field }) => (<FormItem><FormLabel>Icon</FormLabel><IconSelect field={field} /><FormMessage /></FormItem>)} />
+                            <FormField control={form.control} name="feature3Title" render={({ field }) => (<FormItem><FormLabel>Title</FormLabel><FormControl><Input {...field} /></FormControl><FormMessage /></FormItem>)} />
+                            <FormField control={form.control} name="feature3Description" render={({ field }) => (<FormItem><FormLabel>Description</FormLabel><FormControl><Textarea {...field} /></FormControl><FormMessage /></FormItem>)} />
                         </CardContent>
                     </Card>
-                 </div>
+                </div>
+
             </form>
         </Form>
     );

@@ -8,12 +8,12 @@ import { getFunctions, Functions } from "firebase/functions";
 
 // --- Default Firebase bucket (for images, docs, thumbnails, etc.)
 const firebaseConfig = {
-  projectId: "edustream-5t6z4",
-  appId: "1:97402238606:web:9eafd9e0eef544c9a7bbdf",
-  storageBucket: "edustream-5t6z4.appspot.com",
-  apiKey: "AIzaSyDeGE3SrZAph45xj9mgOyEKPURLgsBbIJM",
-  authDomain: "edustream-5t6z4.firebaseapp.com",
-  messagingSenderId: "97402238606",
+  projectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID!,
+  appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID!,
+  storageBucket: process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET!,
+  apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY!,
+  authDomain: process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN!,
+  messagingSenderId: process.env.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID!,
 };
 
 // Initialize Firebase app (only once)

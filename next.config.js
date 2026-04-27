@@ -57,11 +57,15 @@ const nextConfig = {
       "wss://*.cloudworkstations.dev",
     ].join(' ');
 
+    const isDev = process.env.NODE_ENV === 'development';
+
     const scriptSrc = [
       "script-src",
       "'self'",
       "'unsafe-inline'",
-      "'unsafe-eval'",
+      // unsafe-eval is required by Next.js Hot Module Replacement in dev mode.
+      // It is intentionally excluded from production builds for security.
+      ...(isDev ? ["'unsafe-eval'"] : []),
       "https://challenges.cloudflare.com",
       "https://*.googletagmanager.com",
       "https://*.google-analytics.com",
@@ -102,7 +106,7 @@ const nextConfig = {
           { key: 'X-Content-Type-Options', value: 'nosniff' },
           { key: 'Referrer-Policy', value: 'strict-origin-when-cross-origin' },
           { key: 'Strict-Transport-Security', value: 'max-age=15552000; includeSubDomains' },
-          { key: 'Cross-Origin-Opener-Policy', value: 'unsafe-none' },
+          { key: 'Cross-Origin-Opener-Policy', value: 'same-origin-allow-popups' },
           {
             key: 'Permissions-Policy',
             value: 'camera=(), microphone=(), geolocation=(), payment=(), usb=(), interest-cohort=()',
