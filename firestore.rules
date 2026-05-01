@@ -103,9 +103,8 @@ service cloud.firestore {
     match /users/{userId} {
       allow read:   if isSignedIn();
       allow create: if true;
-      allow update: if isModerator() || isAdmin();
+      allow update: if isModerator() || isAdmin() || (isOwner(userId) && (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['role', 'classLadderId', 'charge'])));
       allow delete: if isModerator() && hasPermission('viewReports');
-      allow write:  if isOwner(userId) || isAdmin();
     }
 
     // ---------- Courses ----------
@@ -398,7 +397,11 @@ service cloud.firestore {
       allow read:  if resource.data.status == 'published' || isSignedIn();
       allow write: if isAdmin();
 
-      match /comments/{commentId} { allow read: if true; allow write: if isSignedIn(); }
+      match /comments/{commentId} { 
+        allow read: if true; 
+        allow create: if isSignedIn() && request.resource.data.authorId == request.auth.uid; 
+        allow update, delete: if isAdmin() || (isSignedIn() && resource.data.authorId == request.auth.uid); 
+      }
       match /likes/{likeId}     { allow read: if true; allow write: if isSignedIn(); }
       match /shares/{shareId}   { allow read: if true; allow write: if isSignedIn(); }
     }
@@ -447,8 +450,19 @@ service cloud.firestore {
     // ---------- Community ----------
     match /communityPosts/{postId} {
       allow read:  if permAllows('viewCommunityPage');
-      allow write: if isSignedIn();
-      match /replies/{replyId} { allow read: if permAllows('viewCommunityPage'); allow write: if isSignedIn(); }
+      allow create: if isSignedIn() && request.resource.data.authorId == request.auth.uid;
+      allow update, delete: if isAdmin() || hasPermission('manageCommunity') || (isSignedIn() && resource.data.authorId == request.auth.uid);
+      
+      match /replies/{replyId} { 
+        allow read: if permAllows('viewCommunityPage'); 
+        allow create: if isSignedIn() && request.resource.data.authorId == request.auth.uid;
+        allow update, delete: if isAdmin() || hasPermission('manageCommunity') || (isSignedIn() && resource.data.authorId == request.auth.uid);
+      }
+    }
+
+    // Collection group for replies (needed for user profile stats)
+    match /{path=**}/replies/{replyId} {
+      allow read: if permAllows('viewCommunityPage');
     }
 
     // ---------- Certificates ----------
@@ -493,7 +507,9 @@ service cloud.firestore {
     // Only admins can read, update, or delete entries.
     match /external/{document=**} {
       allow create: if true;
-      allow read, update, delete: if isAdmin();
+      allow read, update: if isSignedIn() && resource.data.createdBy == request.auth.uid;
+      allow delete: if isAdmin();
+      allow read, update: if isAdmin();
     }
 
     // ---------- Reports (read-only access gated by 'viewReports') ----------
@@ -509,8 +525,11 @@ service cloud.firestore {
 
     // ---------- Email Extension (Trigger Email from Firestore) ----------
     match /mail/{mailId} {
-      // Allow authorized staff to trigger emails
-      allow create: if isSignedIn() && (isAdmin() || isModerator() || permAllows('manageContent') || permAllows('manageUsers') || permAllows('manageHpRequests'));
+      // Allow authorized staff or any signed-in user (for community notifications)
+      allow create: if isSignedIn() && (
+        isAdmin() || isModerator() || permAllows('manageContent') || permAllows('manageUsers') || permAllows('manageHpRequests')
+        || (request.resource.data.keys().hasAll(['to', 'message']))
+      );
       // Only admins or staff with manageUsers permission can read the email trigger document
       allow read: if isSignedIn() && (isAdmin() || isModerator() || permAllows('manageUsers') || resource.data.to[0] == request.auth.token.email);
     }

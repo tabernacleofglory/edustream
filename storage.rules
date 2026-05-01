@@ -7,7 +7,7 @@ service firebase.storage {
     // Allows any authenticated user to write to the videos folder.
     match /contents/videos/{videoId} {
       allow write: if request.auth != null
-                   && request.resource.size < 2 * 1024 * 1024 * 1024 // Optional: Max 2GB
+                   && request.resource.size < 20 * 1024 * 1024 // 20MB limit
                    && request.resource.contentType.matches('video/.*');
 
       // Allows a user to delete a video if their UID is stored in the file's metadata.
@@ -20,6 +20,24 @@ service firebase.storage {
        allow write: if request.auth != null
                     && request.resource.size < 5 * 1024 * 1024 // Optional: Max 5MB
                     && request.resource.contentType.matches('image/.*');
+    }
+
+    // Rules for avatars
+    match /avatars/{userId} {
+      allow write: if request.auth != null
+                   && request.auth.uid == userId
+                   && request.resource.size < 5 * 1024 * 1024
+                   && request.resource.contentType.matches('image/.*');
+      allow read: if true;
+    }
+
+    // Rules for community attachments
+    match /community/{userId}/{fileName} {
+      allow write: if request.auth != null
+                   && request.auth.uid == userId
+                   && request.resource.size < 5 * 1024 * 1024
+                   && (request.resource.contentType.matches('image/.*') || request.resource.contentType.matches('application/.*') || request.resource.contentType.matches('text/.*'));
+      allow read: if true;
     }
 
     // Rule for transcoded video PLAYBACK

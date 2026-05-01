@@ -426,7 +426,7 @@ useEffect(() => {
                             <SelectValue placeholder="Select a campus" />
                         </SelectTrigger>
                         <SelectContent>
-                             {isCurrentUserAdmin && <SelectItem value="All Campuses">All Campuses</SelectItem>}
+                             <SelectItem value="All Campuses">All Campuses</SelectItem>
                             {campuses.map((c) => (
                                 <SelectItem key={c.id} value={c["Campus Name"]}>{c["Campus Name"]}</SelectItem>
                             ))}

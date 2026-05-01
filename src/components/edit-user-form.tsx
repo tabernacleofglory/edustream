@@ -644,7 +644,7 @@ export default function EditUserForm({ userToEdit, onUserUpdated }: EditUserForm
                                 <SelectValue placeholder="Select a campus" />
                             </SelectTrigger>
                             <SelectContent>
-                                {currentUser?.campus === 'All Campuses' && <SelectItem value="All Campuses">All Campuses</SelectItem>}
+                                <SelectItem value="All Campuses">All Campuses</SelectItem>
                                 {campuses.filter(c => c["Campus Name"] !== 'All Campuses').map(c => (
                                     <SelectItem key={c.id} value={c["Campus Name"]}>{c["Campus Name"]}</SelectItem>
                                 ))}
