@@ -18,16 +18,8 @@ import { NextRequest, NextResponse } from 'next/server';
 export function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
-  // Guard admin routes against non-browser automated requests
+  // Add no-cache and no-store for all admin responses
   if (pathname.startsWith('/admin')) {
-    const userAgent = request.headers.get('user-agent') || '';
-    const isBrowser = /Mozilla|Chrome|Safari|Firefox|Edge|Opera/i.test(userAgent);
-
-    if (!isBrowser) {
-      return new NextResponse('Forbidden', { status: 403 });
-    }
-
-    // Add no-cache and no-store for all admin responses
     const response = NextResponse.next();
     response.headers.set('Cache-Control', 'no-store, max-age=0');
     return response;

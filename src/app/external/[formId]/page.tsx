@@ -569,7 +569,7 @@ export default function PublicFormPage() {
       }
     };
     fetchFormConfig();
-  }, [formId, db]);
+  }, [formId]);
 
   if (loading) {
     return (
