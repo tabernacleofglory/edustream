@@ -237,7 +237,7 @@ const DynamicForm = ({ formConfig }: { formConfig: CustomForm }) => {
       setLoadingOptions(false);
     };
     if (formConfig.fields.length > 0) fetchOptions();
-  }, [db, formConfig.fields, t]);
+  }, [formConfig.fields, t]);
 
   const onSubmit = async (data: any) => {
     setIsSubmitting(true);
