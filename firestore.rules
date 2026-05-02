@@ -103,7 +103,7 @@ service cloud.firestore {
     match /users/{userId} {
       allow read:   if isSignedIn();
       allow create: if true;
-      allow update: if isModerator() || isAdmin() || (isOwner(userId) && (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['role', 'classLadderId', 'charge'])));
+      allow update: if isModerator() || isAdmin() || (isOwner(userId) && (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['role', 'charge'])));
       allow delete: if isModerator() && hasPermission('viewReports');
     }
 
