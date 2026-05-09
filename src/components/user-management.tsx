@@ -327,23 +327,78 @@ export default function UserManagement() {
             getDocs(query(collectionGroup(db, 'submissions'), where('userId', '==', userId)))
         ]);
 
+        const courseById = new Map(courses.map(course => [course.id, course]));
+        const knownCourseIds = new Set(courseById.keys());
+        const knownVideoIds = new Set<string>();
+        const knownQuizIds = new Set<string>();
+        const knownFormIds = new Set<string>();
+        courses.forEach(course => {
+            (course.videos || []).forEach(id => knownVideoIds.add(id));
+            (course.quizIds || []).forEach(id => knownQuizIds.add(id));
+            if (course.formId) knownFormIds.add(course.formId);
+        });
+
         const completedIds = new Set<string>();
+        const engagedCourseIds = new Set<string>();
+        const videoDone = new Set<string>();
+        const quizzesDone = new Set<string>();
+        const formsDone = new Set<string>();
+        const onsiteRecords = onsiteSnap.docs.map(d => d.data() as OnsiteCompletion);
+        const onsiteCourseTitles = new Map<string, string>();
         
         // 1. Onsite
-        onsiteSnap.forEach(d => completedIds.add(d.data().courseId));
+        onsiteRecords.forEach(record => {
+            if (!record.courseId) return;
+            completedIds.add(record.courseId);
+            engagedCourseIds.add(record.courseId);
+            if (record.courseName) onsiteCourseTitles.set(record.courseId, record.courseName);
+            (record.creditedVideos || []).forEach(id => knownVideoIds.has(id) && videoDone.add(id));
+            (record.creditedQuizzes || []).forEach(id => knownQuizIds.has(id) && quizzesDone.add(id));
+            if (record.creditedForm?.formId && knownFormIds.has(record.creditedForm.formId)) {
+                formsDone.add(record.creditedForm.formId);
+            }
+        });
         // 2. Enrollment formal finish
-        enrollmentsSnap.forEach(d => { if (d.data().completedAt) completedIds.add(d.data().courseId); });
+        enrollmentsSnap.forEach(d => {
+            const enrollment = d.data() as Enrollment;
+            if (!enrollment.courseId) return;
+            if (enrollment.completedAt) {
+                completedIds.add(enrollment.courseId);
+                engagedCourseIds.add(enrollment.courseId);
+            }
+        });
         // 3. Global Sync
+        const globalCompletedItems = new Set<string>();
         if (globalSnap.exists()) {
             const gItems = globalSnap.data().completedItems || {};
-            Object.keys(gItems).forEach(id => completedIds.add(id));
+            Object.keys(gItems).forEach(id => {
+                globalCompletedItems.add(id);
+                if (knownCourseIds.has(id)) completedIds.add(id);
+                if (knownVideoIds.has(id)) videoDone.add(id);
+                if (knownQuizIds.has(id)) quizzesDone.add(id);
+                if (knownFormIds.has(id)) formsDone.add(id);
+            });
         }
         
         // 4. Fallback granular check
-        const videoDone = new Set<string>();
-        progressSnap.forEach(d => d.data().videoProgress?.forEach((vp: any) => { if (vp.completed) videoDone.add(vp.videoId); }));
-        const quizzesDone = new Set(quizSnap.docs.map(d => d.data().quizId));
-        const formsDone = new Set(formSnap.docs.map(d => d.data().formId));
+        progressSnap.forEach(d => {
+            const data = d.data() as UserProgressType;
+            const hasVideoActivity = data.videoProgress?.some((vp: any) => vp.completed || (vp.timeSpent || 0) > 0);
+            if (data.courseId && ((data.totalProgress || data.percent || 0) > 0 || hasVideoActivity)) {
+                engagedCourseIds.add(data.courseId);
+            }
+            data.videoProgress?.forEach((vp: any) => { if (vp.completed) videoDone.add(vp.videoId); });
+        });
+        quizSnap.docs.forEach(d => {
+            const data = d.data();
+            if (data.quizId) quizzesDone.add(data.quizId);
+            if (data.courseId) engagedCourseIds.add(data.courseId);
+        });
+        formSnap.docs.forEach(d => {
+            const data = d.data();
+            if (data.formId) formsDone.add(data.formId);
+            if (data.courseId) engagedCourseIds.add(data.courseId);
+        });
 
         setUserVideoCompletions(videoDone);
         setUserQuizCompletions(quizzesDone);
@@ -362,34 +417,43 @@ export default function UserManagement() {
             if (videosOk && quizzesOk && formOk && (reqVideos.length > 0 || reqQuizzes.length > 0 || reqForm)) {
                 completedIds.add(c.id);
             }
+
+            const hasCourseActivity =
+                globalCompletedItems.has(c.id) ||
+                reqVideos.some(id => videoDone.has(id)) ||
+                reqQuizzes.some(id => quizzesDone.has(id)) ||
+                (!!reqForm && formsDone.has(reqForm));
+
+            if (hasCourseActivity) {
+                engagedCourseIds.add(c.id);
+            }
         });
 
         const progressDocs = progressSnap.docs.map(d => d.data() as UserProgressType);
-        const enrollmentDocs = enrollmentsSnap.docs.map(d => d.data() as Enrollment);
-        
         const allRelevantCourseIds = Array.from(new Set([
-            ...enrollmentDocs.map(e => e.courseId),
-            ...Array.from(completedIds),
-            ...progressDocs.map(p => p.courseId)
-        ]));
+            ...Array.from(engagedCourseIds),
+            ...Array.from(completedIds)
+        ].filter((courseId): courseId is string => typeof courseId === 'string' && courseId.length > 0)));
 
-        const detailedList = allRelevantCourseIds.map(cid => {
-            const course = courses.find(c => c.id === cid);
+        const detailedList = allRelevantCourseIds.flatMap(cid => {
+            const course = courseById.get(cid);
             const progress = progressDocs.find(p => p.courseId === cid);
             const isCompleted = completedIds.has(cid);
+            const courseTitle = course?.title || onsiteCourseTitles.get(cid);
+            if (!courseTitle) return [];
 
-            return {
+            return [{
                 courseId: cid,
-                courseTitle: course?.title || 'Unknown Course',
+                courseTitle,
                 totalProgress: isCompleted ? 100 : (progress?.totalProgress || 0),
                 isCompleted: isCompleted,
                 ladderIds: course?.ladderIds || [],
                 language: course?.language,
-            };
+            }];
         });
 
         setDetailedProgress(detailedList.sort((a,b) => a.courseTitle.localeCompare(b.courseTitle)));
-        setDetailedOnsite(onsiteSnap.docs.map(d => d.data() as OnsiteCompletion));
+        setDetailedOnsite(onsiteRecords);
     } catch (e) {
         console.error(e);
         toast({ variant: 'destructive', title: 'Failed to load details' });
