@@ -74,7 +74,8 @@ import {
   XCircle,
   FileQuestion,
   FileText,
-  Video as VideoIcon
+  Video as VideoIcon,
+  UserRound,
 } from "lucide-react";
 import { Skeleton } from "./ui/skeleton";
 import AddUserForm from "./add-user-form";
@@ -104,7 +105,7 @@ interface Campus {
 }
 
 export default function UserManagement() {
-  const { user: currentUser, canViewAllCampuses, hasPermission } = useAuth();
+  const { user: currentUser, canViewAllCampuses, hasPermission, startImpersonation } = useAuth();
   const { toast } = useToast();
   const db = getFirebaseFirestore();
 
@@ -676,6 +677,17 @@ export default function UserManagement() {
                             <div className="flex justify-end gap-1">
                                 <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => handleViewDetails(u)}><Eye className="h-4 w-4" /></Button>
                                 <Button size="icon" variant="ghost" className="h-8 w-8" onClick={() => setEditingUser(u)}><Edit className="h-4 w-4" /></Button>
+                                {(currentUser?.role === 'admin' || currentUser?.role === 'developer') && (
+                                  <Button
+                                    size="icon"
+                                    variant="ghost"
+                                    className="h-8 w-8 text-amber-600 hover:text-amber-700 hover:bg-amber-50"
+                                    title="View as this student"
+                                    onClick={() => startImpersonation(u.id)}
+                                  >
+                                    <UserRound className="h-4 w-4" />
+                                  </Button>
+                                )}
                             </div>
                         </TableCell>
                     </TableRow>

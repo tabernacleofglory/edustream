@@ -47,6 +47,7 @@ import LanguageSwitcher from "@/components/language-switcher";
 import { useI18n } from "@/hooks/use-i18n";
 import MobileNav from "@/components/mobile-nav";
 import { AutomationRunner } from "@/components/automation-runner";
+import { ImpersonationBanner } from "@/components/impersonation-banner";
 
 
 
@@ -317,6 +318,7 @@ function AppContentInternal({ children }: { children: React.ReactNode }) {
 
   return (
         <SidebarProvider open={isSidebarOpen} onOpenChange={setIsSidebarOpen}>
+            <ImpersonationBanner />
             <PanelGroup direction="horizontal" className="min-h-screen w-full relative">
                 <Sidebar>
                 <SidebarHeader>

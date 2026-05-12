@@ -10,24 +10,38 @@ import { usePathname, useRouter } from 'next/navigation';
 
 interface AuthContextType {
   user: AppUser | null;
+  /** The actual signed-in admin/developer (never the impersonated one). */
+  realUser: AppUser | null;
   loading: boolean;
   isCurrentUserAdmin: boolean;
   canViewAllCampuses: boolean;
   refreshUser: () => void;
   hasPermission: (permission: string) => boolean;
+  activePermissions: string[];
   isProfileComplete: boolean;
   checkAndCreateUserDoc: (firebaseUser: FirebaseUser) => Promise<boolean>;
+  /** True while impersonating a student */
+  isImpersonating: boolean;
+  /** Start impersonating a user by their Firestore UID */
+  startImpersonation: (targetUid: string) => Promise<void>;
+  /** Stop impersonation and return to the real admin view */
+  stopImpersonation: () => void;
 }
 
 const AuthContext = createContext<AuthContextType>({
   user: null,
+  realUser: null,
   loading: true,
   isCurrentUserAdmin: false,
   canViewAllCampuses: false,
   refreshUser: () => {},
   hasPermission: () => false,
+  activePermissions: [],
   isProfileComplete: false,
   checkAndCreateUserDoc: async () => false,
+  isImpersonating: false,
+  startImpersonation: async () => {},
+  stopImpersonation: () => {},
 });
 
 const languageMigrationMap: { [key: string]: string } = {
@@ -36,6 +50,8 @@ const languageMigrationMap: { [key: string]: string } = {
     "Spanish": "Spanish; Castilian",
     "English": "English",
 };
+
+const IMPERSONATION_KEY = 'edu_impersonating_uid';
 
 const getDefaultLadderId = async (db: any): Promise<{id: string, name: string} | null> => {
     const laddersRef = collection(db, "courseLevels");
@@ -49,19 +65,26 @@ const getDefaultLadderId = async (db: any): Promise<{id: string, name: string} |
 }
 
 export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
-  const [user, setUser] = useState<AppUser | null>(null);
+  const [realUser, setRealUser] = useState<AppUser | null>(null);
+  const [impersonatedUser, setImpersonatedUser] = useState<AppUser | null>(null);
   const [loading, setLoading] = useState(true);
-  const [userPermissions, setUserPermissions] = useState<string[]>([]);
+  const [realUserPermissions, setRealUserPermissions] = useState<string[]>([]);
+  const [impersonatedPermissions, setImpersonatedPermissions] = useState<string[]>([]);
   const [validLanguages, setValidLanguages] = useState<string[]>([]);
   const auth = getFirebaseAuth();
   const db = getFirebaseFirestore();
   const router = useRouter(); 
   const pathname = usePathname();
 
-  const isCurrentUserAdmin = user?.role === 'admin' || user?.role === 'developer';
-  const canViewAllCampuses = isCurrentUserAdmin || user?.campus === 'All Campuses';
+  // The "active" user: impersonated student when active, otherwise the real admin
+  const user = impersonatedUser ?? realUser;
+  const isImpersonating = !!impersonatedUser;
+
+  const isCurrentUserAdmin = realUser?.role === 'admin' || realUser?.role === 'developer';
+  const canViewAllCampuses = isCurrentUserAdmin || realUser?.campus === 'All Campuses';
   
-  const isProfileComplete = !!user?.isInHpGroup && !!user?.language && validLanguages.includes(user.language) && !!user?.locationPreference;
+  // Profile completion is checked against the ACTIVE user (so admin sees if student is restricted)
+  const isProfileComplete = !!user?.isInHpGroup && !!user?.language && validLanguages.includes(user.language || '') && !!user?.locationPreference;
 
   useEffect(() => {
     const fetchValidLanguages = async () => {
@@ -103,7 +126,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
 
   const fetchUserDocument = useCallback(async (firebaseUser: FirebaseUser | null) => {
     if (!firebaseUser) {
-        setUser(null);
+        setRealUser(null);
         setUserPermissions([]);
         setLoading(false);
         return;
@@ -130,15 +153,15 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
           displayName: userData.fullName || firebaseUser.displayName,
           photoURL: firebaseUser.photoURL,
         };
-        setUser(authUser);
+        setRealUser(authUser);
 
         const role = authUser.role || 'user';
         const permissionsDocRef = doc(db, "rolePermissions", role);
         const permissionsSnapshot = await getDoc(permissionsDocRef);
         if (permissionsSnapshot.exists()) {
-            setUserPermissions(permissionsSnapshot.data()?.permissions || []);
+            setRealUserPermissions(permissionsSnapshot.data()?.permissions || []);
         } else {
-            setUserPermissions([]);
+            setRealUserPermissions([]);
         }
       } else {
         await checkAndCreateUserDoc(firebaseUser);
@@ -146,7 +169,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
       setLoading(false);
     }, (error) => {
         console.error("Error fetching user document:", error);
-        setUser(null);
+        setRealUser(null);
         setLoading(false);
     });
 
@@ -170,6 +193,70 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     return () => unsubscribeAuth();
   }, [auth, fetchUserDocument]);
 
+  // Restore impersonation from sessionStorage after page reloads
+  useEffect(() => {
+    if (!realUser || loading) return;
+    const canImpersonate = realUser.role === 'admin' || realUser.role === 'developer';
+    if (!canImpersonate) return;
+
+    const savedUid = sessionStorage.getItem(IMPERSONATION_KEY);
+    if (savedUid && !impersonatedUser) {
+      // Silently restore
+      (async () => {
+        try {
+          const snap = await getDoc(doc(db, "users", savedUid));
+          if (snap.exists()) {
+            setImpersonatedUser({ id: snap.id, uid: snap.id, ...snap.data() } as AppUser);
+          } else {
+            sessionStorage.removeItem(IMPERSONATION_KEY);
+          }
+        } catch {
+          sessionStorage.removeItem(IMPERSONATION_KEY);
+        }
+      })();
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [realUser?.uid, loading]);
+
+  // Fetch impersonated user permissions
+  useEffect(() => {
+    if (impersonatedUser) {
+      const fetchImpersonatedPermissions = async () => {
+        const role = impersonatedUser.role || 'user';
+        const permissionsDocRef = doc(db, "rolePermissions", role);
+        const permissionsSnapshot = await getDoc(permissionsDocRef);
+        if (permissionsSnapshot.exists()) {
+          setImpersonatedPermissions(permissionsSnapshot.data()?.permissions || []);
+        } else {
+          setImpersonatedPermissions([]);
+        }
+      };
+      fetchImpersonatedPermissions();
+    } else {
+      setImpersonatedPermissions([]);
+    }
+  }, [db, impersonatedUser]);
+
+  const startImpersonation = useCallback(async (targetUid: string) => {
+    if (!realUser) return;
+    const canImpersonate = realUser.role === 'admin' || realUser.role === 'developer';
+    if (!canImpersonate) return;
+
+    const snap = await getDoc(doc(db, "users", targetUid));
+    if (!snap.exists()) throw new Error("User not found");
+
+    const targetUser: AppUser = { id: snap.id, uid: snap.id, ...snap.data() } as AppUser;
+    setImpersonatedUser(targetUser);
+    sessionStorage.setItem(IMPERSONATION_KEY, targetUid);
+    router.push('/dashboard');
+  }, [realUser, db, router]);
+
+  const stopImpersonation = useCallback(() => {
+    setImpersonatedUser(null);
+    sessionStorage.removeItem(IMPERSONATION_KEY);
+    router.push('/admin/users');
+  }, [router]);
+
   const refreshUser = useCallback(async () => {
     const currentUser = auth.currentUser;
     if (currentUser) {
@@ -180,6 +267,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   }, [auth, fetchUserDocument]);
 
   useEffect(() => {
+    // Navigation guards run against the real user, not the impersonated one
     if (loading || validLanguages.length === 0) return;
 
     const authPages = ['/login', '/signup'];
@@ -189,28 +277,33 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     const isSettingsPage = pathname === '/settings';
     const isAppPage = !isAuthPage && !isHomePage && !isExternalPage;
 
-    if (user) {
-      // If profile is incomplete, force them to the settings page, unless they are already there.
+    if (realUser) {
       if (!isProfileComplete && !isSettingsPage) {
         router.push('/settings');
-      } 
-      // If user is on an auth page (login/signup), redirect to dashboard.
-      else if (isAuthPage) {
+      } else if (isAuthPage) {
         router.push('/dashboard');
       }
     } else {
-      // If not logged in and trying to access an internal app page, redirect to login.
       if (isAppPage) {
         router.push('/login');
       }
     }
-  }, [user, loading, pathname, router, isProfileComplete, validLanguages]);
+  }, [realUser, loading, pathname, router, isProfileComplete, validLanguages]);
 
 
   const hasPermission = useCallback((permission: string) => {
-    if(user?.role === 'developer') return true;
-    return userPermissions.includes(permission);
-  }, [user, userPermissions]);
+    // If impersonating, we check permissions against the impersonated student's role
+    if (isImpersonating) {
+      if (impersonatedUser?.role === 'developer') return true;
+      return impersonatedPermissions.includes(permission);
+    }
+    
+    // Otherwise check against the real admin user
+    if(realUser?.role === 'developer') return true;
+    return realUserPermissions.includes(permission);
+  }, [isImpersonating, impersonatedUser, impersonatedPermissions, realUser, realUserPermissions]);
+
+  const activePermissions = isImpersonating ? impersonatedPermissions : realUserPermissions;
 
   useEffect(() => {
     const handleContextMenu = (event: MouseEvent) => {
@@ -228,7 +321,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
 
 
   return (
-    <AuthContext.Provider value={{ user, loading, refreshUser, isCurrentUserAdmin, canViewAllCampuses, hasPermission, isProfileComplete, checkAndCreateUserDoc }}>
+    <AuthContext.Provider value={{ user, realUser, loading, refreshUser, isCurrentUserAdmin, canViewAllCampuses, hasPermission, activePermissions, isProfileComplete, checkAndCreateUserDoc, isImpersonating, startImpersonation, stopImpersonation }}>
       {children}
     </AuthContext.Provider>
   );

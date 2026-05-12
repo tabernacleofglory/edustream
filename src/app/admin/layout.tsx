@@ -70,6 +70,7 @@ import GlobalSearch from "@/components/global-search";
 import { useI18n } from "@/hooks/use-i18n";
 import MobileNav from "@/components/mobile-nav";
 import ActiveUsersSidebar from "@/components/active-users-sidebar";
+import { ImpersonationBanner } from "@/components/impersonation-banner";
 
 
 const NavItem = ({ href, label, icon: Icon, subItems, permission, isSidebarOpen }: { href?: string; label: string; icon: React.ElementType; subItems?: any[]; permission?: string, isSidebarOpen: boolean }) => {
@@ -308,6 +309,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
 
   return (
     <div className="min-h-screen w-full">
+      <ImpersonationBanner />
       <aside className={cn(`fixed inset-y-0 left-0 z-50 flex h-full max-h-screen flex-col bg-background border-r transition-all duration-300 ease-in-out`, isSidebarOpen ? 'w-[220px] lg:w-[280px]' : 'w-0 md:w-16')}>
         <div className="flex h-14 items-center border-b px-4 lg:h-[60px] lg:px-6">
           <Link href="/" className="flex items-center gap-2 font-semibold">
