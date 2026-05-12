@@ -65,10 +65,11 @@ export function useProcessedCourses(forAllCoursesPage: boolean = false) {
       setAllLadders(laddersList);
 
       /** PUBLISHED COURSES */
-      let coursesQuery = query(
-        collection(db, "courses"),
-        where("status", "==", "published")
-      );
+      // When forAllCoursesPage is true (e.g. My Certificates), fetch all courses
+      // regardless of status so we don't miss completed ones.
+      let coursesQuery = forAllCoursesPage
+        ? query(collection(db, "courses"))
+        : query(collection(db, "courses"), where("status", "==", "published"));
 
       const coursesSnapshot = await getDocs(coursesQuery);
 
@@ -82,7 +83,11 @@ export function useProcessedCourses(forAllCoursesPage: boolean = false) {
         (a, b) => (a.order ?? Infinity) - (b.order ?? Infinity)
       );
 
-      const targetLangName = user?.language || allLanguages.find(l => l.code === currentLanguage)?.name;
+      // When forAllCoursesPage is true, skip language filtering so the student
+      // can see certificates earned in any language.
+      const targetLangName = (!forAllCoursesPage)
+        ? (user?.language || allLanguages.find(l => l.code === currentLanguage)?.name)
+        : undefined;
       const coursesInLanguage = sortedCourses.filter(c => !targetLangName || c.language === targetLangName);
 
       if (!user) {
