@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useMemo, useCallback } from "react";
+import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import {
   Card,
   CardContent,
@@ -75,6 +75,53 @@ interface ProgressDetail {
 
 type SortKey = 'user' | 'course' | 'startDate' | 'completionDate';
 type SortDirection = 'asc' | 'desc';
+type LoadState = "idle" | "loading" | "loaded";
+type AnalyticsCardKey =
+  | "totalEnrollments"
+  | "classesCompletedStat"
+  | "pendingHpRequests"
+  | "userEngagement"
+  | "classesCompletedChart"
+  | "completionType"
+  | "locationPreference"
+  | "baptismStatus"
+  | "graduationStatus"
+  | "genderDistribution"
+  | "campusDistribution"
+  | "courseReport"
+  | "quizPerformance";
+
+interface BaseAnalyticsData {
+  users: User[];
+  courses: Course[];
+  courseGroups: CourseGroup[];
+  ladders: Ladder[];
+  videos: Video[];
+  quizzes: Quiz[];
+  campuses: Campus[];
+}
+
+interface CompletionAnalyticsData {
+  totalLadderGraduates: number;
+  completionChartData: { ladder: string, count: number, breakdown: { campuses: any[], languages: any[] } }[];
+  completionTypeChartData: { type: string, count: number }[];
+}
+
+const initialLoadStates: Record<AnalyticsCardKey, LoadState> = {
+  totalEnrollments: "idle",
+  classesCompletedStat: "idle",
+  pendingHpRequests: "idle",
+  userEngagement: "idle",
+  classesCompletedChart: "idle",
+  completionType: "idle",
+  locationPreference: "idle",
+  baptismStatus: "idle",
+  graduationStatus: "idle",
+  genderDistribution: "idle",
+  campusDistribution: "idle",
+  courseReport: "idle",
+  quizPerformance: "idle",
+};
 
 const engagementChartConfig = {
   count: {
@@ -151,11 +198,11 @@ function formatDuration(seconds: number) {
   return result.trim() || "0s";
 }
 
-const ClickToLoad = ({ onFetch, title }: { onFetch: () => void, title: string }) => (
-  <div className="flex items-center justify-center h-full min-h-[300px]">
-    <Button onClick={onFetch} variant="outline">
-      <RefreshCw className="mr-2 h-4 w-4" />
-      Load {title}
+const ClickToLoad = ({ onFetch, title, loading = false, compact = false }: { onFetch: () => void | Promise<void>, title: string, loading?: boolean, compact?: boolean }) => (
+  <div className={compact ? "h-8 flex items-center" : "flex items-center justify-center h-full min-h-[300px]"}>
+    <Button onClick={onFetch} variant="outline" size={compact ? "sm" : "default"} disabled={loading} className={compact ? "h-8 px-2 text-xs" : ""}>
+      {loading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <RefreshCw className="mr-2 h-4 w-4" />}
+      {loading ? "Loading..." : `Load ${title}`}
     </Button>
   </div>
 );
@@ -175,7 +222,9 @@ export default function AnalyticsDashboard() {
   const [allVideos, setAllVideos] = useState<Video[]>([]);
   const [allCampuses, setAllCampuses] = useState<Campus[]>([]);
   const [quizPerformanceSummary, setQuizPerformanceSummary] = useState<QuizPerformanceSummary[] | null>(null);
-  const [summaryStats, setSummaryStats] = useState<{ totalEnrollments: number, totalHpRequests: number, totalLadderGraduates: number } | null>(null);
+  const [totalEnrollments, setTotalEnrollments] = useState<number | null>(null);
+  const [totalHpRequests, setTotalHpRequests] = useState<number | null>(null);
+  const [totalLadderGraduates, setTotalLadderGraduates] = useState<number | null>(null);
   const [engagementData, setEngagementData] = useState<{ date: string, count: number, breakdown: { name: string, value: number }[] }[]>([]);
   const [completionData, setCompletionData] = useState<{ ladder: string, count: number, breakdown: { campuses: any[], languages: any[] } }[]>([]);
   const [baptismData, setBaptismData] = useState<{ status: string, count: number }[]>([]);
@@ -189,8 +238,18 @@ export default function AnalyticsDashboard() {
 
 
   // Loading states
-  const [loading, setLoading] = useState(true);
   const [isClient, setIsClient] = useState(false);
+  const [loadStates, setLoadStates] = useState<Record<AnalyticsCardKey, LoadState>>(initialLoadStates);
+  const baseDataRef = useRef<BaseAnalyticsData | null>(null);
+  const baseDataPromiseRef = useRef<Promise<BaseAnalyticsData> | null>(null);
+  const usersDataRef = useRef<User[] | null>(null);
+  const usersDataPromiseRef = useRef<Promise<User[]> | null>(null);
+  const coursesDataRef = useRef<Course[] | null>(null);
+  const coursesDataPromiseRef = useRef<Promise<Course[]> | null>(null);
+  const quizzesDataRef = useRef<Quiz[] | null>(null);
+  const quizzesDataPromiseRef = useRef<Promise<Quiz[]> | null>(null);
+  const completionAnalyticsRef = useRef<CompletionAnalyticsData | null>(null);
+  const completionAnalyticsPromiseRef = useRef<Promise<CompletionAnalyticsData> | null>(null);
   
   const [selectedProgressDetail, setSelectedProgressDetail] = useState<ProgressDetail | null>(null);
   const [sortConfig, setSortConfig] = useState < { key: SortKey; direction: SortDirection } | null > (null);
@@ -214,172 +273,255 @@ export default function AnalyticsDashboard() {
     setIsClient(true);
   }, []);
 
-  const fetchBaseData = useCallback(async () => {
-    setLoading(true);
+  const isCardLoading = (key: AnalyticsCardKey) => loadStates[key] === "loading";
+  const isCardLoaded = (key: AnalyticsCardKey) => loadStates[key] === "loaded";
+
+  const loadCard = useCallback(async (key: AnalyticsCardKey, title: string, loader: () => Promise<void>) => {
+    setLoadStates((prev) => ({ ...prev, [key]: "loading" }));
     try {
-        const usersCollection = collection(db, 'users');
-        const coursesCollection = query(collection(db, 'courses'), where('status', '==', 'published'));
+      await loader();
+      setLoadStates((prev) => ({ ...prev, [key]: "loaded" }));
+    } catch (error) {
+      console.error(`Error loading ${title}:`, error);
+      toast({ variant: "destructive", title: `Failed to load ${title}.` });
+      setLoadStates((prev) => ({ ...prev, [key]: "idle" }));
+    }
+  }, [toast]);
+
+  const ensureUsers = useCallback(async (): Promise<User[]> => {
+    if (usersDataRef.current) {
+      return usersDataRef.current;
+    }
+
+    if (!usersDataPromiseRef.current) {
+      usersDataPromiseRef.current = getDocs(collection(db, 'users')).then((snapshot) => {
+        const users = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as User));
+        usersDataRef.current = users;
+        setAllUsers(users);
+        return users;
+      });
+    }
+
+    try {
+      return await usersDataPromiseRef.current;
+    } catch (error) {
+      usersDataPromiseRef.current = null;
+      throw error;
+    }
+  }, [db]);
+
+  const ensureCourses = useCallback(async (): Promise<Course[]> => {
+    if (coursesDataRef.current) {
+      return coursesDataRef.current;
+    }
+
+    if (!coursesDataPromiseRef.current) {
+      coursesDataPromiseRef.current = getDocs(query(collection(db, 'courses'), where('status', '==', 'published'))).then((snapshot) => {
+        const courses = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Course));
+        coursesDataRef.current = courses;
+        setAllCourses(courses);
+        return courses;
+      });
+    }
+
+    try {
+      return await coursesDataPromiseRef.current;
+    } catch (error) {
+      coursesDataPromiseRef.current = null;
+      throw error;
+    }
+  }, [db]);
+
+  const ensureQuizzes = useCallback(async (): Promise<Quiz[]> => {
+    if (quizzesDataRef.current) {
+      return quizzesDataRef.current;
+    }
+
+    if (!quizzesDataPromiseRef.current) {
+      quizzesDataPromiseRef.current = getDocs(collection(db, 'quizzes')).then((snapshot) => {
+        const quizzes = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Quiz));
+        quizzesDataRef.current = quizzes;
+        setAllQuizzes(quizzes);
+        return quizzes;
+      });
+    }
+
+    try {
+      return await quizzesDataPromiseRef.current;
+    } catch (error) {
+      quizzesDataPromiseRef.current = null;
+      throw error;
+    }
+  }, [db]);
+
+  const ensureBaseData = useCallback(async (): Promise<BaseAnalyticsData> => {
+    if (baseDataRef.current) {
+      return baseDataRef.current;
+    }
+
+    if (!baseDataPromiseRef.current) {
+      baseDataPromiseRef.current = (async () => {
         const courseGroupsCollection = collection(db, 'courseGroups');
         const laddersCollection = query(collection(db, 'courseLevels'), orderBy('order'));
         const videosCollection = query(collection(db, 'Contents'), where("Type", "in", ["video", "youtube", "googledrive"]));
-        const quizzesCollection = collection(db, 'quizzes');
         const campusesCollection = collection(db, 'Campus');
-        
-        const [usersSnapshot, coursesSnapshot, courseGroupsSnapshot, laddersSnapshot, videosSnapshot, quizzesSnapshot, campusesSnapshot] = await Promise.all([
-            getDocs(usersCollection),
-            getDocs(coursesCollection),
-            getDocs(courseGroupsCollection),
-            getDocs(laddersCollection),
-            getDocs(videosCollection),
-            getDocs(quizzesCollection),
-            getDocs(campusesCollection),
+
+        const [users, courses, quizzes, courseGroupsSnapshot, laddersSnapshot, videosSnapshot, campusesSnapshot] = await Promise.all([
+          ensureUsers(),
+          ensureCourses(),
+          ensureQuizzes(),
+          getDocs(courseGroupsCollection),
+          getDocs(laddersCollection),
+          getDocs(videosCollection),
+          getDocs(campusesCollection),
         ]);
 
-        setAllUsers(usersSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as User)));
-        setAllCourses(coursesSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Course)));
-        setAllCourseGroups(courseGroupsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as CourseGroup)));
-        setAllLadders(laddersSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Ladder)));
-        setAllVideos(videosSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Video)));
-        setAllQuizzes(quizzesSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Quiz)));
-        setAllCampuses(campusesSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Campus)));
+        const baseData = {
+          users,
+          courses,
+          courseGroups: courseGroupsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as CourseGroup)),
+          ladders: laddersSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Ladder)),
+          videos: videosSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Video)),
+          quizzes,
+          campuses: campusesSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Campus)),
+        };
+
+        baseDataRef.current = baseData;
+        setAllUsers(baseData.users);
+        setAllCourses(baseData.courses);
+        setAllCourseGroups(baseData.courseGroups);
+        setAllLadders(baseData.ladders);
+        setAllVideos(baseData.videos);
+        setAllQuizzes(baseData.quizzes);
+        setAllCampuses(baseData.campuses);
+
+        return baseData;
+      })();
+    }
+
+    try {
+      return await baseDataPromiseRef.current;
     } catch (error) {
-        console.error("Error fetching base data:", error);
-        toast({ variant: 'destructive', title: 'Failed to load essential data.' });
-    } finally {
-        setLoading(false);
+      baseDataPromiseRef.current = null;
+      throw error;
     }
-  }, [db, toast]);
+  }, [db, ensureCourses, ensureQuizzes, ensureUsers]);
 
-  useEffect(() => {
-    fetchBaseData();
-  }, [fetchBaseData]);
-
-  const fetchSummaryData = useCallback(async () => {
-    if (allUsers.length === 0 || allCourses.length === 0 || allLadders.length === 0) {
-      return;
+  const ensureCompletionAnalytics = useCallback(async (): Promise<CompletionAnalyticsData> => {
+    if (completionAnalyticsRef.current) {
+      return completionAnalyticsRef.current;
     }
+
+    if (!completionAnalyticsPromiseRef.current) {
+      completionAnalyticsPromiseRef.current = (async () => {
+        const { users, courses, ladders, videos, quizzes } = await ensureBaseData();
   
-    // 1. Total Enrollments (Actual count from collection)
-    const enrollmentsCountSnap = await getCountFromServer(collection(db, 'enrollments'));
-    const totalEnrollments = enrollmentsCountSnap.data().count;
-  
-    // 2. Total HP Requests
-    const hpRequestingUsers = allUsers.filter(
-      (u) => (u.isInHpGroup === false || u.isInHpGroup === undefined || u.isInHpGroup === null) && u.hpAvailabilityDay
-    );
-    const totalHpRequests = hpRequestingUsers.length;
+        const userCompletionsMap = new Map<string, Set<string>>();
 
-    // 3. Multi-Source Verification Completion Data by Ladder
-    const userCompletionsMap = new Map<string, Set<string>>();
+        const [onlineCompletionsSnap, onsiteCompletionsSnap, globalProgressSnap, videoProgressSnap, quizResultsSnap, formSubmissionsSnap] = await Promise.all([
+          getDocs(query(collection(db, 'enrollments'), where('completedAt', '!=', null))),
+          getDocs(collection(db, 'onsiteCompletions')),
+          getDocs(collection(db, 'userContentProgress')),
+          getDocs(collection(db, 'userVideoProgress')),
+          getDocs(query(collection(db, 'userQuizResults'), where('passed', '==', true))),
+          getDocs(collectionGroup(db, 'submissions'))
+        ]);
 
-    const [onlineCompletionsSnap, onsiteCompletionsSnap, globalProgressSnap, videoProgressSnap, quizResultsSnap, formSubmissionsSnap] = await Promise.all([
-        getDocs(query(collection(db, 'enrollments'), where('completedAt', '!=', null))),
-        getDocs(collection(db, 'onsiteCompletions')),
-        getDocs(collection(db, 'userContentProgress')),
-        getDocs(collection(db, 'userVideoProgress')),
-        getDocs(query(collection(db, 'userQuizResults'), where('passed', '==', true))),
-        getDocs(collectionGroup(db, 'submissions'))
-    ]);
+        const recordCompletion = (userId: string, courseId: string) => {
+          if (!userId || !courseId) return;
+          if (!userCompletionsMap.has(userId)) userCompletionsMap.set(userId, new Set());
+          userCompletionsMap.get(userId)!.add(courseId);
+        };
 
-    const recordCompletion = (userId: string, courseId: string) => {
-        if (!userId || !courseId) return;
-        if (!userCompletionsMap.has(userId)) userCompletionsMap.set(userId, new Set());
-        userCompletionsMap.get(userId)!.add(courseId);
-    };
-
-    // Sources of completion
-    onsiteCompletionsSnap.forEach(d => {
-        const data = d.data();
-        if (data.userId && data.courseId) recordCompletion(data.userId, data.courseId);
-    });
-    onlineCompletionsSnap.forEach(d => {
-        const data = d.data();
-        if (data.userId && data.courseId) recordCompletion(data.userId, data.courseId);
-    });
-    globalProgressSnap.forEach(doc => {
-        const items = doc.data().completedItems || {};
-        Object.keys(items).forEach(cid => {
-            if (allCourses.some(c => c.id === cid)) recordCompletion(doc.id, cid);
+        onsiteCompletionsSnap.forEach(d => {
+          const data = d.data();
+          if (data.userId && data.courseId) recordCompletion(data.userId, data.courseId);
         });
-    });
+        onlineCompletionsSnap.forEach(d => {
+          const data = d.data();
+          if (data.userId && data.courseId) recordCompletion(data.userId, data.courseId);
+        });
+        globalProgressSnap.forEach(doc => {
+          const items = doc.data().completedItems || {};
+          Object.keys(items).forEach(cid => {
+            if (courses.some(c => c.id === cid)) recordCompletion(doc.id, cid);
+          });
+        });
 
-    // Granular activity verification maps
-    const videoDoneMap = new Map<string, Set<string>>();
-    videoProgressSnap.forEach(d => {
-        const data = d.data();
-        if(data.userId && Array.isArray(data.videoProgress)) {
+        const videoDoneMap = new Map<string, Set<string>>();
+        videoProgressSnap.forEach(d => {
+          const data = d.data();
+          if(data.userId && Array.isArray(data.videoProgress)) {
             if(!videoDoneMap.has(data.userId)) videoDoneMap.set(data.userId, new Set());
-            data.videoProgress.forEach((vp: any) => { 
-                if(vp.completed && vp.videoId) videoDoneMap.get(data.userId)!.add(vp.videoId); 
+            data.videoProgress.forEach((vp: any) => {
+              if(vp.completed && vp.videoId) videoDoneMap.get(data.userId)!.add(vp.videoId);
             });
-        }
-    });
+          }
+        });
 
-    const quizDoneMap = new Map<string, Set<string>>();
-    quizResultsSnap.forEach(d => {
-        const data = d.data();
-        if(data.userId && data.quizId) {
+        const quizDoneMap = new Map<string, Set<string>>();
+        quizResultsSnap.forEach(d => {
+          const data = d.data();
+          if(data.userId && data.quizId) {
             if(!quizDoneMap.has(data.userId)) quizDoneMap.set(data.userId, new Set());
             quizDoneMap.get(data.userId)!.add(data.quizId);
-        }
-    });
+          }
+        });
 
-    const formDoneMap = new Map<string, Set<string>>();
-    formSubmissionsSnap.forEach(d => {
-        const data = d.data();
-        if (data.userId && data.formId) {
+        const formDoneMap = new Map<string, Set<string>>();
+        formSubmissionsSnap.forEach(d => {
+          const data = d.data();
+          if (data.userId && data.formId) {
             if(!formDoneMap.has(data.userId)) formDoneMap.set(data.userId, new Set());
             formDoneMap.get(data.userId)!.add(data.formId);
-        }
-    });
+          }
+        });
 
-    // Sync granular maps with global model too for maximum accuracy
-    const allVideoIds = new Set(allVideos.map(v => v.id));
-    const allQuizIds = new Set(allQuizzes.map(q => q.id));
-    globalProgressSnap.forEach(doc => {
-        const userId = doc.id;
-        const items = doc.data().completedItems || {};
-        Object.keys(items).forEach(itemId => {
+        const allVideoIds = new Set(videos.map(v => v.id));
+        const allQuizIds = new Set(quizzes.map(q => q.id));
+        globalProgressSnap.forEach(doc => {
+          const userId = doc.id;
+          const items = doc.data().completedItems || {};
+          Object.keys(items).forEach(itemId => {
             if (allVideoIds.has(itemId)) {
-                if(!videoDoneMap.has(userId)) videoDoneMap.set(userId, new Set());
-                videoDoneMap.get(userId)!.add(itemId);
+              if(!videoDoneMap.has(userId)) videoDoneMap.set(userId, new Set());
+              videoDoneMap.get(userId)!.add(itemId);
             }
             if (allQuizIds.has(itemId)) {
-                if(!quizDoneMap.has(userId)) quizDoneMap.set(userId, new Set());
-                quizDoneMap.get(userId)!.add(itemId);
+              if(!quizDoneMap.has(userId)) quizDoneMap.set(userId, new Set());
+              quizDoneMap.get(userId)!.add(itemId);
             }
+          });
         });
-    });
 
-    // Final verification loop per user
-    allUsers.forEach(user => {
-        const myVideos = videoDoneMap.get(user.id) || new Set();
-        const myQuizzes = quizDoneMap.get(user.id) || new Set();
-        const myForms = formDoneMap.get(user.id) || new Set();
+        users.forEach(user => {
+          const myVideos = videoDoneMap.get(user.id) || new Set();
+          const myQuizzes = quizDoneMap.get(user.id) || new Set();
+          const myForms = formDoneMap.get(user.id) || new Set();
 
-        allCourses.forEach(c => {
+          courses.forEach(c => {
             if (userCompletionsMap.get(user.id)?.has(c.id)) return;
             const vOk = (c.videos || []).every(id => myVideos.has(id));
             const qOk = (c.quizIds || []).every(id => myQuizzes.has(id));
             const fOk = !c.formId || myForms.has(c.formId);
             const hasReqs = (c.videos?.length || 0) > 0 || (c.quizIds?.length || 0) > 0 || !!c.formId;
             if (vOk && qOk && fOk && hasReqs) {
-                recordCompletion(user.id, c.id);
+              recordCompletion(user.id, c.id);
             }
+          });
         });
-    });
 
-    const ladderStats: Record<string, { 
-        count: number, 
-        campuses: Record<string, number>, 
-        languages: Record<string, number> 
-    }> = {};
+        const ladderStats: Record<string, {
+          count: number,
+          campuses: Record<string, number>,
+          languages: Record<string, number>
+        }> = {};
 
-    allLadders.forEach(ladder => {
-        ladderStats[ladder.id] = { count: 0, campuses: {}, languages: {} };
-        const requiredCourses = allCourses.filter(c => c.ladderIds?.includes(ladder.id));
-        
-        allUsers.forEach(user => {
+        ladders.forEach(ladder => {
+          ladderStats[ladder.id] = { count: 0, campuses: {}, languages: {} };
+          const requiredCourses = courses.filter(c => c.ladderIds?.includes(ladder.id));
+
+          users.forEach(user => {
             if (user.classLadderId !== ladder.id) return;
             const userLang = user.language || 'English';
             const langRequiredCourses = requiredCourses.filter(c => c.language === userLang);
@@ -389,23 +531,72 @@ export default function AnalyticsDashboard() {
             const finishedAll = langRequiredCourses.every(c => userCompletedIds.has(c.id));
 
             if (finishedAll) {
-                ladderStats[ladder.id].count++;
-                const campus = user.campus || 'Unknown';
-                ladderStats[ladder.id].campuses[campus] = (ladderStats[ladder.id].campuses[campus] || 0) + 1;
-                ladderStats[ladder.id].languages[userLang] = (ladderStats[ladder.id].languages[userLang] || 0) + 1;
+              ladderStats[ladder.id].count++;
+              const campus = user.campus || 'Unknown';
+              ladderStats[ladder.id].campuses[campus] = (ladderStats[ladder.id].campuses[campus] || 0) + 1;
+              ladderStats[ladder.id].languages[userLang] = (ladderStats[ladder.id].languages[userLang] || 0) + 1;
             }
+          });
         });
-    });
 
-    const totalLadderGraduates = Object.values(ladderStats).reduce((sum, s) => sum + s.count, 0);
+        const completionChartData = ladders
+          .map(l => ({
+            ladder: l.name,
+            count: ladderStats[l.id]?.count || 0,
+            breakdown: {
+              campuses: Object.entries(ladderStats[l.id]?.campuses || {}).map(([name, value]) => ({ name, value })).sort((a,b) => b.value - a.value),
+              languages: Object.entries(ladderStats[l.id]?.languages || {}).map(([name, value]) => ({ name, value })).sort((a,b) => b.value - a.value)
+            }
+          }))
+          .filter(d => d.count > 0)
+          .sort((a,b) => a.count - b.count);
 
-    setSummaryStats({
-      totalEnrollments,
-      totalHpRequests,
-      totalLadderGraduates
-    });
+        const analyticsData = {
+          totalLadderGraduates: Object.values(ladderStats).reduce((sum, s) => sum + s.count, 0),
+          completionChartData,
+          completionTypeChartData: [
+            { type: "Online", count: onlineCompletionsSnap.size },
+            { type: "On-site", count: onsiteCompletionsSnap.size }
+          ]
+        };
 
-    // 4. Engagement Data (Last 7 days)
+        completionAnalyticsRef.current = analyticsData;
+        setTotalLadderGraduates(analyticsData.totalLadderGraduates);
+        setCompletionData(analyticsData.completionChartData);
+        setCompletionTypeData(analyticsData.completionTypeChartData);
+
+        return analyticsData;
+      })();
+    }
+
+    try {
+      return await completionAnalyticsPromiseRef.current;
+    } catch (error) {
+      completionAnalyticsPromiseRef.current = null;
+      throw error;
+    }
+  }, [db, ensureBaseData]);
+
+  const loadTotalEnrollments = useCallback(() => loadCard("totalEnrollments", "Total Enrollments", async () => {
+    const enrollmentsCountSnap = await getCountFromServer(collection(db, 'enrollments'));
+    setTotalEnrollments(enrollmentsCountSnap.data().count);
+  }), [db, loadCard]);
+
+  const loadClassesCompletedStat = useCallback(() => loadCard("classesCompletedStat", "Classes Completed", async () => {
+    const analyticsData = await ensureCompletionAnalytics();
+    setTotalLadderGraduates(analyticsData.totalLadderGraduates);
+  }), [ensureCompletionAnalytics, loadCard]);
+
+  const loadPendingHpRequests = useCallback(() => loadCard("pendingHpRequests", "Pending HP Requests", async () => {
+    const users = await ensureUsers();
+    const hpRequestingUsers = users.filter(
+      (u) => (u.isInHpGroup === false || u.isInHpGroup === undefined || u.isInHpGroup === null) && u.hpAvailabilityDay
+    );
+    setTotalHpRequests(hpRequestingUsers.length);
+  }), [ensureUsers, loadCard]);
+
+  const loadUserEngagement = useCallback(() => loadCard("userEngagement", "User Engagement", async () => {
+    const courses = await ensureCourses();
     const sevenDaysAgo = subDays(new Date(), 7);
     const engagementQuery = query(
         collection(db, 'userVideoProgress'),
@@ -428,7 +619,7 @@ export default function AnalyticsDashboard() {
             const dateStr = format(data.updatedAt.toDate(), 'MMM dd');
             if (activityMap[dateStr] !== undefined) {
                 activityMap[dateStr].count += 1;
-                const course = allCourses.find(c => c.id === data.courseId);
+                const course = courses.find(c => c.id === data.courseId);
                 const title = course?.title || "Unknown Course";
                 activityMap[dateStr].courses[title] = (activityMap[dateStr].courses[title] || 0) + 1;
             }
@@ -446,37 +637,49 @@ export default function AnalyticsDashboard() {
         .reverse();
     
     setEngagementData(engagementChartData);
+  }), [db, ensureCourses, loadCard]);
 
-    const completionChartData = allLadders
-        .map(l => ({
-            ladder: l.name,
-            count: ladderStats[l.id]?.count || 0,
-            breakdown: {
-                campuses: Object.entries(ladderStats[l.id]?.campuses || {}).map(([name, value]) => ({ name, value })).sort((a,b) => b.value - a.value),
-                languages: Object.entries(ladderStats[l.id]?.languages || {}).map(([name, value]) => ({ name, value })).sort((a,b) => b.value - a.value)
-            }
-        }))
-        .filter(d => d.count > 0)
-        .sort((a,b) => a.count - b.count);
+  const loadClassesCompletedChart = useCallback(() => loadCard("classesCompletedChart", "Classes Completed", async () => {
+    const analyticsData = await ensureCompletionAnalytics();
+    setCompletionData(analyticsData.completionChartData);
+  }), [ensureCompletionAnalytics, loadCard]);
 
-    setCompletionData(completionChartData);
+  const loadCompletionType = useCallback(() => loadCard("completionType", "Class Completion Type", async () => {
+    const analyticsData = await ensureCompletionAnalytics();
+    setCompletionTypeData(analyticsData.completionTypeChartData);
+  }), [ensureCompletionAnalytics, loadCard]);
 
-    // 5. Baptism Distribution
-    const baptizedCount = allUsers.filter(u => u.isBaptized === true).length;
-    const notBaptizedCount = allUsers.filter(u => u.isBaptized === false || u.isBaptized === undefined || u.isBaptized === null).length;
+  const loadLocationPreference = useCallback(() => loadCard("locationPreference", "Location Preference", async () => {
+    const users = await ensureUsers();
+    const prefMap: Record<string, number> = { "Online": 0, "Onsite": 0 };
+    users.forEach(u => {
+        const pref = u.locationPreference || "Online";
+        if (prefMap[pref] !== undefined) {
+            prefMap[pref]++;
+        }
+    });
+    setLocationPreferenceData(Object.entries(prefMap).map(([preference, count]) => ({ preference, count })));
+  }), [ensureUsers, loadCard]);
+
+  const loadBaptismStatus = useCallback(() => loadCard("baptismStatus", "Baptism Status", async () => {
+    const users = await ensureUsers();
+    const baptizedCount = users.filter(u => u.isBaptized === true).length;
+    const notBaptizedCount = users.filter(u => u.isBaptized === false || u.isBaptized === undefined || u.isBaptized === null).length;
     setBaptismData([
         { status: "Baptized", count: baptizedCount },
         { status: "Not Baptized", count: notBaptizedCount }
     ]);
+  }), [ensureUsers, loadCard]);
 
-    // 6. Graduation Status Breakdown
+  const loadGraduationStatus = useCallback(() => loadCard("graduationStatus", "Graduation Status", async () => {
+    const users = await ensureUsers();
     const gradMap: Record<string, number> = {
         "Not Started": 0,
         "In Progress": 0,
         "Eligible": 0,
         "Graduated": 0
     };
-    allUsers.forEach(u => {
+    users.forEach(u => {
         const status = u.graduationStatus || "Not Started";
         if (gradMap[status] !== undefined) {
             gradMap[status]++;
@@ -485,10 +688,12 @@ export default function AnalyticsDashboard() {
         }
     });
     setGraduationData(Object.entries(gradMap).map(([status, count]) => ({ status, count })));
+  }), [ensureUsers, loadCard]);
 
-    // 7. Gender Distribution
+  const loadGenderDistribution = useCallback(() => loadCard("genderDistribution", "Gender Distribution", async () => {
+    const users = await ensureUsers();
     const genderMap: Record<string, number> = { "Male": 0, "Female": 0, "Other": 0 };
-    allUsers.forEach(u => {
+    users.forEach(u => {
         const gender = u.gender || "Other";
         if (genderMap[gender] !== undefined) {
             genderMap[gender]++;
@@ -497,10 +702,12 @@ export default function AnalyticsDashboard() {
         }
     });
     setGenderData(Object.entries(genderMap).map(([status, count]) => ({ status, count })));
+  }), [ensureUsers, loadCard]);
 
-    // 8. Campus Distribution
+  const loadCampusDistribution = useCallback(() => loadCard("campusDistribution", "Campus Distribution", async () => {
+    const users = await ensureUsers();
     const campusDistributionMap: Record<string, number> = {};
-    allUsers.forEach(u => {
+    users.forEach(u => {
         const campus = u.campus || "Unknown";
         campusDistributionMap[campus] = (campusDistributionMap[campus] || 0) + 1;
     });
@@ -508,35 +715,12 @@ export default function AnalyticsDashboard() {
         .map(([name, count]) => ({ name, count }))
         .sort((a, b) => b.count - a.count)
     );
+  }), [ensureUsers, loadCard]);
 
-    // 9. Completion Type Breakdown (Online vs On-site)
-    setCompletionTypeData([
-        { type: "Online", count: onlineCompletionsSnap.size },
-        { type: "On-site", count: onsiteCompletionsSnap.size }
-    ]);
-
-    // 10. Location Preference Distribution
-    const prefMap: Record<string, number> = { "Online": 0, "Onsite": 0 };
-    allUsers.forEach(u => {
-        const pref = u.locationPreference || "Online";
-        if (prefMap[pref] !== undefined) {
-            prefMap[pref]++;
-        }
-    });
-    setLocationPreferenceData(Object.entries(prefMap).map(([preference, count]) => ({ preference, count })));
-
-  }, [allUsers, allCourses, allLadders, allVideos, allQuizzes, db]);
-
-  useEffect(() => {
-    if (!loading) {
-      fetchSummaryData();
-    }
-  }, [loading, fetchSummaryData]);
-
-  const fetchQuizPerformance = useCallback(async () => {
-    if (allQuizzes.length === 0) await fetchBaseData();
+  const fetchQuizPerformance = useCallback(() => loadCard("quizPerformance", "Quiz Performance", async () => {
+    const quizzes = await ensureQuizzes();
     const quizResultsList = (await getDocs(collection(db, 'userQuizResults'))).docs.map(doc => doc.data() as UserQuizResult);
-    const quizPerformance = allQuizzes.map(quiz => {
+    const quizPerformance = quizzes.map(quiz => {
         const resultsForQuiz = quizResultsList.filter(r => r.quizId === quiz.id);
         const totalAttempts = resultsForQuiz.length;
         const uniqueAttempts = new Set(resultsForQuiz.map(r => r.userId)).size;
@@ -551,34 +735,30 @@ export default function AnalyticsDashboard() {
         };
     });
     setQuizPerformanceSummary(quizPerformance.filter(q => q.totalAttempts > 0));
-  }, [allQuizzes, db, fetchBaseData]);
+  }), [db, ensureQuizzes, loadCard]);
 
-  const fetchProgressData = useCallback(async () => {
-    if (allUsers.length === 0) await fetchBaseData();
-    try {
-        const [progressSnapshot, enrollmentSnapshot] = await Promise.all([
-            getDocs(collection(db, 'userVideoProgress')),
-            getDocs(collection(db, 'enrollments')),
-        ]);
+  const fetchProgressData = useCallback(() => loadCard("courseReport", "Course Report", async () => {
+    const { courses, videos } = await ensureBaseData();
+    const [progressSnapshot, enrollmentSnapshot] = await Promise.all([
+        getDocs(collection(db, 'userVideoProgress')),
+        getDocs(collection(db, 'enrollments')),
+    ]);
         
-        const enrollmentsMap = new Map(enrollmentSnapshot.docs.map(doc => [`${doc.data().userId}_${doc.data().courseId}`, doc.data() as Enrollment]));
+    const enrollmentsMap = new Map(enrollmentSnapshot.docs.map(doc => [`${doc.data().userId}_${doc.data().courseId}`, doc.data() as Enrollment]));
 
-        const progressList = progressSnapshot.docs.map(doc => {
-            const data = doc.data() as Omit < UserProgressType, 'totalProgress' > ;
-            const course = allCourses.find(c => c.id === data.courseId);
-            const publishedVideoIdsInCourse = new Set((course?.videos || []).filter(vid => allVideos.some(v => v.id === vid && v.status === 'published')));
-            const totalVideos = publishedVideoIdsInCourse.size;
-            const completedCount = data.videoProgress?.filter(vp => vp.completed && publishedVideoIdsInCourse.has(vp.videoId)).length || 0;
-            const totalProgress = totalVideos > 0 ? Math.round((completedCount / totalVideos) * 100) : 0;
-            const enrollment = enrollmentsMap.get(`${data.userId}_${data.courseId}`);
-            return { ...data, totalProgress, enrollment };
-        });
+    const progressList = progressSnapshot.docs.map(doc => {
+        const data = doc.data() as Omit < UserProgressType, 'totalProgress' > ;
+        const course = courses.find(c => c.id === data.courseId);
+        const publishedVideoIdsInCourse = new Set((course?.videos || []).filter(vid => videos.some(v => v.id === vid && v.status === 'published')));
+        const totalVideos = publishedVideoIdsInCourse.size;
+        const completedCount = data.videoProgress?.filter(vp => vp.completed && publishedVideoIdsInCourse.has(vp.videoId)).length || 0;
+        const totalProgress = totalVideos > 0 ? Math.round((completedCount / totalVideos) * 100) : 0;
+        const enrollment = enrollmentsMap.get(`${data.userId}_${data.courseId}`);
+        return { ...data, totalProgress, enrollment };
+    });
         
-        setUserProgressData(progressList);
-    } catch (error) {
-        console.error("Error fetching progress data:", error);
-    }
-}, [db, allCourses, allVideos, allUsers, fetchBaseData]);
+    setUserProgressData(progressList);
+  }), [db, ensureBaseData, loadCard]);
 
   const sortedAndFilteredProgress = useMemo(() => {
     if (!userProgressData) return [];
@@ -731,58 +911,48 @@ export default function AnalyticsDashboard() {
           
           <TabsContent value="summary" className="mt-6">
             <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 md:grid-cols-3">
-                {!summaryStats ? (
-                  <>
-                      <Card>
-                          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                              <CardTitle className="text-sm font-medium">Total Enrollments</CardTitle>
-                              <UsersIcon className="h-4 w-4 text-muted-foreground" />
-                          </CardHeader>
-                          <CardContent><div className="h-8 flex items-center"><Loader2 className="h-6 w-6 animate-spin" /></div></CardContent>
-                      </Card>
-                      <Card>
-                          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                              <CardTitle className="text-sm font-medium">Classes Completed</CardTitle>
-                              <Award className="h-4 w-4 text-muted-foreground" />
-                          </CardHeader>
-                          <CardContent><div className="h-8 flex items-center"><Loader2 className="h-6 w-6 animate-spin" /></div></CardContent>
-                      </Card>
-                      <Card className="sm:col-span-2 md:col-span-1">
-                          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                              <CardTitle className="text-sm font-medium">Pending HP Requests</CardTitle>
-                              <UserPlus className="h-4 w-4 text-muted-foreground" />
-                          </CardHeader>
-                          <CardContent><div className="h-8 flex items-center"><Loader2 className="h-6 w-6 animate-spin" /></div></CardContent>
-                      </Card>
-                  </>
-                ) : (
-                  <>
-                      <Card>
-                          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                              <CardTitle className="text-sm font-medium">Total Enrollments</CardTitle>
-                              <UsersIcon className="h-4 w-4 text-muted-foreground" />
-                          </CardHeader>
-                          <CardContent><div className="text-2xl font-bold">{summaryStats.totalEnrollments}</div></CardContent>
-                      </Card>
-                      <Card>
-                          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                              <CardTitle className="text-sm font-medium">Classes Completed</CardTitle>
-                              <Award className="h-4 w-4 text-muted-foreground" />
-                          </CardHeader>
-                          <CardContent>
-                            <div className="text-2xl font-bold">{summaryStats.totalLadderGraduates}</div>
-                            <p className="text-[10px] text-muted-foreground mt-1">Verified unique graduates per ladder</p>
-                          </CardContent>
-                      </Card>
-                      <Card className="sm:col-span-2 md:col-span-1">
-                          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                              <CardTitle className="text-sm font-medium">Pending HP Requests</CardTitle>
-                              <UserPlus className="h-4 w-4 text-muted-foreground" />
-                          </CardHeader>
-                          <CardContent><div className="text-2xl font-bold">{summaryStats.totalHpRequests}</div></CardContent>
-                      </Card>
-                  </>
-                )}
+                <Card>
+                    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                        <CardTitle className="text-sm font-medium">Total Enrollments</CardTitle>
+                        <UsersIcon className="h-4 w-4 text-muted-foreground" />
+                    </CardHeader>
+                    <CardContent>
+                      {isCardLoaded("totalEnrollments") && totalEnrollments !== null ? (
+                        <div className="text-2xl font-bold">{totalEnrollments}</div>
+                      ) : (
+                        <ClickToLoad onFetch={loadTotalEnrollments} title="Total Enrollments" loading={isCardLoading("totalEnrollments")} compact />
+                      )}
+                    </CardContent>
+                </Card>
+                <Card>
+                    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                        <CardTitle className="text-sm font-medium">Classes Completed</CardTitle>
+                        <Award className="h-4 w-4 text-muted-foreground" />
+                    </CardHeader>
+                    <CardContent>
+                      {isCardLoaded("classesCompletedStat") && totalLadderGraduates !== null ? (
+                        <>
+                          <div className="text-2xl font-bold">{totalLadderGraduates}</div>
+                          <p className="text-[10px] text-muted-foreground mt-1">Verified unique graduates per ladder</p>
+                        </>
+                      ) : (
+                        <ClickToLoad onFetch={loadClassesCompletedStat} title="Classes Completed" loading={isCardLoading("classesCompletedStat")} compact />
+                      )}
+                    </CardContent>
+                </Card>
+                <Card className="sm:col-span-2 md:col-span-1">
+                    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                        <CardTitle className="text-sm font-medium">Pending HP Requests</CardTitle>
+                        <UserPlus className="h-4 w-4 text-muted-foreground" />
+                    </CardHeader>
+                    <CardContent>
+                      {isCardLoaded("pendingHpRequests") && totalHpRequests !== null ? (
+                        <div className="text-2xl font-bold">{totalHpRequests}</div>
+                      ) : (
+                        <ClickToLoad onFetch={loadPendingHpRequests} title="Pending HP Requests" loading={isCardLoading("pendingHpRequests")} compact />
+                      )}
+                    </CardContent>
+                </Card>
             </div>
 
             {/* Visual Analytics Section */}
@@ -796,10 +966,8 @@ export default function AnalyticsDashboard() {
                         <CardDescription>Course activities over the last 7 days. Click bars for details.</CardDescription>
                     </CardHeader>
                     <CardContent className="h-[300px]">
-                        {loading || engagementData.length === 0 ? (
-                            <div className="h-full flex items-center justify-center border-2 border-dashed rounded-lg bg-muted/10">
-                                <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-                            </div>
+                        {!isCardLoaded("userEngagement") ? (
+                            <ClickToLoad onFetch={loadUserEngagement} title="User Engagement" loading={isCardLoading("userEngagement")} />
                         ) : (
                             <ChartContainer config={engagementChartConfig} className="h-full w-full">
                                 <BarChart data={engagementData}>
@@ -840,10 +1008,8 @@ export default function AnalyticsDashboard() {
                         <CardDescription>Unique users who completed all requirements for their ladder track.</CardDescription>
                     </CardHeader>
                     <CardContent className="h-[300px]">
-                        {loading || completionData.length === 0 ? (
-                            <div className="h-full flex items-center justify-center border-2 border-dashed rounded-lg bg-muted/10">
-                                <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-                            </div>
+                        {!isCardLoaded("classesCompletedChart") ? (
+                            <ClickToLoad onFetch={loadClassesCompletedChart} title="Classes Completed" loading={isCardLoading("classesCompletedChart")} />
                         ) : (
                             <ChartContainer config={completionChartConfig} className="h-full w-full">
                                 <BarChart data={completionData} layout="vertical">
@@ -890,10 +1056,8 @@ export default function AnalyticsDashboard() {
                         <CardDescription>Breakdown of Online vs. On-site course completions.</CardDescription>
                     </CardHeader>
                     <CardContent className="h-[300px]">
-                        {loading || completionTypeData.length === 0 ? (
-                            <div className="h-full flex items-center justify-center border-2 border-dashed rounded-lg bg-muted/10">
-                                <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-                            </div>
+                        {!isCardLoaded("completionType") ? (
+                            <ClickToLoad onFetch={loadCompletionType} title="Class Completion Type" loading={isCardLoading("completionType")} />
                         ) : (
                             <ChartContainer config={completionTypeChartConfig} className="h-full w-full">
                                 <BarChart data={completionTypeData} layout="vertical">
@@ -928,10 +1092,8 @@ export default function AnalyticsDashboard() {
                         <CardDescription>Breakdown of users by their preferred learning environment.</CardDescription>
                     </CardHeader>
                     <CardContent className="h-[300px]">
-                        {loading || locationPreferenceData.length === 0 ? (
-                            <div className="h-full flex items-center justify-center border-2 border-dashed rounded-lg bg-muted/10">
-                                <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-                            </div>
+                        {!isCardLoaded("locationPreference") ? (
+                            <ClickToLoad onFetch={loadLocationPreference} title="Location Preference" loading={isCardLoading("locationPreference")} />
                         ) : (
                             <ChartContainer config={locationPreferenceChartConfig} className="h-full w-full">
                                 <BarChart data={locationPreferenceData} layout="vertical">
@@ -970,10 +1132,8 @@ export default function AnalyticsDashboard() {
                         <CardDescription>Breakdown of baptized vs. non-baptized users.</CardDescription>
                     </CardHeader>
                     <CardContent className="h-[300px]">
-                        {loading || baptismData.length === 0 ? (
-                            <div className="h-full flex items-center justify-center border-2 border-dashed rounded-lg bg-muted/10">
-                                <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-                            </div>
+                        {!isCardLoaded("baptismStatus") ? (
+                            <ClickToLoad onFetch={loadBaptismStatus} title="Baptism Status" loading={isCardLoading("baptismStatus")} />
                         ) : (
                             <ChartContainer config={baptismChartConfig} className="h-full w-full">
                                 <BarChart data={baptismData} layout="vertical">
@@ -1008,10 +1168,8 @@ export default function AnalyticsDashboard() {
                         <CardDescription>Breakdown of users by their graduation phase.</CardDescription>
                     </CardHeader>
                     <CardContent className="h-[300px]">
-                        {loading || graduationData.length === 0 ? (
-                            <div className="h-full flex items-center justify-center border-2 border-dashed rounded-lg bg-muted/10">
-                                <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-                            </div>
+                        {!isCardLoaded("graduationStatus") ? (
+                            <ClickToLoad onFetch={loadGraduationStatus} title="Graduation Status" loading={isCardLoading("graduationStatus")} />
                         ) : (
                             <ChartContainer config={graduationChartConfig} className="h-full w-full">
                                 <BarChart data={graduationData} layout="vertical">
@@ -1050,10 +1208,8 @@ export default function AnalyticsDashboard() {
                         <CardDescription>Breakdown of users by gender.</CardDescription>
                     </CardHeader>
                     <CardContent className="h-[300px]">
-                        {loading || genderData.length === 0 ? (
-                            <div className="h-full flex items-center justify-center border-2 border-dashed rounded-lg bg-muted/10">
-                                <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-                            </div>
+                        {!isCardLoaded("genderDistribution") ? (
+                            <ClickToLoad onFetch={loadGenderDistribution} title="Gender Distribution" loading={isCardLoading("genderDistribution")} />
                         ) : (
                             <ChartContainer config={genderChartConfig} className="h-full w-full">
                                 <BarChart data={genderData} layout="vertical">
@@ -1088,10 +1244,8 @@ export default function AnalyticsDashboard() {
                         <CardDescription>Breakdown of users by campus.</CardDescription>
                     </CardHeader>
                     <CardContent className="h-[300px]">
-                        {loading || campusDistributionData.length === 0 ? (
-                            <div className="h-full flex items-center justify-center border-2 border-dashed rounded-lg bg-muted/10">
-                                <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-                            </div>
+                        {!isCardLoaded("campusDistribution") ? (
+                            <ClickToLoad onFetch={loadCampusDistribution} title="Campus Distribution" loading={isCardLoading("campusDistribution")} />
                         ) : (
                             <ChartContainer config={campusChartConfig} className="h-full w-full">
                                 <BarChart data={campusDistributionData} layout="vertical">
@@ -1127,7 +1281,7 @@ export default function AnalyticsDashboard() {
                     <CardDescription>User progress and time spent on courses.</CardDescription>
                 </CardHeader>
                 <CardContent>
-                    {userProgressData === null ? <ClickToLoad onFetch={fetchProgressData} title="Course Report" /> : (
+                    {userProgressData === null ? <ClickToLoad onFetch={fetchProgressData} title="Course Report" loading={isCardLoading("courseReport")} /> : (
                         <>
                             <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-4 mb-4 flex-wrap">
                                 <Select value={selectedUser} onValueChange={setSelectedUser}><SelectTrigger className="w-full sm:w-auto flex-grow"><SelectValue placeholder="Select User" /></SelectTrigger><SelectContent><SelectItem value="all">All Users</SelectItem>{allUsers.map((user) => (<SelectItem key={user.id} value={user.id}>{user.displayName}</SelectItem>))}</SelectContent></Select>
@@ -1139,7 +1293,7 @@ export default function AnalyticsDashboard() {
                                         value={dateRange?.from ? format(dateRange.from, 'yyyy-MM-dd') : ''}
                                         onChange={(e) => {
                                             const from = e.target.value ? new Date(e.target.value.replace(/-/g, '/')) : undefined;
-                                            setDateRange((prev) => ({ ...prev, from }));
+                                            setDateRange((prev) => from ? { from, to: prev?.to } : undefined);
                                         }}
                                         className="w-full sm:w-[150px]"
                                     />
@@ -1149,7 +1303,7 @@ export default function AnalyticsDashboard() {
                                         value={dateRange?.to ? format(dateRange.to, 'yyyy-MM-dd') : ''}
                                         onChange={(e) => {
                                             const to = e.target.value ? new Date(e.target.value.replace(/-/g, '/')) : undefined;
-                                            setDateRange((prev) => ({ ...prev, to }));
+                                            setDateRange((prev) => prev?.from ? { from: prev.from, to } : to ? { from: to, to } : undefined);
                                         }}
                                         className="w-full sm:w-[150px]"
                                     />
@@ -1192,7 +1346,7 @@ export default function AnalyticsDashboard() {
                 <CardDescription>A summary of attempts and pass/fail rates for each quiz.</CardDescription>
                 </CardHeader>
                 <CardContent>
-                {quizPerformanceSummary === null ? <ClickToLoad onFetch={fetchQuizPerformance} title="Quiz Performance" /> : (
+                {quizPerformanceSummary === null ? <ClickToLoad onFetch={fetchQuizPerformance} title="Quiz Performance" loading={isCardLoading("quizPerformance")} /> : (
                     <div className="border rounded-lg overflow-hidden">
                         <Table>
                             <TableHeader><TableRow><TableHead>Quiz Title</TableHead><TableHead className="text-center">Attempts</TableHead><TableHead className="text-center hidden sm:table-cell">Unique Users</TableHead><TableHead className="text-center text-green-600">Passes</TableHead><TableHead className="text-center text-red-600">Fails</TableHead></TableRow></TableHeader>
