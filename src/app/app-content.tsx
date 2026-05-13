@@ -48,6 +48,7 @@ import { useI18n } from "@/hooks/use-i18n";
 import MobileNav from "@/components/mobile-nav";
 import { AutomationRunner } from "@/components/automation-runner";
 import { ImpersonationBanner } from "@/components/impersonation-banner";
+import { LoadingState } from "@/components/loading-state";
 
 
 
@@ -255,6 +256,10 @@ function AppContentInternal({ children }: { children: React.ReactNode }) {
     return () => unsub();
   }, [db]);
 
+  if (loading && (isAuthPage || isLandingPage || isExternalPage)) {
+    return <LoadingState message={t('loading.initializing', 'Initializing...')} />;
+  }
+
   if (isAuthPage || isLandingPage || isExternalPage) {
     return <>{children}</>;
   }
@@ -287,23 +292,7 @@ function AppContentInternal({ children }: { children: React.ReactNode }) {
   }
 
   if (loading || (!user && showAppLayout)) {
-    return (
-        <div className="flex min-h-screen">
-             <div className="hidden md:flex flex-col gap-4 border-r bg-background p-2 w-64">
-                <Skeleton className="h-10 w-full" />
-                <Skeleton className="h-10 w-full" />
-                <Skeleton className="h-10 w-full" />
-                <div className="mt-auto flex justify-between items-center">
-                    <Skeleton className="h-10 w-10 rounded-full" />
-                     <Skeleton className="h-10 w-10 rounded-full" />
-                </div>
-            </div>
-            <div className="flex-1 p-6">
-                <Skeleton className="h-16 w-full mb-4" />
-                <Skeleton className="h-64 w-full" />
-            </div>
-        </div>
-    )
+    return <LoadingState message={t('loading.preparing', 'Preparing your experience...')} />;
   }
   
   if (!user) return null;
