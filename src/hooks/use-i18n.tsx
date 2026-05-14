@@ -181,6 +181,13 @@ const LanguageSelector = ({
 };
 
 
+const STORAGE_KEYS = {
+    TRANSLATIONS: 'edu_i18n_translations',
+    LANGUAGES: 'edu_i18n_languages',
+    MAPPING: 'edu_i18n_mapping',
+    SETTINGS: 'edu_i18n_settings',
+};
+
 export const I18nProvider = ({ children }: { children: ReactNode }) => {
     const [languages, setLanguages] = useState<Language[]>([]);
     const [langMapping, setLangMapping] = useState<Record<string, string>>({});
@@ -210,24 +217,44 @@ export const I18nProvider = ({ children }: { children: ReactNode }) => {
 
     useEffect(() => {
         const fetchInitialData = async () => {
+            let cacheHit = false;
             try {
                 // Check session
                 const sessionChosen = sessionStorage.getItem('language_chosen');
                 if (sessionChosen) setHasChosenThisSession(true);
 
-                // Fetch languages, translations, and settings in parallel
+                // Try to load from cache first for instant UI
+                if (typeof window !== 'undefined') {
+                    const cachedTrans = localStorage.getItem(STORAGE_KEYS.TRANSLATIONS);
+                    const cachedLangs = localStorage.getItem(STORAGE_KEYS.LANGUAGES);
+                    const cachedMapping = localStorage.getItem(STORAGE_KEYS.MAPPING);
+                    const cachedSettings = localStorage.getItem(STORAGE_KEYS.SETTINGS);
+                    const storedLang = localStorage.getItem('user_language') || 'en';
+
+                    if (cachedTrans && cachedLangs && cachedMapping) {
+                        setRawTranslations(JSON.parse(cachedTrans));
+                        setLanguages(JSON.parse(cachedLangs));
+                        setLangMapping(JSON.parse(cachedMapping));
+                        if (cachedSettings) setSiteSettings(JSON.parse(cachedSettings));
+                        setCurrentLanguageState(storedLang);
+                        setLoading(false);
+                        cacheHit = true;
+                    }
+                }
+
+                // Fetch fresh data in background (or foreground if no cache)
                 const langQuery = query(collection(db, 'languages'), where('status', '==', 'published'));
-                const transSnapshotPromise = getDocs(collection(db, 'translations'));
-                const langSnapshotPromise = getDocs(langQuery);
-                const settingsPromise = getDoc(doc(db, "siteSettings", "main"));
-                
                 const [transSnapshot, langSnapshot, settingsSnap] = await Promise.all([
-                    transSnapshotPromise,
-                    langSnapshotPromise,
-                    settingsPromise
+                    getDocs(collection(db, 'translations')),
+                    getDocs(langQuery),
+                    getDoc(doc(db, "siteSettings", "main"))
                 ]);
 
-                if (settingsSnap.exists()) setSiteSettings(settingsSnap.data());
+                if (settingsSnap.exists()) {
+                    const settingsData = settingsSnap.data();
+                    setSiteSettings(settingsData);
+                    localStorage.setItem(STORAGE_KEYS.SETTINGS, JSON.stringify(settingsData));
+                }
 
                 const mapping: Record<string, string> = {};
                 let availableLangs = langSnapshot.docs.map(docSnapshot => {
@@ -235,33 +262,37 @@ export const I18nProvider = ({ children }: { children: ReactNode }) => {
                     const dbName = docSnapshot.data().name;
                     mapping[id] = dbName;
                     const langInfo = allLanguages.find(l => l.code === id);
-                    
-                    // Use native name if found in the reference library
                     const nativeName = langInfo ? cleanNativeName(langInfo.nativeName) : dbName;
-                    
                     return { id, name: nativeName } as Language;
                 });
                 
-                // FALLBACK: If no published languages found in DB, provide English as default
                 if (availableLangs.length === 0) {
                     availableLangs = [{ id: 'en', name: 'English' }];
                     mapping['en'] = 'English';
                 }
                 
+                const freshTranslations = transSnapshot.docs.map(d => ({ id: d.id, ...d.data() }));
+
+                // Update state
                 setLanguages(availableLangs);
                 setLangMapping(mapping);
-                setRawTranslations(transSnapshot.docs.map(d => ({ id: d.id, ...d.data() })));
+                setRawTranslations(freshTranslations);
                 
-                const storedLang = typeof window !== 'undefined' ? localStorage.getItem('user_language') : null;
-                // Default to 'en' if no language is stored or if the stored language is not in the available list
-                const initialLang = (storedLang && availableLangs.some(l => l.id === storedLang)) ? storedLang : 'en';
-                
-                setCurrentLanguageState(initialLang);
+                const storedLang = localStorage.getItem('user_language');
+                const finalLang = (storedLang && availableLangs.some(l => l.id === storedLang)) ? storedLang : 'en';
+                setCurrentLanguageState(finalLang);
+
+                // Persist to cache
+                localStorage.setItem(STORAGE_KEYS.TRANSLATIONS, JSON.stringify(freshTranslations));
+                localStorage.setItem(STORAGE_KEYS.LANGUAGES, JSON.stringify(availableLangs));
+                localStorage.setItem(STORAGE_KEYS.MAPPING, JSON.stringify(mapping));
 
             } catch (error) {
                 console.error("Failed to initialize i18n:", error);
-                setLanguages([{ id: 'en', name: 'English' }]);
-                setCurrentLanguageState('en');
+                if (!cacheHit) {
+                    setLanguages([{ id: 'en', name: 'English' }]);
+                    setCurrentLanguageState('en');
+                }
             } finally {
                 setLoading(false);
             }

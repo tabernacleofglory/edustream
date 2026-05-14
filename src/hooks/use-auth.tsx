@@ -88,11 +88,18 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
 
   useEffect(() => {
     const fetchValidLanguages = async () => {
+        // Try session cache first for faster init
+        if (typeof window !== 'undefined') {
+            const cached = sessionStorage.getItem('edu_valid_langs');
+            if (cached) setValidLanguages(JSON.parse(cached));
+        }
+
         try {
             const langQuery = query(collection(db, 'languages'), where('status', '==', 'published'));
             const langSnapshot = await getDocs(langQuery);
             const langNames = langSnapshot.docs.map(doc => doc.data().name as string);
             setValidLanguages(langNames);
+            sessionStorage.setItem('edu_valid_langs', JSON.stringify(langNames));
         } catch (e) {
             console.error("Could not fetch valid languages for auth check.", e);
         }
@@ -127,7 +134,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   const fetchUserDocument = useCallback(async (firebaseUser: FirebaseUser | null) => {
     if (!firebaseUser) {
         setRealUser(null);
-        setUserPermissions([]);
+        setRealUserPermissions([]);
         setLoading(false);
         return;
     }
@@ -142,7 +149,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
             const newLanguage = languageMigrationMap[userData.language];
             if (userData.language !== newLanguage) {
                 await updateDoc(userDocRef, { language: newLanguage });
-                userData.language = newLanguage; // Update locally to prevent re-triggering
+                userData.language = newLanguage;
             }
         }
         
@@ -153,15 +160,28 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
           displayName: userData.fullName || firebaseUser.displayName,
           photoURL: firebaseUser.photoURL,
         };
-        setRealUser(authUser);
 
         const role = authUser.role || 'user';
-        const permissionsDocRef = doc(db, "rolePermissions", role);
-        const permissionsSnapshot = await getDoc(permissionsDocRef);
-        if (permissionsSnapshot.exists()) {
-            setRealUserPermissions(permissionsSnapshot.data()?.permissions || []);
+        
+        // Parallelize state updates
+        setRealUser(authUser);
+
+        // Permissions caching
+        const permCacheKey = `edu_perms_${role}`;
+        const cachedPerms = sessionStorage.getItem(permCacheKey);
+        
+        if (cachedPerms) {
+            setRealUserPermissions(JSON.parse(cachedPerms));
         } else {
-            setRealUserPermissions([]);
+            const permissionsDocRef = doc(db, "rolePermissions", role);
+            const permissionsSnapshot = await getDoc(permissionsDocRef);
+            if (permissionsSnapshot.exists()) {
+                const perms = permissionsSnapshot.data()?.permissions || [];
+                setRealUserPermissions(perms);
+                sessionStorage.setItem(permCacheKey, JSON.stringify(perms));
+            } else {
+                setRealUserPermissions([]);
+            }
         }
       } else {
         await checkAndCreateUserDoc(firebaseUser);

@@ -49,6 +49,7 @@ import MobileNav from "@/components/mobile-nav";
 import { AutomationRunner } from "@/components/automation-runner";
 import { ImpersonationBanner } from "@/components/impersonation-banner";
 import { LoadingState } from "@/components/loading-state";
+import { LayoutSkeleton } from "@/components/layout-skeleton";
 
 
 
@@ -292,6 +293,7 @@ function AppContentInternal({ children }: { children: React.ReactNode }) {
   }
 
   if (loading || (!user && showAppLayout)) {
+    if (showAppLayout) return <LayoutSkeleton />;
     return <LoadingState message={t('loading.preparing', 'Preparing your experience...')} />;
   }
   
