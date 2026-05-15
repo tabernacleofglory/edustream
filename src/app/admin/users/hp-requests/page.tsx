@@ -5,8 +5,8 @@ import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/use-auth";
 import { db } from "@/lib/firebase";
-import { collection, query, where, getDocs, orderBy, addDoc } from "firebase/firestore";
-import type { User } from "@/lib/types";
+import { collection, query, where, getDocs, orderBy, addDoc, doc, getDoc, serverTimestamp } from "firebase/firestore";
+import type { User, EmailTemplate, EmailLayoutSettings } from "@/lib/types";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
@@ -21,6 +21,10 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { marked } from "marked";
+import { wrapInEmailLayout } from "@/lib/email-utils";
 
 interface HPRequest extends User {
     createdAt: { seconds: number; nanoseconds: number; };
@@ -39,6 +43,14 @@ export default function HPRequestsPage() {
     const [usersPerPage, setUsersPerPage] = useState(25);
     const [selectedCampus, setSelectedCampus] = useState('all');
     const [searchTerm, setSearchTerm] = useState('');
+
+    const [templates, setTemplates] = useState<EmailTemplate[]>([]);
+    const [emailLayout, setEmailLayout] = useState<EmailLayoutSettings | null>(null);
+    const [isTemplateDialogOpen, setIsTemplateDialogOpen] = useState(false);
+    const [selectedRequest, setSelectedRequest] = useState<HPRequest | null>(null);
+    const [templateSearchTerm, setTemplateSearchTerm] = useState('');
+    const [templateViewState, setTemplateViewState] = useState<'list' | 'preview'>('list');
+    const [selectedTemplate, setSelectedTemplate] = useState<EmailTemplate | null>(null);
 
     const canManage = hasPermission('manageHpRequests');
 
@@ -69,13 +81,28 @@ export default function HPRequestsPage() {
         }
     }, [toast, db]);
 
+    const fetchData = useCallback(async () => {
+        try {
+            const [templatesSnap, layoutSnap] = await Promise.all([
+                getDocs(query(collection(db, "emailTemplates"), orderBy("name"))),
+                getDoc(doc(db, "siteSettings", "emailLayout")),
+            ]);
+
+            setTemplates(templatesSnap.docs.map(d => ({ id: d.id, ...d.data() } as EmailTemplate)));
+            if (layoutSnap.exists()) setEmailLayout(layoutSnap.data() as EmailLayoutSettings);
+        } catch (error) {
+            console.error("Error fetching supplemental data:", error);
+        }
+    }, [db]);
+
     useEffect(() => {
         if (!authLoading && canManage) {
             fetchRequests();
+            fetchData();
         } else if (!authLoading && !canManage) {
             setLoading(false);
         }
-    }, [canManage, authLoading, fetchRequests]);
+    }, [canManage, authLoading, fetchRequests, fetchData]);
 
     const allCampuses = useMemo(() => {
         const campusSet = new Set(requests.map(u => u.campus).filter(Boolean));
@@ -113,34 +140,78 @@ export default function HPRequestsPage() {
     }, [selectedCampus, usersPerPage, dateRange, searchTerm]);
 
 
-    const sendFollowUpEmail = async (request: HPRequest) => {
+    const sendFollowUpEmail = (request: HPRequest) => {
         if (!request.email) {
             toast({ variant: 'destructive', title: 'User has no email address.' });
             return;
         }
-        setIsProcessingEmail(request.id);
+        setSelectedRequest(request);
+        setTemplateViewState('list');
+        setSelectedTemplate(null);
+        setIsTemplateDialogOpen(true);
+    };
+
+    const handleSelectTemplate = (template: EmailTemplate) => {
+        setSelectedTemplate(template);
+        setTemplateViewState('preview');
+    };
+
+    const confirmSendFollowUp = async () => {
+        if (!selectedRequest || !selectedTemplate) return;
+
+        setIsProcessingEmail(selectedRequest.id);
+        setIsTemplateDialogOpen(false);
+        
         try {
-            // Write to the 'mail' collection to trigger the extension
-            await addDoc(collection(db, 'mail'), {
-                to: [request.email],
-                message: {
-                    subject: "HP Placement Request Received",
-                    html: `
-                        <h1>Hello, ${request.displayName}!</h1>
-                        <p>We are happy to inform you that we have received your request and are beginning the follow-up process to place you in an HP (Prayer Group).</p>
-                        <p>We will be in touch with further updates soon.</p>
-                        <br/>
-                        <p>Thank you!</p>
-                        <p>The Glory Training Hub Team</p>
-                    `
-                }
+            let subject = selectedTemplate.subject || '';
+            let body = selectedTemplate.body || '';
+
+            const placeholders: Record<string, any> = {
+                userName: selectedRequest.displayName || selectedRequest.firstName || 'User',
+                firstName: selectedRequest.firstName || '',
+                lastName: selectedRequest.lastName || '',
+                email: selectedRequest.email || '',
+                phoneNumber: selectedRequest.phoneNumber || '',
+                campus: selectedRequest.campus || '',
+                hpNumber: selectedRequest.hpNumber || '',
+                facilitatorName: selectedRequest.facilitatorName || '',
+                classLadder: selectedRequest.classLadder || '',
+                ministry: selectedRequest.ministry || '',
+                charge: selectedRequest.charge || '',
+            };
+
+            Object.entries(placeholders).forEach(([key, val]) => {
+                const regex = new RegExp(`{{${key}}}`, "g");
+                subject = subject.replace(regex, String(val ?? ''));
+                body = body.replace(regex, String(val ?? ''));
             });
+
+            const htmlContent = marked.parse(body, { breaks: true });
+            
+            let finalHtml = `<div style="font-family:sans-serif;line-height:1.5;color:#2d3748;max-width:600px;margin:0 auto;">${htmlContent}</div>`;
+            if (emailLayout) {
+                finalHtml = wrapInEmailLayout(htmlContent as string, emailLayout);
+            }
+
+            await addDoc(collection(db, 'mail'), {
+                to: [selectedRequest.email],
+                message: {
+                    subject: subject,
+                    html: finalHtml,
+                },
+                templateId: selectedTemplate.id,
+                userId: selectedRequest.id,
+                createdAt: serverTimestamp(),
+            });
+
             toast({ title: "Follow-up email queued successfully." });
         } catch (error) {
             console.error("Error queueing follow-up email:", error);
             toast({ variant: 'destructive', title: "Failed to queue email." });
         } finally {
             setIsProcessingEmail(null);
+            setSelectedRequest(null);
+            setSelectedTemplate(null);
         }
     };
     
@@ -278,6 +349,7 @@ export default function HPRequestsPage() {
                                     <TableHead>Last Name</TableHead>
                                     <TableHead>Email</TableHead>
                                     <TableHead>Campus</TableHead>
+                                    <TableHead>Language</TableHead>
                                     <TableHead>Phone</TableHead>
                                     <TableHead>Gender</TableHead>
                                     <TableHead>Age</TableHead>
@@ -300,6 +372,7 @@ export default function HPRequestsPage() {
                                             <TableCell className="font-medium">{request.lastName}</TableCell>
                                             <TableCell className="text-sm text-muted-foreground">{request.email}</TableCell>
                                             <TableCell>{request.campus}</TableCell>
+                                            <TableCell className="capitalize">{request.language || 'N/A'}</TableCell>
                                             <TableCell>{request.phoneNumber || 'N/A'}</TableCell>
                                             <TableCell>{request.gender || 'N/A'}</TableCell>
                                             <TableCell>{request.ageRange || 'N/A'}</TableCell>
@@ -353,6 +426,125 @@ export default function HPRequestsPage() {
                     </CardFooter>
                 )}
             </Card>
+
+            <Dialog open={isTemplateDialogOpen} onOpenChange={setIsTemplateDialogOpen}>
+                <DialogContent className="max-w-2xl">
+                    <DialogHeader>
+                        <DialogTitle>
+                            {templateViewState === 'list' ? 'Select Email Template' : 'Preview Follow-up Email'}
+                        </DialogTitle>
+                        <DialogDescription>
+                            {templateViewState === 'list' 
+                                ? `Choose a template to send to ${selectedRequest?.displayName || selectedRequest?.email}.`
+                                : `Review the email before sending to ${selectedRequest?.displayName || selectedRequest?.email}.`
+                            }
+                        </DialogDescription>
+                    </DialogHeader>
+
+                    {templateViewState === 'list' ? (
+                        <div className="space-y-4 py-4">
+                            <div className="relative">
+                                <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+                                <Input
+                                    placeholder="Search templates..."
+                                    className="pl-8"
+                                    value={templateSearchTerm}
+                                    onChange={(e) => setTemplateSearchTerm(e.target.value)}
+                                />
+                            </div>
+
+                            <ScrollArea className="h-[300px] border rounded-md p-2">
+                                <div className="grid gap-2">
+                                    {templates
+                                        .filter(t => t.name.toLowerCase().includes(templateSearchTerm.toLowerCase()))
+                                        .map(template => (
+                                            <Button
+                                                key={template.id}
+                                                variant="outline"
+                                                className="justify-start h-auto py-3 px-4 flex flex-col items-start gap-1"
+                                                onClick={() => handleSelectTemplate(template)}
+                                            >
+                                                <span className="font-semibold">{template.name}</span>
+                                                <span className="text-xs text-muted-foreground line-clamp-1">{template.subject}</span>
+                                            </Button>
+                                        ))}
+                                    {templates.filter(t => t.name.toLowerCase().includes(templateSearchTerm.toLowerCase())).length === 0 && (
+                                        <div className="text-center py-8 text-muted-foreground italic">
+                                            No templates found matching "{templateSearchTerm}"
+                                        </div>
+                                    )}
+                                </div>
+                            </ScrollArea>
+                        </div>
+                    ) : (
+                        <div className="space-y-6 py-4">
+                            <div className="space-y-2">
+                                <Label className="text-xs text-muted-foreground uppercase tracking-wider">Subject</Label>
+                                <div className="p-3 border rounded-md bg-muted/30 font-medium">
+                                    {(() => {
+                                        let sub = selectedTemplate?.subject || '';
+                                        const placeholders = {
+                                            userName: selectedRequest?.displayName || selectedRequest?.firstName || 'User',
+                                            firstName: selectedRequest?.firstName || '',
+                                            lastName: selectedRequest?.lastName || '',
+                                        };
+                                        Object.entries(placeholders).forEach(([key, val]) => {
+                                            const regex = new RegExp(`{{${key}}}`, "g");
+                                            sub = sub.replace(regex, String(val ?? ''));
+                                        });
+                                        return sub;
+                                    })()}
+                                </div>
+                            </div>
+                            
+                            <div className="space-y-2">
+                                <Label className="text-xs text-muted-foreground uppercase tracking-wider">Message Preview</Label>
+                                <ScrollArea className="h-[300px] border rounded-md p-6 bg-white dark:bg-slate-950">
+                                    <div 
+                                        className="prose dark:prose-invert prose-sm max-w-full"
+                                        dangerouslySetInnerHTML={{ 
+                                            __html: (() => {
+                                                let body = selectedTemplate?.body || '';
+                                                const placeholders = {
+                                                    userName: selectedRequest?.displayName || selectedRequest?.firstName || 'User',
+                                                    firstName: selectedRequest?.firstName || '',
+                                                    lastName: selectedRequest?.lastName || '',
+                                                    email: selectedRequest?.email || '',
+                                                    campus: selectedRequest?.campus || '',
+                                                    hpNumber: selectedRequest?.hpNumber || '',
+                                                    facilitatorName: selectedRequest?.facilitatorName || '',
+                                                };
+                                                Object.entries(placeholders).forEach(([key, val]) => {
+                                                    const regex = new RegExp(`{{${key}}}`, "g");
+                                                    body = body.replace(regex, String(val ?? ''));
+                                                });
+                                                return marked.parse(body, { breaks: true });
+                                            })()
+                                        }} 
+                                    />
+                                </ScrollArea>
+                            </div>
+                        </div>
+                    )}
+
+                    <DialogFooter className="flex justify-between items-center sm:justify-between w-full">
+                        {templateViewState === 'preview' ? (
+                            <>
+                                <Button variant="ghost" onClick={() => setTemplateViewState('list')}>
+                                    <ChevronLeft className="mr-2 h-4 w-4" />
+                                    Back to List
+                                </Button>
+                                <Button onClick={confirmSendFollowUp} disabled={!!isProcessingEmail}>
+                                    {isProcessingEmail === selectedRequest?.id ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Mail className="mr-2 h-4 w-4" />}
+                                    Send Message Now
+                                </Button>
+                            </>
+                        ) : (
+                            <Button variant="ghost" className="ml-auto" onClick={() => setIsTemplateDialogOpen(false)}>Cancel</Button>
+                        )}
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
         </div>
     );
 }
