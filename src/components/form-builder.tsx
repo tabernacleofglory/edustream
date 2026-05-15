@@ -10,7 +10,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
-import { Loader2, Save, Settings2, ChevronDown, ChevronUp, Database } from 'lucide-react';
+import { Loader2, Save, Settings2, ChevronDown, ChevronUp, Database, X, Plus } from 'lucide-react';
 import { getFirebaseFirestore } from '@/lib/firebase';
 import { collection, addDoc, serverTimestamp, doc, getDoc, updateDoc, getDocs, orderBy, query } from 'firebase/firestore';
 import { useToast } from '@/hooks/use-toast';
@@ -34,7 +34,7 @@ type FieldType =
 type DataSource =
   | 'manual' | 'campuses' | 'ladders' | 'ministries'
   | 'charges' | 'roles' | 'languages' | 'genders'
-  | 'ageRanges' | 'locationPreferences' | 'hpAvailabilityDays' | 'maritalStatuses';
+  | 'ageRanges' | 'locationPreferences' | 'hpAvailabilityDays' | 'maritalStatuses' | 'denominations';
 
 // ─── Schema ───────────────────────────────────────────────────────────────────
 const fieldConfigSchema = z.object({
@@ -49,6 +49,7 @@ const fieldConfigSchema = z.object({
     ladders: z.array(z.string()).optional(),
     campuses: z.array(z.string()).optional(),
   }).optional(),
+  options: z.array(z.string()).optional(),
 });
 
 const formBuilderSchema = z.object({
@@ -80,7 +81,7 @@ const USER_PROFILE_FIELDS: UserProfileFieldDef[] = [
   { fieldId: 'ageRange',          label: 'Age Range',                     defaultType: 'select',   defaultDataSource: 'ageRanges' },
   { fieldId: 'maritalStatus',     label: 'Marital Status',                defaultType: 'select',   defaultDataSource: 'maritalStatuses' },
   { fieldId: 'isBaptized',        label: 'Are you baptized?',             defaultType: 'select' },
-  { fieldId: 'denomination',      label: 'Denomination (if baptized)',     defaultType: 'select' },
+  { fieldId: 'denomination',      label: 'Denomination (if baptized)',     defaultType: 'select',   defaultDataSource: 'denominations' },
   { fieldId: 'campus',            label: 'Campus',                        defaultType: 'select',   defaultDataSource: 'campuses' },
   { fieldId: 'language',          label: 'Preferred Language',            defaultType: 'select',   defaultDataSource: 'languages' },
   { fieldId: 'locationPreference',label: 'Location Preference',           defaultType: 'select',   defaultDataSource: 'locationPreferences' },
@@ -134,6 +135,7 @@ const DATA_SOURCE_OPTIONS: { value: DataSource; label: string }[] = [
   { value: 'locationPreferences', label: 'Location Preferences (Onsite / Online)' },
   { value: 'hpAvailabilityDays',  label: 'HP Availability Days (Mon–Sun)' },
   { value: 'maritalStatuses',     label: 'Marital Statuses' },
+  { value: 'denominations',      label: 'Denominations (Standard list)' },
 ];
 
 // ─── Props ────────────────────────────────────────────────────────────────────
@@ -491,6 +493,71 @@ export default function FormBuilder({ formType, formId }: FormBuilderProps) {
                         </div>
                       )}
                     </div>
+
+                    {/* ── Manual Options Editor ── */}
+                    {isSelectType && watchedDS === 'manual' && (
+                      <div className="space-y-2 border rounded-lg p-3 bg-muted/20">
+                        <Label className="flex items-center gap-2">
+                          <Settings2 className="h-4 w-4" />
+                          Manual Options
+                        </Label>
+                        <div className="flex gap-2">
+                          <Input
+                            placeholder="Type an option and press Enter..."
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') {
+                                e.preventDefault();
+                                const val = e.currentTarget.value.trim();
+                                if (val) {
+                                  const currentOptions = watch(`fields.${index}.options`) || [];
+                                  if (!currentOptions.includes(val)) {
+                                    setValue(`fields.${index}.options`, [...currentOptions, val], { shouldDirty: true });
+                                    e.currentTarget.value = '';
+                                  }
+                                }
+                              }
+                            }}
+                          />
+                          <Button 
+                            type="button" 
+                            variant="secondary"
+                            onClick={(e) => {
+                              const input = e.currentTarget.previousElementSibling as HTMLInputElement;
+                              const val = input.value.trim();
+                              if (val) {
+                                const currentOptions = watch(`fields.${index}.options`) || [];
+                                if (!currentOptions.includes(val)) {
+                                  setValue(`fields.${index}.options`, [...currentOptions, val], { shouldDirty: true });
+                                  input.value = '';
+                                }
+                              }
+                            }}
+                          >
+                            <Plus className="h-4 w-4" />
+                          </Button>
+                        </div>
+                        <div className="flex flex-wrap gap-2 pt-2">
+                          {(watch(`fields.${index}.options`) || []).map((opt: string) => (
+                            <Badge key={opt} variant="secondary" className="pl-3 pr-1 py-1 gap-1">
+                              {opt}
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  const currentOptions = watch(`fields.${index}.options`) || [];
+                                  setValue(`fields.${index}.options`, currentOptions.filter((o: string) => o !== opt), { shouldDirty: true });
+                                }}
+                                className="hover:text-destructive transition-colors ml-1"
+                              >
+                                <X className="h-3 w-3" />
+                              </button>
+                            </Badge>
+                          ))}
+                          {(watch(`fields.${index}.options`) || []).length === 0 && (
+                            <p className="text-xs text-muted-foreground italic">No manual options added yet.</p>
+                          )}
+                        </div>
+                      </div>
+                    )}
 
                     {/* ── Campus filter ── */}
                     {showCampusFilter && (

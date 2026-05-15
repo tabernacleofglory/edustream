@@ -309,6 +309,7 @@ export default function PublicBlankForm({ formConfig, courseId, existingSubmissi
         else if (ds === 'locationPreferences') options[f.fieldId] = ["Onsite", "Online"].map(o => ({ value: o, label: o }));
         else if (ds === 'hpAvailabilityDays') options[f.fieldId] = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"].map(o => ({ value: o, label: o }));
         else if (ds === 'maritalStatuses') options[f.fieldId] = ["Single", "Married", "Divorced", "Widowed"].map(o => ({ value: o, label: o }));
+        else if (ds === 'denominations') options[f.fieldId] = ["Apostolic", "Baptist", "Pentecostal", "Protestant", "Catholic", "Evangelical", "Methodist", "Lutheran", "Presbyterian", "Anglican", "Other"].map(o => ({ value: o, label: o }));
       }
       setSelectOptions(options);
       setLoadingOptions(false);

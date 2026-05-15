@@ -48,6 +48,7 @@ const STATIC_OPTIONS: Record<string, SelectOpt[]> = {
   locationPreferences: [{ value: "Onsite", label: "Onsite" }, { value: "Online", label: "Online" }],
   hpAvailabilityDays:  ["Monday","Tuesday","Wednesday","Thursday","Friday","Saturday","Sunday"].map(v => ({ value: v, label: v })),
   maritalStatuses:     ["Single","Married","Divorced","Widowed"].map(v => ({ value: v, label: v })),
+  denominations:       ["Apostolic", "Baptist", "Pentecostal", "Protestant", "Catholic", "Evangelical", "Methodist", "Lutheran", "Presbyterian", "Anglican", "Other"].map(v => ({ value: v, label: v })),
   yesNo:               [{ value: "true", label: "Yes" }, { value: "false", label: "No" }],
 };
 
@@ -169,6 +170,11 @@ const DynamicForm = ({ formConfig }: { formConfig: CustomForm }) => {
         // Static built-in sources
         if (dataSource && STATIC_OPTIONS[dataSource]) {
           opts[fieldId] = STATIC_OPTIONS[dataSource];
+          continue;
+        }
+        // Manual options
+        if (dataSource === "manual" && f.options) {
+          opts[fieldId] = f.options.map(o => ({ value: o, label: o }));
           continue;
         }
         // Yes/No legacy fields
