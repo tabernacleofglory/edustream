@@ -22,6 +22,7 @@ import {
 } from "firebase/firestore";
 import { useAuth } from "@/hooks/use-auth";
 import { useDebounce } from 'use-debounce';
+import allLanguages from "@/lib/languages.json";
 import { 
     GoogleAuthProvider, 
     signInWithPopup, 
@@ -78,6 +79,16 @@ interface PublicBlankFormProps {
 const getInitials = (name?: string | null) => {
     if (!name) return "U";
     return name.trim().split(/\s+/).map((n) => n[0]).join("").toUpperCase();
+};
+
+const toNativeName = (isoName: string): string => {
+  const match = allLanguages.find(l =>
+    l.name.toLowerCase() === isoName.toLowerCase()
+    || l.name.toLowerCase().startsWith(isoName.split(";")[0].trim().toLowerCase())
+  );
+  if (!match) return isoName;
+  const native = match.nativeName.split(/[;,]/)[0].trim();
+  return native.charAt(0).toUpperCase() + native.slice(1);
 };
 
 
@@ -274,7 +285,21 @@ export default function PublicBlankForm({ formConfig, courseId, existingSubmissi
         if (collectionName) {
             let q = useWhere ? query(collection(db, collectionName), where("status", "==", "published"), orderBy(orderByField)) : query(collection(db, collectionName), orderBy(orderByField));
             const snap = await getDocs(q);
-            let data = ds === 'ladders' ? snap.docs.map(d => ({ value: d.id, label: d.data()[fieldName], id: d.id })) : snap.docs.map(d => ({ value: d.data()[fieldName], label: d.data()[fieldName], id: d.id }));
+            let data = snap.docs.map(d => {
+                const id = d.id;
+                const name = d.data()[fieldName] as string;
+                let label = name;
+                let value = name;
+                
+                if (ds === 'ladders') {
+                    value = id;
+                } else if (ds === 'languages') {
+                    label = toNativeName(name);
+                }
+                
+                return { value, label, id };
+            });
+            
             if (ds === 'ladders' && f.dataSourceOptions?.ladders?.length) data = data.filter(item => f.dataSourceOptions.ladders.includes(item.id));
             if (ds === 'campuses' && f.dataSourceOptions?.campuses?.length) data = data.filter(item => f.dataSourceOptions.campuses.includes(item.id));
             if (ds === 'campuses') data = data.filter(c => c.label !== "App Campus");

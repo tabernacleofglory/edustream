@@ -264,12 +264,13 @@ service cloud.firestore {
         && (permAllows('manageForms') || isAdmin())
         && (request.resource.data.title is string)
         && (request.resource.data.fields is list)
-        && (request.resource.data.type in ['custom', 'hybrid'])
+        && (request.resource.data.type in ['custom', 'hybrid', 'userProfile'])
         && (request.resource.data.public == false)
         && (request.resource.data.submissionCount == 0)
         && hasServerNow(request.resource.data) // createdAt == request.time
         && request.resource.data.diff({}).changedKeys().hasOnly([
-          'title','fields','type','createdAt','submissionCount','public'
+          'title','fields','type','createdAt','submissionCount','public',
+          'editable','dataSource','dataSourceOptions','updatedAt'
         ]);
 
       // UPDATE:

@@ -9,276 +9,245 @@ import { z } from "zod";
 import { getFirebaseFirestore } from "@/lib/firebase";
 import { initializeApp, getApps, getApp } from "firebase/app";
 import {
-  doc,
-  getDoc,
-  setDoc,
-  updateDoc,
-  increment,
-  collection,
-  query,
-  where,
-  getDocs,
-  orderBy,
-  limit,
-  serverTimestamp,
+  doc, getDoc, setDoc, updateDoc, increment,
+  collection, query, where, getDocs, orderBy, limit, serverTimestamp,
 } from "firebase/firestore";
 import {
-  createUserWithEmailAndPassword,
-  updateProfile,
-  getAuth,
-  signOut,
-  sendPasswordResetEmail,
+  createUserWithEmailAndPassword, updateProfile,
+  getAuth, signOut, sendPasswordResetEmail,
 } from "firebase/auth";
 import { v4 as uuidv4 } from "uuid";
-import { useDebounce } from 'use-debounce';
+import { useDebounce } from "use-debounce";
+import allLanguages from "@/lib/languages.json";
 
-import {
-  Card,
-  CardHeader,
-  CardTitle,
-  CardDescription,
-  CardContent,
-  CardFooter,
-} from "@/components/ui/card";
+import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from "@/components/ui/card";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { FileWarning, Loader2, PartyPopper, LogIn, UserPlus } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import type { CustomForm, FormFieldConfig, User, Ladder } from "@/lib/types";
+import { Textarea } from "@/components/ui/textarea";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import { Checkbox } from "@/components/ui/checkbox";
+import type { CustomForm, FormFieldConfig, Ladder } from "@/lib/types";
 import { useToast } from "@/hooks/use-toast";
 import Link from "next/link";
 import { useI18n } from "@/hooks/use-i18n";
-
 import PhoneInput from "react-phone-number-input";
 import "react-phone-number-input/style.css";
 
-interface StoredItem {
-  id: string;
-  name: string;
-}
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+type SelectOpt = { value: string; label: string; id?: string };
 
-interface Campus {
-  id: string;
-  "Campus Name": string;
-}
+// Inline static option lists
+const STATIC_OPTIONS: Record<string, SelectOpt[]> = {
+  genders:             [{ value: "Male", label: "Male" }, { value: "Female", label: "Female" }],
+  ageRanges:           ["Less than 13","13-17","18-24","25-34","35-44","45-54","55-64","65+"].map(v => ({ value: v, label: v })),
+  locationPreferences: [{ value: "Onsite", label: "Onsite" }, { value: "Online", label: "Online" }],
+  hpAvailabilityDays:  ["Monday","Tuesday","Wednesday","Thursday","Friday","Saturday","Sunday"].map(v => ({ value: v, label: v })),
+  maritalStatuses:     ["Single","Married","Divorced","Widowed"].map(v => ({ value: v, label: v })),
+  yesNo:               [{ value: "true", label: "Yes" }, { value: "false", label: "No" }],
+};
 
+// Fields that are yes/no dropdowns based on fieldId (legacy fallback)
+const YES_NO_FIELD_IDS = ["isInHpGroup", "isBaptized"];
+
+const toNativeName = (isoName: string): string => {
+  const match = allLanguages.find(l =>
+    l.name.toLowerCase() === isoName.toLowerCase()
+    || l.name.toLowerCase().startsWith(isoName.split(";")[0].trim().toLowerCase())
+  );
+  if (!match) return isoName;
+  const native = match.nativeName.split(/[;,]/)[0].trim();
+  return native.charAt(0).toUpperCase() + native.slice(1);
+};
+// Fields whose visibility depends on other fields (legacy hard-coded conditional logic)
+const CONDITIONAL_FIELDS: Record<string, { dependsOn: string; showWhen: string }> = {
+  hpNumber:          { dependsOn: "isInHpGroup", showWhen: "true" },
+  facilitatorName:   { dependsOn: "isInHpGroup", showWhen: "true" },
+  hpAvailabilityDay: { dependsOn: "isInHpGroup", showWhen: "true" },
+  hpAvailabilityTime:{ dependsOn: "isInHpGroup", showWhen: "true" },
+  denomination:      { dependsOn: "isBaptized",  showWhen: "true" },
+};
+
+// ─── DynamicForm ──────────────────────────────────────────────────────────────
 const DynamicForm = ({ formConfig }: { formConfig: CustomForm }) => {
   const { toast } = useToast();
   const { t } = useI18n();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submissionSuccess, setSubmissionSuccess] = useState(false);
-
-  const [selectOptions, setSelectOptions] = useState<{ [key: string]: any[] }>(
-    {}
-  );
+  const [selectOptions, setSelectOptions] = useState<Record<string, SelectOpt[]>>({});
   const [loadingOptions, setLoadingOptions] = useState(true);
   const [ladders, setLadders] = useState<Ladder[]>([]);
 
+  // ── Secondary Firebase auth instance (avoids logging admin out) ──
   const secondaryAuth = useMemo(() => {
-    const secondaryAppName = "secondaryFormApp";
-    let secondaryApp = getApps().find((app) => app.name === secondaryAppName);
-    if (!secondaryApp) {
-      const mainAppConfig = getApp().options;
-      secondaryApp = initializeApp(mainAppConfig, secondaryAppName);
-    }
-    return getAuth(secondaryApp);
+    const name = "secondaryFormApp";
+    const existing = getApps().find(a => a.name === name);
+    return getAuth(existing ?? initializeApp(getApp().options, name));
   }, []);
 
+  // ── Build Zod validation dynamically from field config ──
   const validationSchema = useMemo(() => {
     const shape = formConfig.fields.reduce((acc, field) => {
-      if (field.visible) {
-        let schema: z.ZodType<any>;
+      if (!field.visible) return acc;
 
-        const isEmailRequired = formConfig.fields.find(f => f.fieldId === 'email')?.required;
-
-        if (field.fieldId === "email") {
-          schema = z.string().email("Please enter a valid email address.").optional().or(z.literal(""));
-          if (isEmailRequired) {
-            schema = z.string().min(1, "Email is required.").email("Please enter a valid email address.");
-          }
-        } else if (field.fieldId === "password") {
-          schema = field.required
-            ? z.string().min(6, "Password must be at least 6 characters.")
-            : z.string().optional();
-        } else if (!field.required) {
-          schema = z.string().optional().or(z.literal(""));
-        } else {
-          schema = z.string().min(1, `${field.label} is required.`);
-        }
-
-        acc[field.fieldId] = schema;
+      let schema: z.ZodTypeAny;
+      if (field.fieldId === "email") {
+        schema = field.required
+          ? z.string().min(1, "Email is required.").email("Please enter a valid email address.")
+          : z.string().email("Please enter a valid email address.").optional().or(z.literal(""));
+      } else if (field.fieldId === "password") {
+        schema = field.required
+          ? z.string().min(6, "Password must be at least 6 characters.")
+          : z.string().optional();
+      } else if (field.required) {
+        schema = z.string().min(1, `${field.label} is required.`);
+      } else {
+        schema = z.string().optional().or(z.literal(""));
       }
+
+      acc[field.fieldId] = schema;
       return acc;
-    }, {} as Record<string, z.ZodType<any>>);
+    }, {} as Record<string, z.ZodTypeAny>);
 
-    return z.object(shape).superRefine((data, ctx) => {
-      const isInHpGroupField = formConfig.fields.find((f) => f.fieldId === "isInHpGroup");
-      if (isInHpGroupField?.visible && data.isInHpGroup === "true") {
-        const hpNumberRequired = formConfig.fields.find((f) => f.fieldId === "hpNumber")?.required;
-        if (hpNumberRequired && !data.hpNumber) {
-          ctx.addIssue({ code: z.ZodIssueCode.custom, message: "HP Number is required if you are in a prayer group.", path: ["hpNumber"] });
-        }
-        const facilitatorNameRequired = formConfig.fields.find((f) => f.fieldId === "facilitatorName")?.required;
-        if (facilitatorNameRequired && !data.facilitatorName) {
-          ctx.addIssue({ code: z.ZodIssueCode.custom, message: "Facilitator's Name is required if you are in a prayer group.", path: ["facilitatorName"] });
-        }
+    return z.object(shape).superRefine((data: any, ctx) => {
+      // HP group conditional requirements
+      const hpField = formConfig.fields.find(f => f.fieldId === "isInHpGroup");
+      if (hpField?.visible && data.isInHpGroup === "true") {
+        ["hpNumber", "facilitatorName"].forEach(fid => {
+          const fc = formConfig.fields.find(f => f.fieldId === fid);
+          if (fc?.visible && fc.required && !data[fid]) {
+            ctx.addIssue({ code: z.ZodIssueCode.custom, message: `${fc.label} is required.`, path: [fid] });
+          }
+        });
       }
-
-      const isBaptizedField = formConfig.fields.find((f) => f.fieldId === "isBaptized");
-      if (isBaptizedField?.visible && data.isBaptized === "true") {
-        const denominationRequired = formConfig.fields.find((f) => f.fieldId === "denomination")?.required;
-        if (denominationRequired && !data.denomination) {
-          ctx.addIssue({ code: z.ZodIssueCode.custom, message: "Denomination is required if you are baptized.", path: ["denomination"] });
+      // Baptism conditional
+      const bField = formConfig.fields.find(f => f.fieldId === "isBaptized");
+      if (bField?.visible && data.isBaptized === "true") {
+        const denField = formConfig.fields.find(f => f.fieldId === "denomination");
+        if (denField?.visible && denField.required && !data.denomination) {
+          ctx.addIssue({ code: z.ZodIssueCode.custom, message: "Denomination is required.", path: ["denomination"] });
         }
       }
     });
   }, [formConfig.fields]);
 
-  const form = useForm({
-    resolver: zodResolver(validationSchema),
-  });
-
+  const form = useForm({ resolver: zodResolver(validationSchema) });
   const watchedData = form.watch();
   const [debouncedData] = useDebounce(watchedData, 1000);
 
+  // ── Draft persistence ──
   useEffect(() => {
-    const savedDraft = localStorage.getItem(`form-draft-${formConfig.id}`);
-    if (savedDraft) {
-      try {
-        form.reset(JSON.parse(savedDraft));
-      } catch (e) {
-        console.error("Failed to parse form draft", e);
-      }
-    }
-  }, [formConfig.id, form]);
+    try {
+      const draft = localStorage.getItem(`form-draft-${formConfig.id}`);
+      if (draft) form.reset(JSON.parse(draft));
+    } catch { /* ignore */ }
+  }, [formConfig.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     localStorage.setItem(`form-draft-${formConfig.id}`, JSON.stringify(debouncedData));
   }, [debouncedData, formConfig.id]);
 
+  // ── Load dynamic select options from Firestore ──
   useEffect(() => {
+    if (!formConfig.fields.length) return;
+    const db = getFirebaseFirestore();
+
     const fetchOptions = async () => {
-      const db = getFirebaseFirestore();
-      const options: { [key: string]: any[] } = {};
+      const opts: Record<string, SelectOpt[]> = {};
       const laddersSnap = await getDocs(query(collection(db, "courseLevels"), orderBy("order")));
       const laddersData = laddersSnap.docs.map(d => ({ id: d.id, ...d.data() } as Ladder));
       setLadders(laddersData);
 
-      if (formConfig.fields.find((f) => f.fieldId === "campus" && f.visible)) {
-        const campusSnap = await getDocs(
-          query(collection(db, "Campus"), orderBy("Campus Name"))
-        );
-        const campusOptions = campusSnap.docs
-          .map((d) => ({
-            value: d.data()["Campus Name"],
-            label: d.data()["Campus Name"],
-          }))
-          .filter((c) => c.label !== "App Campus");
-        options["campus"] = campusOptions;
+      for (const field of formConfig.fields) {
+        if (!field.visible) continue;
+        const { fieldId, dataSource, dataSourceOptions } = field as any;
+
+        // Static built-in sources
+        if (dataSource && STATIC_OPTIONS[dataSource]) {
+          opts[fieldId] = STATIC_OPTIONS[dataSource];
+          continue;
+        }
+        // Yes/No legacy fields
+        if (YES_NO_FIELD_IDS.includes(fieldId) && !dataSource) {
+          opts[fieldId] = STATIC_OPTIONS.yesNo;
+          continue;
+        }
+
+        // Firestore-backed sources
+        if (dataSource === "campuses") {
+          const snap = await getDocs(query(collection(db, "Campus"), orderBy("Campus Name")));
+          let items: SelectOpt[] = snap.docs.map(d => ({ id: d.id, value: d.data()["Campus Name"], label: d.data()["Campus Name"] }));
+          items = items.filter(c => c.label !== "App Campus");
+          // Apply filter if configured
+          if (dataSourceOptions?.campuses?.length) {
+            items = items.filter(c => dataSourceOptions.campuses.includes((c as any).id));
+          }
+          opts[fieldId] = items;
+        } else if (dataSource === "ladders" || fieldId === "classLadderId") {
+          let items: SelectOpt[] = laddersData.map(l => ({ id: l.id, value: l.id, label: l.name }));
+          if (dataSourceOptions?.ladders?.length) {
+            items = items.filter(l => dataSourceOptions.ladders.includes((l as any).id));
+          }
+          opts[fieldId] = items;
+        } else if (dataSource === "languages") {
+          const snap = await getDocs(query(collection(db, "languages"), where("status", "==", "published")));
+          opts[fieldId] = snap.docs.map(d => {
+            const name = d.data().name as string;
+            return { value: name, label: toNativeName(name) };
+          });
+        } else if (dataSource === "ministries") {
+          const snap = await getDocs(query(collection(db, "ministries"), orderBy("name")));
+          opts[fieldId] = snap.docs.map(d => ({ value: d.data().name, label: d.data().name }));
+        } else if (dataSource === "charges") {
+          const snap = await getDocs(query(collection(db, "charges"), orderBy("name")));
+          opts[fieldId] = snap.docs.map(d => ({ value: d.data().name, label: d.data().name }));
+        }
       }
-
-      if (formConfig.fields.find((f) => f.fieldId === "language" && f.visible)) {
-        const langSnap = await getDocs(
-          query(collection(db, "languages"), where("status", "==", "published"))
-        );
-        options["language"] = langSnap.docs.map((d) => ({
-          value: d.data().name,
-          label: d.data().name,
-        }));
-      }
-
-      if (formConfig.fields.find((f) => f.fieldId === "classLadderId" && f.visible)) {
-        options["classLadderId"] = laddersData.map(l => ({ value: l.id, label: l.name }));
-      }
-
-      options["gender"] = [
-        { value: "Male", label: t('common.gender.male', 'Male') },
-        { value: "Female", label: t('common.gender.female', 'Female') },
-      ];
-      options["ageRange"] = [
-        { value: "Less than 13", label: "Less than 13" },
-        { value: "13-17", label: "13-17" },
-        { value: "18-24", label: "18-24" },
-        { value: "25-34", label: "25-34" },
-        { value: "35-44", label: "35-44" },
-        { value: "45-54", label: "45-54" },
-        { value: "55-64", label: "55-64" },
-        { value: "65+", label: "65+" },
-      ];
-      options["locationPreference"] = [
-        { value: "Onsite", label: t('common.location.onsite', 'Onsite') },
-        { value: "Online", label: t('common.location.online', 'Online') },
-      ];
-      options["hpAvailabilityDay"] = [
-        "Monday",
-        "Tuesday",
-        "Wednesday",
-        "Thursday",
-        "Friday",
-        "Saturday",
-        "Sunday",
-      ].map((d) => ({ value: d, label: d }));
-
-      options["denomination"] = [
-        "Apostolic", "Baptist", "Pentecostal", "Protestant", "Catholic", "Evangelical",
-        "Methodist", "Lutheran", "Presbyterian", "Anglican", "Other"
-      ].map(d => ({ value: d, label: d }));
-
-      setSelectOptions(options);
+      setSelectOptions(opts);
       setLoadingOptions(false);
     };
-    if (formConfig.fields.length > 0) fetchOptions();
-  }, [formConfig.fields, t]);
 
+    fetchOptions().catch(err => {
+      console.error("Failed to fetch form options:", err);
+      setLoadingOptions(false);
+    });
+  }, [formConfig.fields]);
+
+  // ── Submit: create Firebase Auth user + Firestore user doc ──
   const onSubmit = async (data: any) => {
     setIsSubmitting(true);
     try {
-      const password = data.password || `${uuidv4()}A!`;
-      const providedRealEmail = data.email && !String(data.email).endsWith("@tg.admin");
-
-      let finalEmail = data.email;
-      if (!finalEmail || finalEmail.trim() === '') {
-        finalEmail = `user${Date.now()}@tg.admin`;
-      }
-
       const db = getFirebaseFirestore();
-      const userCredential = await createUserWithEmailAndPassword(
-        secondaryAuth,
-        finalEmail,
-        password
-      );
-      const user = userCredential.user;
+      const password = data.password?.trim() || `${uuidv4()}A!`;
+      const rawEmail = data.email?.trim() || "";
+      const providedRealEmail = rawEmail && !rawEmail.endsWith("@tg.admin");
+      const finalEmail = rawEmail || `user${Date.now()}@tg.admin`;
 
+      const userCredential = await createUserWithEmailAndPassword(secondaryAuth, finalEmail, password);
+      const user = userCredential.user;
       const fullName = `${data.firstName || ""} ${data.lastName || ""}`.trim();
       await updateProfile(user, { displayName: fullName });
 
+      // Resolve class ladder
       let ladderId = data.classLadderId;
-      let ladderName = 'New Member';
-
+      let ladderName = "New Member";
       if (ladderId) {
-        const selectedLadder = ladders.find(l => l.id === ladderId);
-        if (selectedLadder) {
-          ladderName = selectedLadder.name;
-        }
+        const found = ladders.find(l => l.id === ladderId);
+        if (found) ladderName = found.name;
       } else {
-        const defaultLadderSnap = await getDocs(query(collection(db, "courseLevels"), orderBy("order"), limit(1)));
-        if (!defaultLadderSnap.empty) {
-          const defaultLadderDoc = defaultLadderSnap.docs[0];
-          ladderId = defaultLadderDoc.id;
-          ladderName = defaultLadderDoc.data().name;
+        const defaultSnap = await getDocs(query(collection(db, "courseLevels"), orderBy("order"), limit(1)));
+        if (!defaultSnap.empty) {
+          ladderId = defaultSnap.docs[0].id;
+          ladderName = defaultSnap.docs[0].data().name;
         }
       }
 
-      const newUser: Partial<User> = {
+      // Build user document — start with base fields
+      const newUser: Record<string, any> = {
         uid: user.uid,
         id: user.uid,
         email: finalEmail,
@@ -287,191 +256,184 @@ const DynamicForm = ({ formConfig }: { formConfig: CustomForm }) => {
         createdAt: serverTimestamp(),
         classLadderId: ladderId,
         classLadder: ladderName,
-        isInHpGroup: data.isInHpGroup === "true",
-        isBaptized: data.isBaptized === 'true',
         createdFromFormId: formConfig.id,
       };
 
-      formConfig.fields.forEach((field) => {
-        if (field.visible && data[field.fieldId] !== undefined && field.fieldId !== 'classLadderId') {
-          (newUser as any)[field.fieldId] = data[field.fieldId];
-        }
+      // Map all visible fields to user doc
+      formConfig.fields.forEach(field => {
+        if (!field.visible) return;
+        const val = data[field.fieldId];
+        if (val === undefined) return;
+        if (field.fieldId === "classLadderId") return; // already handled
+        // Coerce boolean-string fields
+        if (field.fieldId === "isInHpGroup") { newUser.isInHpGroup = val === "true"; return; }
+        if (field.fieldId === "isBaptized")  { newUser.isBaptized  = val === "true"; return; }
+        newUser[field.fieldId] = val;
       });
 
       await setDoc(doc(db, "users", user.uid), newUser);
-      await updateDoc(doc(db, "forms", formConfig.id), {
-        submissionCount: increment(1),
-      });
-
+      await updateDoc(doc(db, "forms", formConfig.id), { submissionCount: increment(1) });
       localStorage.removeItem(`form-draft-${formConfig.id}`);
 
+      // Send password setup email if real email provided
       if (providedRealEmail) {
         try {
-          await sendPasswordResetEmail(secondaryAuth, data.email);
-          toast({
-            title: "Registration Successful!",
-            description: "Your account has been created. A password setup email has been sent to you.",
-          });
+          await sendPasswordResetEmail(secondaryAuth, rawEmail);
+          toast({ title: "Registration Successful!", description: "A password setup email has been sent to you." });
         } catch {
-          toast({
-            title: "Registration Successful!",
-            description:
-              "Your account was created, but we couldn't send the password setup email. Please use the 'Forgot Password' link on the login page.",
-          });
+          toast({ title: "Registration Successful!", description: "Account created. Use 'Forgot Password' on the login page to set your password." });
         }
       } else {
-        toast({
-          title: "Registration Successful!",
-          description: "Your account has been created.",
-        });
+        toast({ title: "Registration Successful!", description: "Your account has been created." });
       }
 
       await signOut(secondaryAuth);
       setSubmissionSuccess(true);
     } catch (error: any) {
-      console.error("User creation error:", error);
+      console.error("Registration error:", error);
       toast({
         variant: "destructive",
         title: "Registration Failed",
-        description:
-          error.code === "auth/email-already-in-use"
-            ? "This email is already in use."
-            : error.message,
+        description: error.code === "auth/email-already-in-use"
+          ? "This email is already registered. Please use the login page."
+          : error.message || "An unexpected error occurred.",
       });
     } finally {
       setIsSubmitting(false);
     }
   };
 
+  // ── Render individual field ──
   const renderField = (field: FormFieldConfig) => {
     const { fieldId, label, required } = field;
+    const fieldType = (field as any).type as string | undefined;
+    const dataSource = (field as any).dataSource as string | undefined;
     const formError = form.formState.errors[fieldId];
 
-    const isHpField = ["hpNumber", "facilitatorName"].includes(fieldId);
-    const isAvailabilityField = ["hpAvailabilityDay", "hpAvailabilityTime"].includes(fieldId);
-    const isInHpGroupValue = form.watch("isInHpGroup");
+    // Conditional visibility (HP group / baptism logic)
+    const cond = CONDITIONAL_FIELDS[fieldId];
+    if (cond) {
+      const parentVal = form.watch(cond.dependsOn as any);
+      if (parentVal !== cond.showWhen) return null;
+    }
 
-    const isDenominationField = fieldId === "denomination";
-    const isBaptizedValue = form.watch("isBaptized");
+    const opts = selectOptions[fieldId] || [];
+    const isSelectLike = ["select", "multiple-choice", "multiple-select"].includes(fieldType || "");
+    // Legacy: yes/no fields
+    const isYesNo = YES_NO_FIELD_IDS.includes(fieldId) && (!fieldType || fieldType === "select");
 
-    if (isHpField && isInHpGroupValue !== "true") return null;
-    if (isAvailabilityField && isInHpGroupValue !== "false") return null;
-    if (isDenominationField && isBaptizedValue !== "true") return null;
-
-    if (
-      [
-        "gender", "ageRange", "campus", "language", "locationPreference",
-        "hpAvailabilityDay", "denomination", "classLadderId"
-      ].includes(fieldId)
-    ) {
-      return (
-        <div key={fieldId} className="space-y-2">
-          <Label htmlFor={fieldId}>
-            {label} {required && <span className="text-destructive">*</span>}
-          </Label>
+    const renderInput = () => {
+      // Phone
+      if (fieldType === "phone" || (fieldId === "phoneNumber" && !fieldType)) {
+        return (
           <Controller
             name={fieldId as any}
             control={form.control}
-            render={({ field }) => (
-              <Select
-                onValueChange={field.onChange}
-                value={field.value}
-                disabled={loadingOptions}
-              >
-                <SelectTrigger id={fieldId}>
-                  <SelectValue placeholder={`Select ${label.toLowerCase()}`} />
-                </SelectTrigger>
-                <SelectContent>
-                  {(selectOptions[fieldId] || []).map((opt: any) => (
-                    <SelectItem key={opt.value} value={opt.value}>
-                      {opt.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            )}
-          />
-          {formError && <p className="text-sm text-destructive">{formError.message as string}</p>}
-        </div>
-      );
-    }
-
-    if (["isInHpGroup", "isBaptized"].includes(fieldId)) {
-      return (
-        <div key={fieldId} className="space-y-2">
-          <Label>{label} {required && <span className="text-destructive">*</span>}</Label>
-          <Controller
-            name={fieldId as any}
-            control={form.control}
-            render={({ field }) => (
-              <Select onValueChange={field.onChange} value={field.value}>
-                <SelectTrigger><SelectValue placeholder="Select an option" /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="true">{t('common.yes', 'Yes')}</SelectItem>
-                  <SelectItem value="false">{t('common.no', 'No')}</SelectItem>
-                </SelectContent>
-              </Select>
-            )}
-          />
-          {formError && <p className="text-sm text-destructive">{formError.message as string}</p>}
-        </div>
-      )
-    }
-
-    if (fieldId === "phoneNumber") {
-      return (
-        <div key={fieldId} className="space-y-2">
-          <Label htmlFor={fieldId}>
-            {label} {required && <span className="text-destructive">*</span>}
-          </Label>
-          <Controller
-            name="phoneNumber"
-            control={form.control}
-            render={({ field }) => (
+            render={({ field: ctrl }) => (
               <PhoneInput
-                id="phoneNumber"
+                id={fieldId}
                 international
                 defaultCountry="US"
-                {...field}
-                value={field.value || undefined}
+                {...ctrl}
+                value={ctrl.value || undefined}
                 className="PhoneInputInput"
               />
             )}
           />
-          {formError && <p className="text-sm text-destructive">{formError.message as string}</p>}
-        </div>
-      );
-    }
-
-    if (fieldId === "hpAvailabilityTime") {
-      return (
-        <div key={fieldId} className="space-y-2">
-          <Label htmlFor={fieldId}>
-            {label} {required && <span className="text-destructive">*</span>}
-          </Label>
-          <Input
-            id={fieldId}
-            type="time"
-            step={900}
-            {...form.register(fieldId as any)}
-          />
-          {formError && <p className="text-sm text-destructive">{formError.message as string}</p>}
-        </div>
-      );
-    }
+        );
+      }
+      // Time input
+      if (fieldId === "hpAvailabilityTime" && (!fieldType || fieldType === "text")) {
+        return <Input id={fieldId} type="time" step={900} {...form.register(fieldId as any)} />;
+      }
+      // Textarea
+      if (fieldType === "textarea" || fieldType === "address") {
+        return <Textarea id={fieldId} {...form.register(fieldId as any)} />;
+      }
+      // Date
+      if (fieldType === "date") {
+        return <Input id={fieldId} type="date" {...form.register(fieldId as any)} />;
+      }
+      // Yes/No select (legacy)
+      if (isYesNo) {
+        return (
+          <Controller name={fieldId as any} control={form.control} render={({ field: ctrl }) => (
+            <Select onValueChange={ctrl.onChange} value={ctrl.value}>
+              <SelectTrigger id={fieldId}><SelectValue placeholder="Select an option" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="true">Yes</SelectItem>
+                <SelectItem value="false">No</SelectItem>
+              </SelectContent>
+            </Select>
+          )} />
+        );
+      }
+      // Dropdown select
+      if (fieldType === "select" || (isSelectLike && fieldType !== "multiple-choice" && fieldType !== "multiple-select")) {
+        return (
+          <Controller name={fieldId as any} control={form.control} render={({ field: ctrl }) => (
+            <Select onValueChange={ctrl.onChange} value={ctrl.value} disabled={loadingOptions}>
+              <SelectTrigger id={fieldId}><SelectValue placeholder={`Select ${label.toLowerCase()}`} /></SelectTrigger>
+              <SelectContent>
+                {opts.map((opt, i) => <SelectItem key={`${opt.value}-${i}`} value={opt.value}>{opt.label}</SelectItem>)}
+              </SelectContent>
+            </Select>
+          )} />
+        );
+      }
+      // Radio (multiple-choice)
+      if (fieldType === "multiple-choice") {
+        return (
+          <Controller name={fieldId as any} control={form.control} render={({ field: ctrl }) => (
+            <RadioGroup onValueChange={ctrl.onChange} value={ctrl.value} className="space-y-1">
+              {opts.map((o, i) => (
+                <div key={i} className="flex items-center gap-2">
+                  <RadioGroupItem value={o.value} id={`${fieldId}-${i}`} />
+                  <Label htmlFor={`${fieldId}-${i}`}>{o.label}</Label>
+                </div>
+              ))}
+            </RadioGroup>
+          )} />
+        );
+      }
+      // Multiple-select (checkboxes)
+      if (fieldType === "multiple-select") {
+        return (
+          <Controller name={fieldId as any} control={form.control} render={({ field: ctrl }) => {
+            const selected: string[] = Array.isArray(ctrl.value) ? ctrl.value : [];
+            return (
+              <div className="space-y-1">
+                {opts.map((o, i) => (
+                  <div key={i} className="flex items-center gap-2">
+                    <Checkbox
+                      id={`${fieldId}-${i}`}
+                      checked={selected.includes(o.value)}
+                      onCheckedChange={c => {
+                        const next = c ? [...selected, o.value] : selected.filter(v => v !== o.value);
+                        ctrl.onChange(next);
+                      }}
+                    />
+                    <Label htmlFor={`${fieldId}-${i}`}>{o.label}</Label>
+                  </div>
+                ))}
+              </div>
+            );
+          }} />
+        );
+      }
+      // Default: text / email / password
+      const inputType = fieldId === "email" || fieldType === "email" ? "email"
+        : fieldId === "password" || fieldType === "password" ? "password"
+        : "text";
+      return <Input id={fieldId} type={inputType} {...form.register(fieldId as any)} />;
+    };
 
     return (
       <div key={fieldId} className="space-y-2">
         <Label htmlFor={fieldId}>
           {label} {required && <span className="text-destructive">*</span>}
         </Label>
-        <Input
-          id={fieldId}
-          type={
-            fieldId === "email" ? "email" : fieldId === "password" ? "password" : "text"
-          }
-          {...form.register(fieldId as any)}
-        />
+        {renderInput()}
         {formError && <p className="text-sm text-destructive">{formError.message as string}</p>}
       </div>
     );
@@ -483,20 +445,14 @@ const DynamicForm = ({ formConfig }: { formConfig: CustomForm }) => {
         <CardHeader className="text-center">
           <PartyPopper className="mx-auto h-12 w-12 text-green-500" />
           <CardTitle className="text-2xl">Registration Complete!</CardTitle>
-          <CardDescription>
-            You can now add another member or proceed to the login page.
-          </CardDescription>
+          <CardDescription>You can now add another member or proceed to the login page.</CardDescription>
         </CardHeader>
         <CardFooter className="flex-col gap-4">
           <Button className="w-full" onClick={() => window.location.reload()}>
-            <UserPlus className="mr-2 h-4 w-4" />
-            Add New Member
+            <UserPlus className="mr-2 h-4 w-4" /> Add New Member
           </Button>
           <Button variant="link" asChild>
-            <Link href="/login">
-              <LogIn className="mr-2 h-4 w-4" />
-              Proceed to Login
-            </Link>
+            <Link href="/login"><LogIn className="mr-2 h-4 w-4" /> Proceed to Login</Link>
           </Button>
         </CardFooter>
       </Card>
@@ -513,7 +469,7 @@ const DynamicForm = ({ formConfig }: { formConfig: CustomForm }) => {
           {loadingOptions ? (
             <Skeleton className="h-48 w-full" />
           ) : (
-            formConfig.fields.filter((f) => f.visible).map(renderField)
+            formConfig.fields.filter(f => f.visible).map(renderField)
           )}
         </CardContent>
         <CardFooter>
@@ -527,6 +483,7 @@ const DynamicForm = ({ formConfig }: { formConfig: CustomForm }) => {
   );
 };
 
+// ─── Page wrapper: loads form config ─────────────────────────────────────────
 export default function PublicFormPage() {
   const params = useParams();
   const formId = params.formId as string;
@@ -535,54 +492,33 @@ export default function PublicFormPage() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!formId) {
-      setError("Form ID is missing.");
-      setLoading(false);
-      return;
-    }
-
-    const fetchFormConfig = async () => {
-      const db = getFirebaseFirestore();
-      try {
-        const formDocRef = doc(db, "forms", formId);
-        const docSnap = await getDoc(formDocRef);
-        if (docSnap.exists()) {
-          const data = docSnap.data() as Omit<CustomForm, "id"> & { public?: boolean; type?: string };
-          if (data.type !== "userProfile") {
-            setError("This form type is not supported for public registration.");
-            setLoading(false);
-            return;
-          }
-          if (data.public !== true) {
-            setError("This form is not public or is no longer accepting submissions.");
-            setLoading(false);
-            return;
-          }
-          setFormConfig({ id: docSnap.id, ...(data as any) });
-        } else {
-          setError("This form does not exist.");
+    if (!formId) { setError("Form ID is missing."); setLoading(false); return; }
+    const db = getFirebaseFirestore();
+    getDoc(doc(db, "forms", formId))
+      .then(snap => {
+        if (!snap.exists()) { setError("This form does not exist."); return; }
+        const data = snap.data() as any;
+        if (data.type !== "userProfile") {
+          setError("This form type is not supported for public registration.");
+          return;
         }
-      } catch (e: any) {
-        setError("You don't have permission to view this form.");
-      } finally {
-        setLoading(false);
-      }
-    };
-    fetchFormConfig();
+        if (data.public !== true) {
+          setError("This form is not public or is no longer accepting submissions.");
+          return;
+        }
+        setFormConfig({ id: snap.id, ...data } as CustomForm);
+      })
+      .catch(() => setError("You don't have permission to view this form."))
+      .finally(() => setLoading(false));
   }, [formId]);
 
   if (loading) {
     return (
       <div className="flex items-center justify-center p-4">
         <Card className="w-full max-w-lg">
-          <CardHeader>
-            <Skeleton className="h-8 w-3/4" />
-            <Skeleton className="h-4 w-1/2" />
-          </CardHeader>
+          <CardHeader><Skeleton className="h-8 w-3/4" /><Skeleton className="h-4 w-1/2 mt-2" /></CardHeader>
           <CardContent className="space-y-4">
-            <Skeleton className="h-10 w-full" />
-            <Skeleton className="h-10 w-full" />
-            <Skeleton className="h-10 w-full" />
+            <Skeleton className="h-10 w-full" /><Skeleton className="h-10 w-full" /><Skeleton className="h-10 w-full" />
           </CardContent>
         </Card>
       </div>
@@ -601,19 +537,7 @@ export default function PublicFormPage() {
     );
   }
 
-  if (!formConfig) {
-    return (
-      <div className="flex items-center justify-center p-4">
-        <Alert className="w-full max-w-lg">
-          <FileWarning className="h-4 w-4" />
-          <AlertTitle>No Form Found</AlertTitle>
-          <AlertDescription>
-            The requested form could not be loaded.
-          </AlertDescription>
-        </Alert>
-      </div>
-    );
-  }
+  if (!formConfig) return null;
 
   return (
     <div className="flex items-center justify-center p-4">
