@@ -96,6 +96,9 @@ import { wrapInEmailLayout } from "@/lib/email-utils";
 import { format, startOfDay, endOfDay } from "date-fns";
 import { DateRange } from "react-day-picker";
 
+const BULK_EMAIL_QUEUE_DELAY_MS = 3000;
+const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+
 export default function EmailSenderPage() {
   const { toast } = useToast();
   const { hasPermission } = useAuth();
@@ -108,6 +111,7 @@ export default function EmailSenderPage() {
   
   const [loading, setLoading] = useState(true);
   const [isSending, setIsSending] = useState(false);
+  const [sendProgress, setSendProgress] = useState<{ current: number; total: number } | null>(null);
   
   // Selection/Filtering State
   const [selectedUserIds, setSelectedUserIds] = useState<Set<string>>(new Set());
@@ -283,128 +287,140 @@ export default function EmailSenderPage() {
 
   const handleSendBulk = async () => {
     if (!selectedTemplateId || selectedUserIds.size === 0) return;
-    
-    setIsSending(true);
+
     const template = templates.find(t => t.id === selectedTemplateId);
     if (!template) return;
+
+    const recipientIds = Array.from(selectedUserIds);
+    setIsSending(true);
+    setSendProgress({ current: 0, total: recipientIds.length });
 
     let successCount = 0;
     let errorCount = 0;
 
-    for (const userId of Array.from(selectedUserIds)) {
-      const user = users.find(u => u.id === userId);
-      if (!user || !user.email) {
-        errorCount++;
-        continue;
-      }
+    try {
+      for (const [index, userId] of recipientIds.entries()) {
+        setSendProgress({ current: index + 1, total: recipientIds.length });
 
-      try {
-        let subject = template.subject || '';
-        let body = template.body || '';
+        const user = users.find(u => u.id === userId);
+        if (!user || !user.email) {
+          errorCount++;
+        } else {
+          try {
+            let subject = template.subject || '';
+            let body = template.body || '';
 
-        const placeholders: Record<string, any> = {
-          userName: user.displayName || user.firstName || 'User',
-          firstName: user.firstName || '',
-          lastName: user.lastName || '',
-          email: user.email || '',
-          phoneNumber: user.phoneNumber || '',
-          campus: user.campus || '',
-          hpNumber: user.hpNumber || '',
-          facilitatorName: user.facilitatorName || '',
-          classLadder: user.classLadder || '',
-          ministry: user.ministry || '',
-          charge: user.charge || '',
-        };
+            const placeholders: Record<string, any> = {
+              userName: user.displayName || user.firstName || 'User',
+              firstName: user.firstName || '',
+              lastName: user.lastName || '',
+              email: user.email || '',
+              phoneNumber: user.phoneNumber || '',
+              campus: user.campus || '',
+              hpNumber: user.hpNumber || '',
+              facilitatorName: user.facilitatorName || '',
+              classLadder: user.classLadder || '',
+              ministry: user.ministry || '',
+              charge: user.charge || '',
+            };
 
-        Object.entries(placeholders).forEach(([key, val]) => {
-          const regex = new RegExp(`{{${key}}}`, "g");
-          subject = subject.replace(regex, String(val ?? ''));
-          body = body.replace(regex, String(val ?? ''));
-        });
+            Object.entries(placeholders).forEach(([key, val]) => {
+              const regex = new RegExp(`{{${key}}}`, "g");
+              subject = subject.replace(regex, String(val ?? ''));
+              body = body.replace(regex, String(val ?? ''));
+            });
 
-        const formPlaceholderRegex = /{{form:([^:]+):([^}]+)}}/g;
-        const formTitleRegex = /{{formTitle:([^}]+)}}/g;
-        
-        const combinedText = subject + " " + body;
-        const formMatches = Array.from(combinedText.matchAll(formPlaceholderRegex));
-        const formTitleMatches = Array.from(combinedText.matchAll(formTitleRegex));
-        
-        const formIdsInUse = Array.from(new Set([
-            ...formMatches.map(m => m[1]),
-            ...formTitleMatches.map(m => m[1])
-        ]));
+            const formPlaceholderRegex = /{{form:([^:]+):([^}]+)}}/g;
+            const formTitleRegex = /{{formTitle:([^}]+)}}/g;
 
-        const formSubmissionsMap: Record<string, any> = {};
-        const formTitlesMap: Record<string, string> = {};
+            const combinedText = subject + " " + body;
+            const formMatches = Array.from(combinedText.matchAll(formPlaceholderRegex));
+            const formTitleMatches = Array.from(combinedText.matchAll(formTitleRegex));
 
-        for (const fId of formIdsInUse) {
-            try {
-                const formSnap = await getDoc(doc(db, 'forms', fId));
-                if (formSnap.exists()) {
-                    formTitlesMap[fId] = formSnap.data().title || 'Untitled Form';
-                }
-            } catch (e) { console.warn(`Could not fetch form ${fId}`, e); }
+            const formIdsInUse = Array.from(new Set([
+                ...formMatches.map(m => m[1]),
+                ...formTitleMatches.map(m => m[1])
+            ]));
 
-            const hasFieldMatch = formMatches.some(m => m[1] === fId);
-            if (hasFieldMatch) {
-                const subQuery = query(
-                    collection(db, 'forms', fId, 'submissions'),
-                    where('userId', '==', user.id),
-                    orderBy('submittedAt', 'desc'),
-                    limit(1)
-                );
+            const formSubmissionsMap: Record<string, any> = {};
+            const formTitlesMap: Record<string, string> = {};
+
+            for (const fId of formIdsInUse) {
                 try {
-                    const snap = await getDocs(subQuery);
-                    if (!snap.empty) {
-                        const subData = snap.docs[0].data();
-                        formSubmissionsMap[fId] = subData.data || subData;
+                    const formSnap = await getDoc(doc(db, 'forms', fId));
+                    if (formSnap.exists()) {
+                        formTitlesMap[fId] = formSnap.data().title || 'Untitled Form';
                     }
-                } catch (e) { console.warn(`Could not fetch submission for form ${fId}`, e); }
+                } catch (e) { console.warn(`Could not fetch form ${fId}`, e); }
+
+                const hasFieldMatch = formMatches.some(m => m[1] === fId);
+                if (hasFieldMatch) {
+                    const subQuery = query(
+                        collection(db, 'forms', fId, 'submissions'),
+                        where('userId', '==', user.id),
+                        orderBy('submittedAt', 'desc'),
+                        limit(1)
+                    );
+                    try {
+                        const snap = await getDocs(subQuery);
+                        if (!snap.empty) {
+                            const subData = snap.docs[0].data();
+                            formSubmissionsMap[fId] = subData.data || subData;
+                        }
+                    } catch (e) { console.warn(`Could not fetch submission for form ${fId}`, e); }
+                }
             }
+
+            const formReplacer = (match: string, fId: string, fFieldId: string) => {
+                const val = formSubmissionsMap[fId]?.[fFieldId];
+                return val == null ? '' : Array.isArray(val) ? val.join(', ') : String(val);
+            };
+            subject = subject.replace(formPlaceholderRegex, formReplacer);
+            body = body.replace(formPlaceholderRegex, formReplacer);
+
+            const titleReplacer = (match: string, fId: string) => formTitlesMap[fId] || '';
+            subject = subject.replace(formTitleRegex, titleReplacer);
+            body = body.replace(formTitleRegex, titleReplacer);
+
+            const htmlContent = await marked.parse(body, { breaks: true });
+
+            let finalHtml = `<div style="font-family:sans-serif;line-height:1.5;color:#2d3748;max-width:600px;margin:0 auto;">${htmlContent}</div>`;
+            if (emailLayout) {
+                finalHtml = wrapInEmailLayout(htmlContent, emailLayout);
+            }
+
+            await addDoc(collection(db, 'mail'), {
+              to: [user.email],
+              message: {
+                subject: subject,
+                html: finalHtml,
+              },
+              templateId: selectedTemplateId,
+              userId: user.id,
+              sentByBulk: true,
+              createdAt: serverTimestamp(),
+            });
+            successCount++;
+          } catch (err) {
+            console.error(`Failed to queue email for ${user.email}:`, err);
+            errorCount++;
+          }
         }
 
-        const formReplacer = (match: string, fId: string, fFieldId: string) => {
-            const val = formSubmissionsMap[fId]?.[fFieldId];
-            return val == null ? '' : Array.isArray(val) ? val.join(', ') : String(val);
-        };
-        subject = subject.replace(formPlaceholderRegex, formReplacer);
-        body = body.replace(formPlaceholderRegex, formReplacer);
-
-        const titleReplacer = (match: string, fId: string) => formTitlesMap[fId] || '';
-        subject = subject.replace(formTitleRegex, titleReplacer);
-        body = body.replace(formTitleRegex, titleReplacer);
-
-        const htmlContent = marked.parse(body, { breaks: true });
-        
-        let finalHtml = `<div style="font-family:sans-serif;line-height:1.5;color:#2d3748;max-width:600px;margin:0 auto;">${htmlContent}</div>`;
-        if (emailLayout) {
-            finalHtml = wrapInEmailLayout(htmlContent, emailLayout);
+        if (index < recipientIds.length - 1) {
+          await sleep(BULK_EMAIL_QUEUE_DELAY_MS);
         }
-
-        await addDoc(collection(db, 'mail'), {
-          to: [user.email],
-          message: {
-            subject: subject,
-            html: finalHtml,
-          },
-          templateId: selectedTemplateId,
-          userId: user.id,
-          sentByBulk: true,
-          createdAt: serverTimestamp(),
-        });
-        successCount++;
-      } catch (err) {
-        console.error(`Failed to queue email for ${user.email}:`, err);
-        errorCount++;
       }
-    }
 
-    toast({
-      title: "Bulk Sending Complete",
-      description: `Successfully queued ${successCount} emails. ${errorCount} failed.`,
-    });
-    setIsSending(false);
-    setSelectedUserIds(new Set());
+      toast({
+        title: "Bulk Sending Complete",
+        description: `Successfully queued ${successCount} emails. ${errorCount} failed.`,
+      });
+      setSelectedUserIds(new Set());
+    } finally {
+      setIsSending(false);
+      setSendProgress(null);
+    }
   };
 
   const handleDeleteLog = async (id: string) => {
@@ -737,7 +753,7 @@ export default function EmailSenderPage() {
                 onClick={handleSendBulk}
               >
                 {isSending ? (
-                  <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Sending...</>
+                  <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Queueing {sendProgress?.current ?? 0}/{sendProgress?.total ?? selectedUserIds.size}</>
                 ) : (
                   <><Send className="mr-2 h-4 w-4" /> Send to {selectedUserIds.size} Users</>
                 )}
@@ -784,7 +800,7 @@ export default function EmailSenderPage() {
                           value={logFilterDateRange?.from ? format(logFilterDateRange.from, 'yyyy-MM-dd') : ''}
                           onChange={e => {
                             const from = e.target.value ? new Date(e.target.value + 'T00:00:00') : undefined;
-                            setLogFilterDateRange(prev => ({ ...prev, from }));
+                            setLogFilterDateRange(prev => ({ from, to: prev?.to }));
                           }}
                         />
                         <Input 
@@ -792,7 +808,7 @@ export default function EmailSenderPage() {
                           value={logFilterDateRange?.to ? format(logFilterDateRange.to, 'yyyy-MM-dd') : ''}
                           onChange={e => {
                             const to = e.target.value ? new Date(e.target.value + 'T23:59:59') : undefined;
-                            setLogFilterDateRange(prev => ({ ...prev, to }));
+                            setLogFilterDateRange(prev => ({ from: prev?.from, to }));
                           }}
                         />
                       </div>

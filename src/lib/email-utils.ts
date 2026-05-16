@@ -11,12 +11,12 @@ export function wrapInEmailLayout(content: string, settings: EmailLayoutSettings
     const cardBg = settings.cardBgColor || "#ffffff";
     const btnColor = settings.buttonColor || "#00897b";
     const btnTextColor = settings.buttonTextColor || "#ffffff";
-    const footer = settings.footerText || "© 2024 Tabernacle of Glory. All rights reserved.";
+    const footer = settings.footerText || "© 2026 Tabernacle of Glory. All rights reserved.";
     const preHeader = settings.preHeaderText || "";
     
     // Default to provided arguments, then to settings, then to fallback
     const btnText = buttonText || settings.buttonText || "Continue Courses";
-    const btnUrl = buttonUrl || settings.buttonUrl || "https://gloryhub.net/dashboard";
+    const btnUrl = buttonUrl || settings.buttonUrl || "https://glorytgtraining.com/dashboard";
 
     return `
 <!DOCTYPE html>

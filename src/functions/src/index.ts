@@ -1,7 +1,6 @@
 
 import * as functions from "firebase-functions";
 import * as admin from "firebase-admin";
-import * as sgMail from "@sendgrid/mail";
 import { marked } from "marked";
 import { onVideoDeleted, onVideoUpdate, transcodeVideo, updateVideoOnTranscodeComplete } from "./transcoding";
 
@@ -638,7 +637,7 @@ export const processFormSubmission = functions
 
               const resolvedSubject = resolve(subject);
               const resolvedBody = resolve(body);
-              const htmlContent = marked.parse(resolvedBody, { breaks: true });
+              const htmlContent = await marked.parse(resolvedBody, { breaks: true });
 
               const layoutSnap = await db.doc("siteSettings/emailLayout").get();
               const layout = layoutSnap.exists ? layoutSnap.data() as any : null;
@@ -693,20 +692,24 @@ export const processFormSubmission = functions
                   `;
               }
 
-              const sgMail = require("@sendgrid/mail");
-              sgMail.setApiKey(functions.config().sendgrid.key);
-
               try {
-                await sgMail.send({
-                  to: email,
-                  from: template.fromEmail || "glorytraining@tabernacleofglory.net",
-                  subject: resolvedSubject,
-                  html: finalHtml,
+                await db.collection("mail").add({
+                  to: [email],
+                  message: {
+                    subject: resolvedSubject,
+                    html: finalHtml,
+                  },
+                  templateId: formConfig.emailTemplateId,
+                  formId,
+                  submissionId: submissionDoc.id,
+                  userId: userId || null,
+                  sentByFormConfirmation: true,
+                  createdAt: FieldValue.serverTimestamp(),
                 });
-                functions.logger.log("Email sent to", email);
+                functions.logger.log("Email queued for", email);
               } catch (error: any) {
-                functions.logger.error("Error sending email:", error.message, error);
-                throw new functions.https.HttpsError("internal", "Failed to send email.");
+                functions.logger.error("Error queueing email:", error.message, error);
+                throw new functions.https.HttpsError("internal", "Failed to queue email.");
               }
           }
       }
@@ -742,16 +745,26 @@ export const enrollInCourse = functions
 export const sendCertificateEmail = functions
   .region(REGION)
   .https.onCall(async (data: any, context: functions.https.CallableContext) => {
-    const sgKey = functions.config().sendgrid?.key;
-    if (!sgKey) throw new functions.https.HttpsError("failed-precondition", "Missing SG key.");
-    sgMail.setApiKey(sgKey);
-    const msg = {
-      to: data.email, from: "glorytraining@tabernacleofglory.net",
-      subject: `Your Certificate for ${data.courseName}`,
-      html: `<h1>Congratulations!</h1><p>You completed ${data.courseName}.</p><a href="${data.certificateUrl}">View Certificate</a>`
-    };
-    try { await sgMail.send(msg); return { success: true }; }
-    catch (error) { throw new functions.https.HttpsError("internal", "Email failed."); }
+    if (!data?.email) {
+      throw new functions.https.HttpsError("invalid-argument", "Recipient email is required.");
+    }
+
+    const subject = `Your Certificate for ${data.courseName || "your course"}`;
+    const html = `<h1>Congratulations!</h1><p>You completed ${data.courseName || "your course"}.</p><a href="${data.certificateUrl}">View Certificate</a>`;
+
+    try {
+      await db.collection("mail").add({
+        to: [data.email],
+        message: { subject, html },
+        courseName: data.courseName || null,
+        certificateUrl: data.certificateUrl || null,
+        sentByCertificateEmail: true,
+        createdAt: FieldValue.serverTimestamp(),
+      });
+      return { success: true, queued: true };
+    } catch (error) {
+      throw new functions.https.HttpsError("internal", "Email queue failed.");
+    }
   });
 
 export { onVideoDeleted, onVideoUpdate, transcodeVideo, updateVideoOnTranscodeComplete };
