@@ -415,33 +415,35 @@ export function CourseCard({
                   </div>
                 )}
 
-                {authLoading && !showEnroll ? (
-                  <div className="w-full">
-                    <div className="h-10 w-full bg-muted rounded-md animate-pulse" />
-                  </div>
-                ) : !isEnrolled || showEnroll ? (
-                  <div className="flex w-full gap-2">
-                    <EnrollButton />
-                  </div>
-                ) : isCompleted ? (
-                   null
-                ) : isInProgress ? (
-                  <div className="w-full">
-                    <div className="flex justify-between items-center mb-2">
-                      <span className="text-sm text-muted-foreground">{t('course.label.progress', 'Progress')}</span>
-                      <span className="text-sm font-bold">{progressPercentage}%</span>
+                {!isAdminView && (
+                  authLoading && !showEnroll ? (
+                    <div className="w-full">
+                      <div className="h-10 w-full bg-muted rounded-md animate-pulse" />
                     </div>
-                    <Progress value={progressPercentage} className="w-full h-2 [&>div]:bg-gradient-to-r from-pink-500 to-orange-400" />
-                    <div className="flex w-full gap-2 mt-4">
-                      <Button asChild className="flex-1" disabled={!canResume}>
-                        <Link href={resumeLink}>
-                          <PlayCircle className="mr-2 h-4 w-4" />
-                          {t('course.action.resume', 'Resume')}
-                        </Link>
-                      </Button>
+                  ) : !isEnrolled || showEnroll ? (
+                    <div className="flex w-full gap-2">
+                      <EnrollButton />
                     </div>
-                  </div>
-                ) : null}
+                  ) : isCompleted ? (
+                     null
+                  ) : isInProgress ? (
+                    <div className="w-full">
+                      <div className="flex justify-between items-center mb-2">
+                        <span className="text-sm text-muted-foreground">{t('course.label.progress', 'Progress')}</span>
+                        <span className="text-sm font-bold">{progressPercentage}%</span>
+                      </div>
+                      <Progress value={progressPercentage} className="w-full h-2 [&>div]:bg-gradient-to-r from-pink-500 to-orange-400" />
+                      <div className="flex w-full gap-2 mt-4">
+                        <Button asChild className="flex-1" disabled={!canResume}>
+                          <Link href={resumeLink}>
+                            <PlayCircle className="mr-2 h-4 w-4" />
+                            {t('course.action.resume', 'Resume')}
+                          </Link>
+                        </Button>
+                      </div>
+                    </div>
+                  ) : null
+                )}
               </CardFooter>
             </Card>
           </div>
