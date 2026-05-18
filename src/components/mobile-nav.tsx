@@ -3,7 +3,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { LayoutDashboard, BookOpen, Tv, MessageSquare, Menu } from "lucide-react";
+import { LayoutDashboard, Award, Tv, MessageSquare, Menu } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useI18n } from "@/hooks/use-i18n";
 
@@ -17,7 +17,7 @@ export default function MobileNav({ onMenuClick }: MobileNavProps) {
 
   const navItems = [
     { href: "/dashboard", icon: LayoutDashboard, label: t('nav.dashboard', 'Dashboard') },
-    { href: "/courses", icon: BookOpen, label: t('nav.courses', 'Courses') },
+    { href: "/my-certificates", icon: Award, label: t('nav.my_certificates', 'Certificates') },
     { href: "/live", icon: Tv, label: t('nav.live', 'Live'), isCenter: true },
     { href: "/community", icon: MessageSquare, label: t('nav.community', 'Community') },
   ];
