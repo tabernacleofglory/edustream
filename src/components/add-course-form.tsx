@@ -17,7 +17,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuCheckboxItem, DropdownMenuLabel, DropdownMenuSeparator } from '@/components/ui/dropdown-menu';
-import { Trash, PlusCircle, Loader2, Video, Link as LinkIcon, Library, Award, Settings2, ChevronDown, Image as ImageIcon, FileText, FileType, File as FileIcon, FileImage, X, Minus, GripVertical, F } from "lucide-react"
+import { Trash, PlusCircle, Loader2, Video, Link as LinkIcon, Library, Award, Settings2, ChevronDown, Image as ImageIcon, FileText, FileType, File as FileIcon, FileImage, X, Minus, GripVertical, FileQuestion, Youtube, FolderKanban, Check } from 'lucide-react';
 import { useState, useEffect, useCallback, ChangeEvent, FormEvent } from 'react';
 import Image from 'next/image';
 import {
@@ -38,7 +38,7 @@ import { Badge } from './ui/badge';
 import LogoLibrary from './logo-library';
 import CertificateBackgroundLibrary from './certificate-background-library';
 import { ScrollArea } from './ui/scroll-area';
-import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog"
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { cn } from '@/lib/utils';
 import { RadioGroup, RadioGroupItem } from './ui/radio-group';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from './ui/tabs';
@@ -366,6 +366,8 @@ export default function AddCourseForm({ allCourses, onCourseUpdated }: AddCourse
     const watchOrder = watch('order');
     const watchQuizIds = watch('quizIds', []);
     const watchFormId = watch('formId');
+    const watchVideos = watch('videos', []);
+    const watchResources = watch('resources', []);
     
     // Auto-calculate order when ladderIds change
     useEffect(() => {
@@ -621,7 +623,7 @@ export default function AddCourseForm({ allCourses, onCourseUpdated }: AddCourse
                 toast({
                     variant: 'destructive',
                     title: 'Duplicate Order Number',
-                    description: `Another course ("${conflictingCourse.title}") in the "${conflictingLadder?.name || 'selected'}" ladder already has the order number ${orderValue}. Please choose [...]
+                    description: `Another course ("${conflictingCourse.title}") in the "${conflictingLadder?.name || 'selected'}" ladder already has the order number ${orderValue}. Please choose a unique order number for this ladder.`,
                     duration: 6000,
                 });
                 setIsSubmitting(false);
@@ -793,13 +795,13 @@ export default function AddCourseForm({ allCourses, onCourseUpdated }: AddCourse
                             <div>
                                 <Label htmlFor="order">Course Priority (Order)</Label>
                                 <div className="flex items-center gap-2 mt-1">
-                                    <Button type='button' variant="outline" size="icon" onClick={() => setValue('order', Math.max(0, (watchOrder || 0) - 1))}>
+                                    <Button type='button' variant="outline" size="icon" onClick={() => setValue('order', Math.max(0, (Number(watchOrder) || 0) - 1))}>
                                         <Minus className="h-4 w-4" />
                                     </Button>
                                     <div className="w-20 h-10 flex items-center justify-center border rounded-md font-mono text-lg">
                                         {watchOrder}
                                     </div>
-                                    <Button type='button' variant="outline" size="icon" onClick={() => setValue('order', (watchOrder || 0) + 1)}>
+                                    <Button type='button' variant="outline" size="icon" onClick={() => setValue('order', (Number(watchOrder) || 0) + 1)}>
                                         <PlusCircle className="h-4 w-4" />
                                     </Button>
                                 </div>
@@ -834,158 +836,141 @@ export default function AddCourseForm({ allCourses, onCourseUpdated }: AddCourse
                                   {errors.language && <p className="text-sm text-destructive">{errors.language.message}</p>}
                                 </div>
                                 <div>
-                                    <Label>Category</Label>
+                                    <div className="flex items-center justify-between mb-2">
+                                        <Label className="text-sm font-medium">Category</Label>
+                                        <Dialog open={isCategoryDialogOpen} onOpenChange={setIsCategoryDialogOpen}>
+                                            <DialogTrigger asChild>
+                                                <Button type="button" variant="ghost" size="sm" className="h-7 text-xs gap-1 text-primary hover:text-primary hover:bg-primary/10">
+                                                    <PlusCircle className="h-3.5 w-3.5" />
+                                                    Manage Categories
+                                                </Button>
+                                            </DialogTrigger>
+                                            <DialogContent className="sm:max-w-[425px]">
+                                                <DialogHeader>
+                                                    <DialogTitle>Manage Categories</DialogTitle>
+                                                    <DialogDescription>Add a new category to the platform.</DialogDescription>
+                                                </DialogHeader>
+                                                <div className="space-y-2 py-4">
+                                                    <Label htmlFor="new-category">New Category Name</Label>
+                                                    <Input id="new-category" value={newCategory} onChange={e => setNewCategory(e.target.value)} placeholder="e.g. Leadership, Theology" />
+                                                </div>
+                                                <DialogFooter>
+                                                    <Button type="button" onClick={() => handleAddItem('courseCategories', newCategory, setCategories, 'Category', () => setNewCategory(''))}>Add Category</Button>
+                                                </DialogFooter>
+                                            </DialogContent>
+                                        </Dialog>
+                                    </div>
                                     <Controller
                                         name="Category"
                                         control={control}
                                         render={({ field }) => (
-                                            <>
-                                            <div className="flex items-center gap-2">
-                                                <DropdownMenu>
-                                                    <DropdownMenuTrigger asChild>
-                                                        <Button variant="outline" className="w-full justify-start">Select Categories</Button>
-                                                    </DropdownMenuTrigger>
-                                                    <DropdownMenuContent className="w-[--radix-dropdown-menu-trigger-width]" sideOffset={8}>
-                                                        {categories.map((cat) => (
-                                                            <DropdownMenuCheckboxItem
-                                                                key={cat.id}
-                                                                checked={field.value?.includes(cat.name)}
-                                                                onCheckedChange={(checked) => {
-                                                                    const newValue = checked
-                                                                        ? [...(field.value || []), cat.name]
-                                                                        : (field.value || []).filter((name) => name !== cat.name);
-                                                                    field.onChange(newValue);
-                                                                }}
-                                                            >
-                                                                {cat.name}
-                                                            </DropdownMenuCheckboxItem>
-                                                        ))}
-                                                    </DropdownMenuContent>
-                                                </DropdownMenu>
-                                                <Dialog open={isCategoryDialogOpen} onOpenChange={setIsCategoryDialogOpen}>
-                                                    <DialogTrigger asChild>
-                                                        <Button type="button" variant="outline" size="sm">Manage</Button>
-                                                    </DialogTrigger>
-                                                    <DialogContent>
-                                                        <DialogHeader>
-                                                            <DialogTitle>Manage Categories</DialogTitle>
-                                                            <DialogDescription>Add new course categories.</DialogDescription>
-                                                        </DialogHeader>
-                                                        <div className="space-y-2">
-                                                            <Label htmlFor="new-category">New Category Name</Label>
-                                                            <Input id="new-category" value={newCategory} onChange={e => setNewCategory(e.target.value)} />
-                                                        </div>
-                                                        <DialogFooter>
-                                                            <Button type="button" onClick={() => handleAddItem('courseCategories', newCategory, setCategories, 'Category', () => setNewCategory(''))}> Add</Button>
-                                                        </DialogFooter>
-                                                    </DialogContent>
-                                                </Dialog>
-                                            </div>
-                                            <div className="mt-2 flex flex-wrap gap-2">
-                                                {field.value?.map(catName => (
-                                                    <Badge key={catName} variant="secondary">
-                                                        {catName}
-                                                        <button type="button" onClick={() => field.onChange(field.value?.filter(name => name !== catName))} className="ml-1 rounded-full p-0.5 hover:bg-black/20">
-                                                            <X className="h-3 w-3" />
+                                            <div className="flex flex-wrap gap-2 border rounded-lg p-3 bg-muted/10 min-h-[50px] transition-all focus-within:border-ring">
+                                                {categories.map((cat) => {
+                                                    const isSelected = field.value?.includes(cat.name);
+                                                    return (
+                                                        <button
+                                                            key={cat.id}
+                                                            type="button"
+                                                            onClick={() => {
+                                                                const newValue = isSelected
+                                                                    ? (field.value || []).filter(name => name !== cat.name)
+                                                                    : [...(field.value || []), cat.name];
+                                                                field.onChange(newValue);
+                                                            }}
+                                                            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium border transition-all duration-200 ${
+                                                                isSelected
+                                                                    ? "bg-primary text-primary-foreground border-primary shadow-sm scale-[1.02]"
+                                                                    : "bg-background text-muted-foreground border-input hover:bg-accent hover:text-accent-foreground"
+                                                            }`}
+                                                        >
+                                                            {isSelected && <Check className="h-3 w-3 shrink-0" />}
+                                                            {cat.name}
                                                         </button>
-                                                    </Badge>
-                                                ))}
+                                                    );
+                                                })}
+                                                {categories.length === 0 && (
+                                                    <p className="text-xs text-muted-foreground italic p-1">No categories available. Click 'Manage' to add one.</p>
+                                                )}
                                             </div>
-                                            </>
                                         )}
                                     />
                                     {errors.Category && <p className="text-sm text-destructive">{errors.Category.message}</p>}
                                 </div>
                                 <div>
-                                    <Label>Class Ladders</Label>
+                                    <Label className="text-sm font-medium mb-2 block">Class Ladders</Label>
                                     <Controller
                                         name="ladderIds"
                                         control={control}
                                         render={({ field }) => (
-                                            <>
-                                                <DropdownMenu>
-                                                    <DropdownMenuTrigger asChild>
-                                                        <Button variant="outline" className="w-full justify-start">Select Ladders</Button>
-                                                    </DropdownMenuTrigger>
-                                                    <DropdownMenuContent className="w-[--radix-dropdown-menu-trigger-width]" sideOffset={8}>
-                                                        {levels.map((level) => (
-                                                            <DropdownMenuCheckboxItem
-                                                                key={level.id}
-                                                                checked={field.value?.includes(level.id)}
-                                                                onCheckedChange={(checked) => {
-                                                                    const newValue = checked
-                                                                        ? [...(field.value || []), level.id]
-                                                                        : (field.value || []).filter((id) => id !== level.id);
-                                                                    field.onChange(newValue);
-                                                                }}
-                                                            >
-                                                                {level.name} {level.side && level.side !== 'none' ? `(${level.side})` : ''}
-                                                            </DropdownMenuCheckboxItem>
-                                                        ))}
-                                                    </DropdownMenuContent>
-                                                </DropdownMenu>
-                                                <div className="mt-2 flex flex-wrap gap-2">
-                                                    {field.value?.map(id => {
-                                                        const level = levels.find(l => l.id === id);
-                                                        return level ? (
-                                                            <Badge key={id} variant="secondary">
-                                                                {level.name} {level.side && level.side !== 'none' ? `(${level.side})` : ''}
-                                                                <button type="button" onClick={() => field.onChange(field.value?.filter(ladderId => ladderId !== id))} className="ml-1 rounded-full p-0.5 hover:bg-black/20">
-                                                                    <X className="h-3 w-3" />
-                                                                </button>
-                                                            </Badge>
-                                                        ) : null
-                                                    })}
-                                                </div>
-                                            </>
+                                            <div className="flex flex-wrap gap-2 border rounded-lg p-3 bg-muted/10 min-h-[50px] transition-all focus-within:border-ring">
+                                                {levels.map((level) => {
+                                                    const isSelected = field.value?.includes(level.id);
+                                                    const labelName = `${level.name}${level.side && level.side !== 'none' ? ` (${level.side})` : ''}`;
+                                                    return (
+                                                        <button
+                                                            key={level.id}
+                                                            type="button"
+                                                            onClick={() => {
+                                                                const newValue = isSelected
+                                                                    ? (field.value || []).filter(id => id !== level.id)
+                                                                    : [...(field.value || []), level.id];
+                                                                field.onChange(newValue);
+                                                            }}
+                                                            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium border transition-all duration-200 ${
+                                                                isSelected
+                                                                    ? "bg-primary text-primary-foreground border-primary shadow-sm scale-[1.02]"
+                                                                    : "bg-background text-muted-foreground border-input hover:bg-accent hover:text-accent-foreground"
+                                                            }`}
+                                                        >
+                                                            {isSelected && <Check className="h-3 w-3 shrink-0" />}
+                                                            {labelName}
+                                                        </button>
+                                                    );
+                                                })}
+                                                {levels.length === 0 && (
+                                                    <p className="text-xs text-muted-foreground italic p-1">No class ladders available.</p>
+                                                )}
+                                            </div>
                                         )}
                                     />
                                     {errors.ladderIds && <p className="text-sm text-destructive">{errors.ladderIds.message}</p>}
                                 </div>
                                 <div>
-                                    <Label>Ministries (Optional)</Label>
+                                    <Label className="text-sm font-medium mb-2 block">Ministries (Optional)</Label>
                                     <Controller
-                                        name="ministryIds"
-                                        control={control}
-                                        render={({ field }) => (
-                                            <>
-                                                <DropdownMenu>
-                                                    <DropdownMenuTrigger asChild>
-                                                        <Button variant="outline" className="w-full justify-start">Select Ministries</Button>
-                                                    </DropdownMenuTrigger>
-                                                    <DropdownMenuContent className="w-[--radix-dropdown-menu-trigger-width]" sideOffset={8}>
-                                                        {ministries.map((ministry) => (
-                                                            <DropdownMenuCheckboxItem
-                                                                key={ministry.id}
-                                                                checked={field.value?.includes(ministry.id)}
-                                                                onCheckedChange={(checked) => {
-                                                                    const newValue = checked
-                                                                        ? [...(field.value || []), ministry.id]
-                                                                        : (field.value || []).filter((id) => id !== ministry.id);
-                                                                    field.onChange(newValue);
-                                                                }}
-                                                            >
-                                                                {ministry.name}
-                                                            </DropdownMenuCheckboxItem>
-                                                        ))}
-                                                    </DropdownMenuContent>
-                                                </DropdownMenu>
-                                                <div className="mt-2 flex flex-wrap gap-2">
-                                                    {field.value?.map(id => {
-                                                        const ministry = ministries.find(m => m.id === id);
-                                                        return ministry ? (
-                                                            <Badge key={id} variant="secondary">
-                                                                {ministry.name}
-                                                                <button type="button" onClick={() => field.onChange(field.value?.filter(ministryId => ministryId !== id))} className="ml-1 rounded-full p-0.5 hover:bg-black/20">
-                                                                    <X className="h-3 w-3" />
-                                                                </button>
-                                                            </Badge>
-                                                        ) : null
-                                                    })}
-                                                </div>
-                                            </>
-                                        )}
-                                    />
+                                         name="ministryIds"
+                                         control={control}
+                                         render={({ field }) => (
+                                            <div className="flex flex-wrap gap-2 border rounded-lg p-3 bg-muted/10 min-h-[50px] transition-all focus-within:border-ring">
+                                                {ministries.map((ministry) => {
+                                                    const isSelected = field.value?.includes(ministry.id);
+                                                    return (
+                                                        <button
+                                                            key={ministry.id}
+                                                            type="button"
+                                                            onClick={() => {
+                                                                const newValue = isSelected
+                                                                    ? (field.value || []).filter(id => id !== ministry.id)
+                                                                    : [...(field.value || []), ministry.id];
+                                                                field.onChange(newValue);
+                                                            }}
+                                                            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium border transition-all duration-200 ${
+                                                                isSelected
+                                                                    ? "bg-primary text-primary-foreground border-primary shadow-sm scale-[1.02]"
+                                                                    : "bg-background text-muted-foreground border-input hover:bg-accent hover:text-accent-foreground"
+                                                            }`}
+                                                        >
+                                                            {isSelected && <Check className="h-3 w-3 shrink-0" />}
+                                                            {ministry.name}
+                                                        </button>
+                                                    );
+                                                })}
+                                                {ministries.length === 0 && (
+                                                    <p className="text-xs text-muted-foreground italic p-1">No ministries available.</p>
+                                                )}
+                                            </div>
+                                         )}
+                                     />
                                     {errors.ministryIds && <p className="text-sm text-destructive">{errors.ministryIds.message}</p>}
                                 </div>
                                 <div className="space-y-2">
@@ -1067,7 +1052,7 @@ export default function AddCourseForm({ allCourses, onCourseUpdated }: AddCourse
                                             <VideoLibrary 
                                                 videos={libraryVideos}
                                                 onSelectVideos={handleSelectVideos} 
-                                                initialSelectedVideos={videoFields} 
+                                                initialSelectedVideos={watchVideos as any} 
                                             />
                                         </DialogContent>
                                     </Dialog>
@@ -1234,7 +1219,7 @@ export default function AddCourseForm({ allCourses, onCourseUpdated }: AddCourse
                                                     Select Documents
                                                 </Button>
                                             </DialogTrigger>
-                                            <DocumentLibrary onSelectDocuments={handleSelectDocuments} initialSelectedDocs={resourceFields} />
+                                            <DocumentLibrary onSelectDocuments={handleSelectDocuments} initialSelectedDocs={watchResources as any} />
                                         </Dialog>
                                     </div>
                                 </div>
