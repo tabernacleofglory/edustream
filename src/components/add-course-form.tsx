@@ -17,7 +17,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuCheckboxItem, DropdownMenuLabel, DropdownMenuSeparator } from '@/components/ui/dropdown-menu';
-import { Trash, PlusCircle, Loader2, Video, Link as LinkIcon, Library, Award, Settings2, ChevronDown, Image as ImageIcon, FileText, FileType, File as FileIcon, FileImage, X, Minus, GripVertical, FileQuestion, Youtube, FolderKanban } from 'lucide-react';
+import { Trash, PlusCircle, Loader2, Video, Link as LinkIcon, Library, Award, Settings2, ChevronDown, Image as ImageIcon, FileText, FileType, File as FileIcon, FileImage, X, Minus, GripVertical, F } from "lucide-react"
 import { useState, useEffect, useCallback, ChangeEvent, FormEvent } from 'react';
 import Image from 'next/image';
 import {
@@ -38,7 +38,7 @@ import { Badge } from './ui/badge';
 import LogoLibrary from './logo-library';
 import CertificateBackgroundLibrary from './certificate-background-library';
 import { ScrollArea } from './ui/scroll-area';
-import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog"
 import { cn } from '@/lib/utils';
 import { RadioGroup, RadioGroupItem } from './ui/radio-group';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from './ui/tabs';
@@ -621,7 +621,7 @@ export default function AddCourseForm({ allCourses, onCourseUpdated }: AddCourse
                 toast({
                     variant: 'destructive',
                     title: 'Duplicate Order Number',
-                    description: `Another course ("${conflictingCourse.title}") in the "${conflictingLadder?.name || 'selected'}" ladder already has the order number ${orderValue}. Please choose a unique order number for this ladder.`,
+                    description: `Another course ("${conflictingCourse.title}") in the "${conflictingLadder?.name || 'selected'}" ladder already has the order number ${orderValue}. Please choose [...]
                     duration: 6000,
                 });
                 setIsSubmitting(false);
@@ -845,7 +845,7 @@ export default function AddCourseForm({ allCourses, onCourseUpdated }: AddCourse
                                                     <DropdownMenuTrigger asChild>
                                                         <Button variant="outline" className="w-full justify-start">Select Categories</Button>
                                                     </DropdownMenuTrigger>
-                                                    <DropdownMenuContent className="w-[--radix-dropdown-menu-trigger-width]">
+                                                    <DropdownMenuContent className="w-[--radix-dropdown-menu-trigger-width]" sideOffset={8}>
                                                         {categories.map((cat) => (
                                                             <DropdownMenuCheckboxItem
                                                                 key={cat.id}
@@ -876,7 +876,7 @@ export default function AddCourseForm({ allCourses, onCourseUpdated }: AddCourse
                                                             <Input id="new-category" value={newCategory} onChange={e => setNewCategory(e.target.value)} />
                                                         </div>
                                                         <DialogFooter>
-                                                            <Button type="button" onClick={() => handleAddItem('courseCategories', newCategory, setCategories, 'Category', () => setNewCategory(''))}>Add Category</Button>
+                                                            <Button type="button" onClick={() => handleAddItem('courseCategories', newCategory, setCategories, 'Category', () => setNewCategory(''))}> Add</Button>
                                                         </DialogFooter>
                                                     </DialogContent>
                                                 </Dialog>
@@ -885,7 +885,7 @@ export default function AddCourseForm({ allCourses, onCourseUpdated }: AddCourse
                                                 {field.value?.map(catName => (
                                                     <Badge key={catName} variant="secondary">
                                                         {catName}
-                                                        <button type="button" onClick={() => field.onChange(field.value?.filter(name => name !== catName))} className="ml-1 rounded-full p-0.5 hover:bg-background/50">
+                                                        <button type="button" onClick={() => field.onChange(field.value?.filter(name => name !== catName))} className="ml-1 rounded-full p-0.5 hover:bg-black/20">
                                                             <X className="h-3 w-3" />
                                                         </button>
                                                     </Badge>
@@ -907,7 +907,7 @@ export default function AddCourseForm({ allCourses, onCourseUpdated }: AddCourse
                                                     <DropdownMenuTrigger asChild>
                                                         <Button variant="outline" className="w-full justify-start">Select Ladders</Button>
                                                     </DropdownMenuTrigger>
-                                                    <DropdownMenuContent className="w-[--radix-dropdown-menu-trigger-width]">
+                                                    <DropdownMenuContent className="w-[--radix-dropdown-menu-trigger-width]" sideOffset={8}>
                                                         {levels.map((level) => (
                                                             <DropdownMenuCheckboxItem
                                                                 key={level.id}
@@ -930,7 +930,7 @@ export default function AddCourseForm({ allCourses, onCourseUpdated }: AddCourse
                                                         return level ? (
                                                             <Badge key={id} variant="secondary">
                                                                 {level.name} {level.side && level.side !== 'none' ? `(${level.side})` : ''}
-                                                                <button type="button" onClick={() => field.onChange(field.value?.filter(ladderId => ladderId !== id))} className="ml-1 rounded-full p-0.5 hover:bg-background/50">
+                                                                <button type="button" onClick={() => field.onChange(field.value?.filter(ladderId => ladderId !== id))} className="ml-1 rounded-full p-0.5 hover:bg-black/20">
                                                                     <X className="h-3 w-3" />
                                                                 </button>
                                                             </Badge>
@@ -953,7 +953,7 @@ export default function AddCourseForm({ allCourses, onCourseUpdated }: AddCourse
                                                     <DropdownMenuTrigger asChild>
                                                         <Button variant="outline" className="w-full justify-start">Select Ministries</Button>
                                                     </DropdownMenuTrigger>
-                                                    <DropdownMenuContent className="w-[--radix-dropdown-menu-trigger-width]">
+                                                    <DropdownMenuContent className="w-[--radix-dropdown-menu-trigger-width]" sideOffset={8}>
                                                         {ministries.map((ministry) => (
                                                             <DropdownMenuCheckboxItem
                                                                 key={ministry.id}
@@ -976,7 +976,7 @@ export default function AddCourseForm({ allCourses, onCourseUpdated }: AddCourse
                                                         return ministry ? (
                                                             <Badge key={id} variant="secondary">
                                                                 {ministry.name}
-                                                                <button type="button" onClick={() => field.onChange(field.value?.filter(ministryId => ministryId !== id))} className="ml-1 rounded-full p-0.5 hover:bg-background/50">
+                                                                <button type="button" onClick={() => field.onChange(field.value?.filter(ministryId => ministryId !== id))} className="ml-1 rounded-full p-0.5 hover:bg-black/20">
                                                                     <X className="h-3 w-3" />
                                                                 </button>
                                                             </Badge>
