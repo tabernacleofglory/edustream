@@ -103,7 +103,7 @@ function AdminCoursesPageContent() {
 
       const categoriesCollection = collection(db, 'courseCategories');
       const categoriesSnapshot = await getDocs(categoriesCollection);
-      const categoriesList = categoriesSnapshot.docs.map(doc => doc.data().name as string);
+      const categoriesList = Array.from(new Set(categoriesSnapshot.docs.map(doc => doc.data().name as string).filter(Boolean)));
       setCategories(categoriesList);
 
       const laddersQuery = query(collection(db, "courseLevels"), orderBy("order"));
