@@ -119,7 +119,7 @@ const cleanNativeName = (name: string) => {
 };
 
 export default function EditUserForm({ userToEdit, onUserUpdated }: EditUserFormProps) {
-  const { user: currentUser, refreshUser } = useAuth();
+  const { user: currentUser, refreshUser, hasPermission } = useAuth();
   const { toast } = useToast();
   const auth = getAuth();
   const storage = getFirebaseStorage();
@@ -471,7 +471,7 @@ export default function EditUserForm({ userToEdit, onUserUpdated }: EditUserForm
             </div>
             <div className="space-y-2">
                 <Label htmlFor="email">Email</Label>
-                <Input id="email" type="email" {...register("email")} disabled={true} />
+                <Input id="email" type="email" {...register("email")} disabled={!hasPermission('manageUsers') || isSubmitting} />
                 {errors.email && <p className="text-sm text-destructive">{errors.email.message}</p>}
             </div>
              <div className="space-y-2">
