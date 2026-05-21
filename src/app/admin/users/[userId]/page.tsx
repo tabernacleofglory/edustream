@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { collection, query, where, doc, getDoc, getDocs, documentId, collectionGroup, Timestamp, setDoc, serverTimestamp, updateDoc, writeBatch } from 'firebase/firestore';
+import { collection, query, where, doc, getDoc, getDocs, documentId, collectionGroup, Timestamp, setDoc, serverTimestamp, updateDoc, writeBatch, deleteDoc } from 'firebase/firestore';
 import { useToast } from '@/hooks/use-toast';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -14,8 +14,7 @@ import { useAuth } from '@/hooks/use-auth';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
 import { sendPasswordResetEmail, getAuth } from 'firebase/auth';
-import { getFirebaseFirestore, getFirebaseFunctions } from '@/lib/firebase';
-import { httpsCallable } from 'firebase/functions';
+import { getFirebaseFirestore } from '@/lib/firebase';
 import { Dialog, DialogHeader, DialogTitle, DialogContent } from '@/components/ui/dialog';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -59,7 +58,6 @@ export default function UserProfilePage() {
   const [isEditing, setIsEditing] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
   const db = getFirebaseFirestore();
-  const functions = getFirebaseFunctions();
 
   const [computedCourseProgress, setComputedCourseProgress] = useState<
     { courseId: string; courseTitle: string; totalProgress: number; ladderIds: string[] }[]
@@ -357,8 +355,7 @@ export default function UserProfilePage() {
   const handleDeleteUser = async () => {
     if (!user) return;
     try {
-        const deleteUserAccount = httpsCallable(functions, 'deleteUserAccount');
-        await deleteUserAccount({ uid: user.id });
+        await deleteDoc(doc(db, 'users', user.id));
         toast({ title: "User Deleted", description: `User ${user.displayName} has been removed.` });
         router.replace('/admin/users');
     } catch (error: any) {
@@ -480,7 +477,7 @@ export default function UserProfilePage() {
                     <AlertDialogHeader>
                         <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
                         <AlertDialogDescription>
-                            This will permanently delete the user <span className="font-bold">{user.displayName}</span> and all associated data. This action cannot be undone.
+                            This will permanently delete the Firestore user record for <span className="font-bold">{user.displayName}</span>. This action cannot be undone.
                         </AlertDialogDescription>
                     </AlertDialogHeader>
                     <AlertDialogFooter>
