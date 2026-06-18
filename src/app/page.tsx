@@ -8,10 +8,8 @@ import { ArrowRight, BookOpen, Users, Video, LayoutDashboard, Settings, Shield, 
 import { getSiteSettings } from "@/lib/data";
 import { useEffect, useState } from "react";
 import DynamicIcon from "@/components/dynamic-icon";
-import { collection, getDocs, query, orderBy, limit } from "firebase/firestore";
-import { db } from "@/lib/firebase";
-import type { NavLink } from "@/lib/types";
 import { useAuth } from "@/hooks/use-auth";
+import { useNavLinks } from "@/providers/nav-links-provider";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   DropdownMenu,
@@ -67,8 +65,7 @@ const getInitials = (name?: string | null) => {
 
 export default function Home() {
   const [settings, setSettings] = useState<SiteSettings | null>(null);
-  const [navLinks, setNavLinks] = useState<NavLink[]>([]);
-  const [linksLoading, setLinksLoading] = useState(true);
+  const { navLinks, loading: linksLoading } = useNavLinks();
   const { user, loading: authLoading, isCurrentUserAdmin } = useAuth();
   const { t } = useI18n();
   const router = useRouter();
@@ -80,20 +77,6 @@ export default function Home() {
 
   useEffect(() => {
     getSiteSettings().then(setSettings);
-    
-    const fetchLinks = async () => {
-      try {
-        const q = query(collection(db, "navLinks"), orderBy("order"), limit(10));
-        const querySnapshot = await getDocs(q);
-        const links = querySnapshot.docs.map(doc => doc.data() as NavLink);
-        setNavLinks(links);
-      } catch (error) {
-        console.error("Error fetching nav links: ", error);
-      } finally {
-        setLinksLoading(false);
-      }
-    };
-    fetchLinks();
   }, []);
 
   return (

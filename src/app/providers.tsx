@@ -5,6 +5,7 @@ import React from "react";
 import { ThemeProvider as NextThemesProvider } from "next-themes";
 import { AuthProvider } from "@/hooks/use-auth";
 import { AudioPlayerProvider } from "@/hooks/use-audio-player";
+import { NavLinksProvider } from "@/providers/nav-links-provider";
 import { Toaster } from "@/components/ui/toaster";
 import StickyAudioPlayer from "@/components/sticky-audio-player";
 import AppContent from "@/app/app-content";
@@ -29,11 +30,13 @@ export function Providers({
       >
         <I18nProvider>
           <AuthProvider>
+            <NavLinksProvider>
             <AudioPlayerProvider>
                 <AppContent>{children}</AppContent>
                 <StickyAudioPlayer />
                 <Toaster />
             </AudioPlayerProvider>
+            </NavLinksProvider>
           </AuthProvider>
         </I18nProvider>
       </ThemeProvider>

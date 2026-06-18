@@ -20,34 +20,14 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { signOut } from "firebase/auth";
 import { getFirebaseAuth } from "@/lib/firebase";
 import { useToast } from "@/hooks/use-toast";
-import { useEffect, useState } from "react";
-import { collection, getDocs, query, orderBy, limit } from "firebase/firestore";
-import { db } from "@/lib/firebase";
-import type { NavLink } from "@/lib/types";
+import { useNavLinks } from "@/providers/nav-links-provider";
 import { Skeleton } from "./ui/skeleton";
 
 export function Header() {
   const pathname = usePathname();
   const { user, loading } = useAuth();
   const { toast } = useToast();
-  const [navLinks, setNavLinks] = useState<NavLink[]>([]);
-  const [linksLoading, setLinksLoading] = useState(true);
-
-  useEffect(() => {
-    const fetchLinks = async () => {
-      try {
-        const q = query(collection(db, "navLinks"), orderBy("order"), limit(10));
-        const querySnapshot = await getDocs(q);
-        const links = querySnapshot.docs.map(doc => doc.data() as NavLink);
-        setNavLinks(links);
-      } catch (error) {
-        console.error("Error fetching nav links: ", error);
-      } finally {
-        setLinksLoading(false);
-      }
-    };
-    fetchLinks();
-  }, []);
+  const { navLinks, loading: linksLoading } = useNavLinks();
 
   const handleSignOut = async () => {
     try {
