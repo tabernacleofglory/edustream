@@ -8,14 +8,14 @@ import { FirestorePermissionError, type SecurityRuleContext } from '@/firebase/e
 
 /**
  * Creates a new live event in Firestore.
- * uses non-blocking writes for better performance.
+ * Returns the created document reference for error handling.
  */
-export const createLiveEvent = (
+export const createLiveEvent = async (
   eventData: Omit<LiveEvent, 'id' | 'status'>
-) => {
+): Promise<string> => {
   const startTimeAsDate = new Date(eventData.startTime);
 
-  const dataToSave: any = {
+  const dataToSave: Record<string, any> = {
     ...eventData,
     status: 'upcoming',
     startTime: startTimeAsDate,
@@ -30,16 +30,18 @@ export const createLiveEvent = (
     }
   });
   
-  addDoc(collection(db, 'liveEvents'), dataToSave)
-    .catch(async (error) => {
-      const permissionError = new FirestorePermissionError({
-        path: 'liveEvents',
-        operation: 'create',
-        requestResourceData: dataToSave,
-      } satisfies SecurityRuleContext);
-
-      errorEmitter.emit('permission-error', permissionError);
-    });
+  try {
+    const docRef = await addDoc(collection(db, 'liveEvents'), dataToSave);
+    return docRef.id;
+  } catch (error: any) {
+    const permissionError = new FirestorePermissionError({
+      path: 'liveEvents',
+      operation: 'create',
+      requestResourceData: dataToSave,
+    } satisfies SecurityRuleContext);
+    errorEmitter.emit('permission-error', permissionError);
+    throw error;
+  }
 };
 
 const generatePassword = () => {
@@ -61,13 +63,16 @@ export const goLiveWithGloryLive = async (eventId: string, vdoNinjaRoomId?: stri
         const eventData = eventSnap.data() as LiveEvent;
 
         if (eventData.platform === 'external') {
-            updateDoc(eventRef, { status: 'live' }).catch(async (err) => {
+            try {
+                await updateDoc(eventRef, { status: 'live' });
+            } catch (err) {
                 errorEmitter.emit('permission-error', new FirestorePermissionError({
                     path: eventRef.path,
                     operation: 'update',
                     requestResourceData: { status: 'live' },
                 }));
-            });
+                throw err;
+            }
             return { success: true, message: "Event status set to live." };
         }
 
@@ -80,13 +85,16 @@ export const goLiveWithGloryLive = async (eventId: string, vdoNinjaRoomId?: stri
             status: 'live'
         };
 
-        updateDoc(eventRef, updateData).catch(async (err) => {
+        try {
+            await updateDoc(eventRef, updateData);
+        } catch (err) {
             errorEmitter.emit('permission-error', new FirestorePermissionError({
                 path: eventRef.path,
                 operation: 'update',
                 requestResourceData: updateData,
             }));
-        });
+            throw err;
+        }
 
         return { success: true, message: "Room created successfully.", roomId, password };
     } catch (error: any) {
@@ -98,10 +106,10 @@ export const goLiveWithGloryLive = async (eventId: string, vdoNinjaRoomId?: stri
 /**
  * Updates an existing live event.
  */
-export const updateLiveEvent = (
+export const updateLiveEvent = async (
   eventId: string,
   eventData: Partial<Omit<LiveEvent, 'id'>>
-) => {
+): Promise<void> => {
   const dataToUpdate: Record<string, any> = { ...eventData };
   if (eventData.startTime) {
     dataToUpdate.startTime = new Date(eventData.startTime);
@@ -115,24 +123,30 @@ export const updateLiveEvent = (
   });
   
   const eventRef = doc(db, 'liveEvents', eventId);
-  updateDoc(eventRef, dataToUpdate).catch(async (err) => {
-      errorEmitter.emit('permission-error', new FirestorePermissionError({
-          path: eventRef.path,
-          operation: 'update',
-          requestResourceData: dataToUpdate,
-      }));
-  });
+  try {
+    await updateDoc(eventRef, dataToUpdate);
+  } catch (err) {
+    errorEmitter.emit('permission-error', new FirestorePermissionError({
+        path: eventRef.path,
+        operation: 'update',
+        requestResourceData: dataToUpdate,
+    }));
+    throw err;
+  }
 };
 
 /**
  * Deletes a live event.
  */
-export const deleteLiveEvent = (eventId: string) => {
+export const deleteLiveEvent = async (eventId: string): Promise<void> => {
   const eventRef = doc(db, 'liveEvents', eventId);
-  deleteDoc(eventRef).catch(async (err) => {
-      errorEmitter.emit('permission-error', new FirestorePermissionError({
-          path: eventRef.path,
-          operation: 'delete',
-      }));
-  });
+  try {
+    await deleteDoc(eventRef);
+  } catch (err) {
+    errorEmitter.emit('permission-error', new FirestorePermissionError({
+        path: eventRef.path,
+        operation: 'delete',
+    }));
+    throw err;
+  }
 };

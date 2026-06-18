@@ -123,7 +123,7 @@ const LivePage = () => {
   const handleEndLive = async (eventId: string) => {
     setIsSubmitting(true);
     try {
-      updateLiveEvent(eventId, { status: 'ended' });
+      await updateLiveEvent(eventId, { status: 'ended' });
       toast({ title: 'Success', description: 'The live event has been ended.' });
     } catch (err: any) {
       toast({ variant: 'destructive', title: 'Error Ending Live Event', description: err.message });
@@ -134,7 +134,7 @@ const LivePage = () => {
 
   const handleDelete = async (eventId: string) => {
     try {
-      deleteEvent(eventId);
+      await deleteEvent(eventId);
       toast({ title: "Success", description: "Live event deleted successfully." });
     } catch (err: any) {
       console.error('Error deleting live event:', err);
@@ -212,13 +212,13 @@ const LivePage = () => {
       }
 
       if (editingEvent) {
-          updateLiveEvent(editingEvent.id, eventPayload);
+          await updateLiveEvent(editingEvent.id, eventPayload);
           toast({ title: "Success", description: "Live event updated successfully." });
       } else {
           if (vdoNinjaRoomId.trim()) {
             eventPayload.vdoNinjaRoomId = vdoNinjaRoomId.trim();
           }
-          createLiveEvent(eventPayload);
+          await createLiveEvent(eventPayload);
           toast({ title: "Success", description: "Live event created successfully." });
       }
 
