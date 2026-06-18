@@ -40,6 +40,7 @@ export function GloryParticipant({
   const [mics, setMics] = useState<MediaDeviceInfo[]>([]);
   const [isCameraOn, setIsCameraOn] = useState(true);
   const [isMicOn, setIsMicOn] = useState(true);
+  const [isJoining, setIsJoining] = useState(false);
   const iframeRef = useRef<HTMLIFrameElement>(null);
 
   useEffect(() => {
@@ -62,7 +63,7 @@ export function GloryParticipant({
   }, []);
 
   const handleJoin = useCallback(async () => {
-    setStep("connecting");
+    setIsJoining(true);
     try {
       await navigator.mediaDevices.getUserMedia({
         video: selectedCamera ? { deviceId: selectedCamera } : true,
@@ -71,6 +72,8 @@ export function GloryParticipant({
       setStep("connected");
     } catch {
       setStep("connected");
+    } finally {
+      setIsJoining(false);
     }
   }, [selectedCamera, selectedMic]);
 
@@ -156,8 +159,8 @@ export function GloryParticipant({
             <LogOut className="mr-2 h-4 w-4" />
             Cancel
           </Button>
-          <Button onClick={handleJoin} disabled={step === "connecting"}>
-            {step === "connecting" ? (
+          <Button onClick={handleJoin} disabled={isJoining}>
+            {isJoining ? (
               <Loader2 className="mr-2 h-4 w-4 animate-spin" />
             ) : (
               <Video className="mr-2 h-4 w-4" />
