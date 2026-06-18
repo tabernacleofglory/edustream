@@ -25,13 +25,12 @@ function AIToolsContent() {
         </p>
       </div>
 
-      <Alert variant="destructive">
+      <Alert>
         <AlertTriangle className="h-4 w-4" />
-        <AlertTitle>Usage Costs</AlertTitle>
+        <AlertTitle>Groq AI</AlertTitle>
         <AlertDescription>
-          Please be aware that every interaction with these AI tools sends a
-          request to Google's generative models and will incur charges on your
-          Firebase project's billing account. Use these tools judiciously.
+          These tools use the free Groq API (LLaMA 3.3 70B). Usage is subject
+          to Groq's rate limits. Use these tools judiciously.
         </AlertDescription>
       </Alert>
 
