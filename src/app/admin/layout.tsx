@@ -5,50 +5,14 @@ import { ReactNode, useState, useEffect, useCallback } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import {
-  Users,
-  BookOpen,
-  Settings,
-  BarChart2,
-  Tag,
-  Link2,
-  Tv,
-  FileText,
-  Music,
-  ImageIcon,
-  Award,
-  BookCopy,
-  Folder,
   Home,
   Menu,
   ChevronDown,
   ChevronUp,
-  Building,
   LogOut,
   LayoutDashboard,
-  Code,
-  Shield,
-  UserRound,
-  UserCheck,
-  Megaphone,
-  FileQuestion,
-  Languages,
-  Church,
-  UserPlus,
-  Globe,
-  Group,
-  BookCheck,
-  Users2,
-  AlertTriangle,
-  Play,
-  Library,
-  Theater,
-  List,
-  Mail,
-  Send,
-  Palette,
-  Sparkles,
-  Package,
-  RefreshCw,
+  Settings,
+  Lock,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
@@ -60,12 +24,12 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel,
 import { signOut } from "@/lib/auth/server-actions";
 import { cn } from "@/lib/utils";
 import type { Ladder } from '@/lib/types';
+import { navLinks, type NavGroupItem } from "@/lib/admin-nav-config";
 import { collection, query, orderBy, onSnapshot, doc, getDoc } from "firebase/firestore";
 import { getFirebaseFirestore } from "@/lib/firebase";
 import DynamicIcon from "@/components/dynamic-icon";
 import { Logo } from "@/components/logo";
 import { Alert, AlertTitle, AlertDescription } from "@/components/ui/alert";
-import { Lock } from 'lucide-react';
 import GlobalSearch from "@/components/global-search";
 import { useI18n } from "@/hooks/use-i18n";
 import MobileNav from "@/components/mobile-nav";
@@ -73,7 +37,7 @@ import ActiveUsersSidebar from "@/components/active-users-sidebar";
 import { ImpersonationBanner } from "@/components/impersonation-banner";
 
 
-const NavItem = ({ href, label, icon: Icon, subItems, permission, isSidebarOpen }: { href?: string; label: string; icon: React.ElementType; subItems?: any[]; permission?: string, isSidebarOpen: boolean }) => {
+const NavItem = ({ href, label, icon: Icon, subItems, permission, isSidebarOpen }: { href?: string; label: string; icon: React.ElementType; subItems?: NavGroupItem[]; permission?: string, isSidebarOpen: boolean }) => {
   const pathname = usePathname();
   const { hasPermission } = useAuth();
   const [isOpen, setIsOpen] = useState(subItems?.some(item => pathname.startsWith(item.href || '')));
@@ -146,110 +110,20 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   }
 
 
-  const navLinks = [
-    {
-      group: t('admin.nav.group.main', "Main"),
-      items: [
-        { href: "/admin/analytics", label: t('admin.nav.analytics', "Analytics"), icon: BarChart2, permission: 'viewAnalytics' },
-        {
-          label: t('admin.nav.users.group', "Users"),
-          icon: Users,
-          permission: 'viewUserManagement',
-          subItems: [
-            { href: "/admin/users", label: t('admin.nav.users.management', "User Management"), icon: Users, permission: 'manageUsers' },
-            { href: "/admin/users/completions", label: t('admin.nav.users.onsite_completions', "Onsite Completions"), icon: BookCheck, permission: 'manageCompletions' },
-            { href: "/admin/users/course-credit", label: t('admin.nav.users.course_credit', "Course Credit"), icon: Award, permission: 'manageCourseCredit' },
-            { href: "/admin/ladders", label: t('admin.nav.users.ladders', "Ladders"), icon: Shield, permission: 'manageUsers' },
-            { href: "/admin/speakers", label: t('admin.nav.users.speakers', "Speakers"), icon: UserRound, permission: 'manageContent' },
-            { href: "/admin/promotions", label: t('admin.nav.users.promotions', "Promotion Requests"), icon: UserCheck, permission: 'managePromotions' },
-            { href: "/admin/users/hp-requests", label: t('admin.nav.users.hp_requests', "HP Requests"), icon: UserPlus, permission: 'manageHpRequests' },
-          ],
-        },
-      ],
-    },
-    {
-      group: t('admin.nav.group.marketing', "Marketing"),
-      items: [
-        { href: "/admin/content/announcements", label: t('admin.nav.marketing.announcements', "Announcements"), icon: Megaphone, permission: 'manageContent' },
-        { href: "/admin/content/emails", label: t('admin.nav.marketing.emails', "Email Templates"), icon: Mail, permission: 'manageContent' },
-        { href: "/admin/content/email-sender", label: t('admin.nav.marketing.email_sender', "Email Sender"), icon: Send, permission: 'manageContent' },
-        { href: "/admin/marketing/email-layout", label: t('admin.nav.marketing.email_layout', "Email Layout"), icon: Palette, permission: 'manageContent' },
-      ],
-    },
-    {
-      group: t('admin.nav.group.content', "Content"),
-      items: [
-        {
-          label: t('admin.nav.content.courses', "Courses"),
-          icon: BookOpen,
-          permission: 'viewCourseManagement',
-          subItems: [
-            { href: "/admin/courses", label: t('admin.nav.content.courses.manager', "Course Manager"), icon: Settings },
-            { href: "/admin/courses/enrollments", label: t('admin.nav.content.courses.enrollments', "Enrollments"), icon: Users2 },
-            { href: "/admin/courses/enrollment-issues", label: t('admin.nav.content.courses.issues', "Enrollment Issues"), icon: AlertTriangle },
-          ]
-        },
-        { href: "/admin/content/groups", label: t('admin.nav.content.paths', "Learning Paths"), icon: Group, permission: 'manageContent' },
-        { href: "/admin/forms", label: t('admin.nav.content.forms', "Forms"), icon: FileQuestion, permission: 'viewForms' },
-        {
-          label: t('admin.nav.content.libraries', "Libraries"),
-          icon: Folder,
-          permission: 'viewContentLibraries',
-          subItems: [
-            { href: "/admin/content/videos", label: t('admin.nav.content.videos', "Videos"), icon: Tv },
-            { href: "/admin/content/documents", label: t('admin.nav.content.documents', "Documents"), icon: FileText },
-            { href: "/admin/content/quizzes", label: t('admin.nav.content.quizzes', "Quizzes"), icon: FileQuestion },
-            { href: "/admin/content/images", label: t('admin.nav.content.images', "Images"), icon: ImageIcon },
-            { href: "/admin/content/music", label: t('admin.nav.content.music', "Music"), icon: Music },
-            { href: "/admin/content/logos", label: t('admin.nav.content.logos', "Logos"), icon: Award },
-            { href: "/admin/content/certificates", label: t('admin.nav.content.certificates', "Certificates"), icon: Award },
-            { href: "/admin/content/documentation", label: t('admin.nav.content.documentation', "Documentation"), icon: BookCopy },
-            { href: "/admin/content/languages", label: t('admin.nav.content.languages', "Languages"), icon: Languages },
-            { href: "/admin/content/ministries", label: t('admin.nav.content.ministries', "Ministries"), icon: Church },
-          ],
-        },
-      ],
-    },
-    {
-      group: t('admin.nav.group.church_management', "Church Management"),
-      items: [
-        { href: "/admin/inventory", label: t('admin.nav.inventory', "Inventory"), icon: Package, permission: 'viewInventory' },
-      ],
-    },
-    {
-      group: t('admin.nav.group.reports', "Reports"),
-      permission: "viewReports",
-      items: [
-        { href: "/admin/reports/courses", label: t('admin.nav.reports.courses', "Course Reports"), icon: BarChart2 },
-        { href: "/admin/reports/quizzes", label: t('admin.nav.reports.quizzes', "Quiz Reports"), icon: BarChart2 },
-        { href: "/admin/reports/user-completion", label: t('admin.nav.reports.user_completion', "User Completion"), icon: BarChart2 },
-      ],
-    },
-    {
-      group: t('admin.nav.group.platform', "Platform"),
-      items: [
-        { href: "/admin/campus", label: t('admin.nav.platform.campus', "Campus"), icon: Building, permission: 'viewCampusManagement' },
-        { href: "/admin/custom-fields", label: t('admin.nav.platform.custom_fields', "Custom Fields"), icon: List, permission: 'manageForms' },
-        { href: "/admin/courses/teaching", label: t('admin.nav.platform.teaching', "Teaching"), icon: Play },
-        { href: "/admin/live", label: t('admin.nav.platform.live', "Live"), icon: Tv, permission: 'viewLiveManagement' },
-        { href: "/my-certificates", label: t('admin.nav.platform.my_certificates', "My Certificates"), icon: Award, permission: 'viewDashboard' },
-        { href: "/admin/maintenance", label: t('admin.nav.platform.maintenance', "Maintenance Mode"), icon: AlertTriangle, permission: 'manageMaintenance' },
-        { href: "/admin/platform/automation", label: t('admin.nav.platform.automation', "Automation Manager"), icon: RefreshCw, permission: 'manageAutomation' },
-        {
-          label: t('nav.admin_panel', "Developer"),
-          icon: Code,
-          permission: 'developer', // This section is special
-          subItems: [
-            { href: "/admin/developer/site-settings", label: t('admin.nav.platform.dev.site_settings', "Site Settings"), icon: Settings },
-            { href: "/admin/developer/certificate-builder", label: t('admin.nav.platform.dev.cert_builder', "Certificate Builder"), icon: Award },
-            { href: "/admin/links", label: t('admin.nav.platform.dev.links', "Links"), icon: Link2 },
-            { href: "/admin/developer/code-manager", label: t('admin.nav.platform.dev.code_manager', "Code Manager"), icon: Code },
-            { href: "/admin/developer/localization", label: t('admin.nav.platform.dev.localization', "Localization"), icon: Globe },
-          ]
-        },
-      ],
-    },
-  ];
+  const localizedNavLinks = navLinks.map(group => ({
+    ...group,
+    group: t(group.i18nKey, group.group),
+    items: group.items.map(item => ({
+      ...item,
+      label: t(item.i18nKey, item.label),
+      ...(item.subItems ? {
+        subItems: item.subItems.map(sub => ({
+          ...sub,
+          label: t(sub.i18nKey, sub.label),
+        }))
+      } : {}),
+    })),
+  }));
 
   const fetchUserLadder = useCallback(async (ladderId: string) => {
     if (!ladderId) {
@@ -319,7 +193,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
         </div>
         <div className="flex-1 overflow-auto py-2">
           <nav className="grid items-start px-2 text-sm font-medium lg:px-4">
-            {navLinks.map((group) => (
+            {localizedNavLinks.map((group) => (
               <div key={group.group} className="mb-4">
                 {isSidebarOpen && (
                   <h3 className="mb-2 px-3 text-xs font-semibold uppercase text-muted-foreground">
