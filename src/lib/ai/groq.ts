@@ -48,14 +48,24 @@ export async function askGroq(
   return data.choices?.[0]?.message?.content?.trim() || "";
 }
 
-export async function askGroqWithSystemPrompt(
+export async function askGroqJson<T>(
   systemPrompt: string,
-  messages: Omit<ChatMessage, "role" | "content">[],
+  userPrompt: string,
   options: GroqRequestOptions = {}
-): Promise<string> {
-  const fullMessages: ChatMessage[] = [
-    { role: "system", content: systemPrompt },
-    ...messages.map(m => ({ role: m.role as "user" | "assistant", content: (m as any).content })),
+): Promise<T> {
+  const messages: ChatMessage[] = [
+    { role: "system", content: `${systemPrompt}\n\nYou MUST respond with valid JSON only, no markdown formatting, no code blocks.` },
+    { role: "user", content: userPrompt },
   ];
-  return askGroq(fullMessages, options);
+
+  const raw = await askGroq(messages, { ...options, maxTokens: options.maxTokens || 2000 });
+  
+  // Strip any markdown code block markers
+  const cleaned = raw.replace(/```json\s*/gi, "").replace(/```\s*/g, "").trim();
+  
+  try {
+    return JSON.parse(cleaned) as T;
+  } catch {
+    throw new Error(`Failed to parse Groq response as JSON.\nRaw response: ${raw.substring(0, 500)}`);
+  }
 }
