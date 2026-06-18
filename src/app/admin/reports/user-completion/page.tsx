@@ -9,7 +9,7 @@ import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Loader2, Download, Search, ListFilter, Shield, BookOpen, CheckCircle2, Globe, ChevronLeft, ChevronRight, Info, XCircle } from 'lucide-react';
+import { Loader2, Download, Search, ListFilter, Shield, BookOpen, CheckCircle2, Globe, ChevronLeft, ChevronRight, Info, XCircle, X as XIcon, Calendar as CalendarIcon } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import Papa from 'papaparse';
 import { format } from 'date-fns';
@@ -69,6 +69,7 @@ export default function UserCompletionReport() {
   const [publishedLanguages, setPublishedLanguages] = useState<{id: string, name: string}[]>([]);
   
   const [userCompletionsMap, setUserCompletionsMap] = useState<Map<string, Set<string>>>(new Map());
+  const [completionDatesMap, setCompletionDatesMap] = useState<Map<string, Map<string, Date>>>(new Map());
 
   const [isLoading, setIsLoading] = useState(true);
   const [isClient, setIsClient] = useState(false);
@@ -86,6 +87,8 @@ export default function UserCompletionReport() {
   const [selectedLanguage, setSelectedLanguage] = useState<string>('all');
   const [selectedStatus, setSelectedStatus] = useState<string>('all');
   const [minCompletedCount, setMinCompletedCount] = useState<number>(0);
+  const [dateFrom, setDateFrom] = useState<string>('');
+  const [dateTo, setDateTo] = useState<string>('');
 
   const [currentPage, setCurrentPage] = useState(1);
   const [rowsPerPage, setRowsPerPage] = useState(10);
@@ -104,8 +107,9 @@ export default function UserCompletionReport() {
     if (selectedLanguage !== 'all') count++;
     if (selectedStatus !== 'all') count++;
     if (minCompletedCount > 0) count++;
+    if (dateFrom || dateTo) count++;
     return count;
-  }, [selectedCampus, selectedCourse, selectedLadder, selectedBaptism, selectedGraduation, selectedLanguage, selectedStatus, minCompletedCount]);
+  }, [selectedCampus, selectedCourse, selectedLadder, selectedBaptism, selectedGraduation, selectedLanguage, selectedStatus, minCompletedCount, dateFrom, dateTo]);
 
   const db = getFirebaseFirestore();
   const { toast } = useToast();
@@ -160,20 +164,41 @@ export default function UserCompletionReport() {
       ]);
 
       const cmap = new Map<string, Set<string>>();
+      const dateMap = new Map<string, Map<string, Date>>();
       const addComp = (uid: string, cid: string) => {
           if(!cmap.has(uid)) cmap.set(uid, new Set());
           cmap.get(uid)!.add(cid);
+      };
+      const trackDate = (uid: string, cid: string, date: Date | null) => {
+          if (!date) return;
+          if (!dateMap.has(uid)) dateMap.set(uid, new Map());
+          const existing = dateMap.get(uid)!.get(cid);
+          if (!existing || date > existing) {
+              dateMap.get(uid)!.set(cid, date);
+          }
       };
 
       // 1. One Source of Truth: New global model
       progressSnap.forEach(doc => {
           const items = doc.data().completedItems || {};
-          Object.keys(items).forEach(cid => addComp(doc.id, cid));
+          Object.entries(items).forEach(([cid, val]) => {
+              addComp(doc.id, cid);
+              const ts = val?.toDate ? val.toDate() : null;
+              trackDate(doc.id, cid, ts);
+          });
       });
 
       // 2. Legacy enrollments and onsite
-      enrollSnap.forEach(d => addComp(d.data().userId, d.data().courseId));
-      onsiteSnap.forEach(d => addComp(d.data().userId, d.data().courseId));
+      enrollSnap.forEach(d => {
+          addComp(d.data().userId, d.data().courseId);
+          const ts = d.data().completedAt?.toDate ? d.data().completedAt.toDate() : null;
+          trackDate(d.data().userId, d.data().courseId, ts);
+      });
+      onsiteSnap.forEach(d => {
+          addComp(d.data().userId, d.data().courseId);
+          const ts = d.data().completedAt?.toDate ? d.data().completedAt.toDate() : null;
+          trackDate(d.data().userId, d.data().courseId, ts);
+      });
 
       // 3. Fallback verification
       const passedQuizzes = new Map<string, Set<string>>();
@@ -225,6 +250,7 @@ export default function UserCompletionReport() {
       setCampuses(campusesSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Campus)));
       setPublishedLanguages(languagesSnap.docs.map(doc => ({ id: doc.id, name: doc.data().name })));
       setUserCompletionsMap(cmap);
+      setCompletionDatesMap(dateMap);
 
     } catch (error) {
       console.error('Error fetching report data:', error);
@@ -304,8 +330,24 @@ export default function UserCompletionReport() {
         result = result.filter(u => u.completedInLadder >= minCompletedCount);
     }
 
+    // Date range filter: keep users who have a completion within the date window
+    if (dateFrom || dateTo) {
+        const fromDate = dateFrom ? new Date(dateFrom + 'T00:00:00') : null;
+        const toDate = dateTo ? new Date(dateTo + 'T23:59:59') : null;
+        result = result.filter(u => {
+            const userDates = completionDatesMap.get(u.id);
+            if (!userDates) return false;
+            for (const d of userDates.values()) {
+                if (fromDate && d < fromDate) continue;
+                if (toDate && d > toDate) continue;
+                return true; // at least one completion in range
+            }
+            return false;
+        });
+    }
+
     return result.sort((a, b) => (a.displayName || "").localeCompare(b.displayName || ""));
-  }, [users, courses, ladders, userCompletionsMap, searchTerm, selectedCampus, selectedCourse, campuses, selectedLadder, selectedBaptism, selectedGraduation, selectedLanguage, selectedStatus, minCompletedCount]);
+  }, [users, courses, ladders, userCompletionsMap, completionDatesMap, searchTerm, selectedCampus, selectedCourse, campuses, selectedLadder, selectedBaptism, selectedGraduation, selectedLanguage, selectedStatus, minCompletedCount, dateFrom, dateTo]);
 
   const paginatedData = useMemo(() => {
     return reportData.slice((currentPage - 1) * rowsPerPage, currentPage * rowsPerPage);
@@ -503,6 +545,29 @@ export default function UserCompletionReport() {
                             </Select>
                         </div>
                         <div className="space-y-2">
+                            <Label>Completed Between</Label>
+                            <div className="flex items-center gap-2">
+                                <Input
+                                    type="date"
+                                    value={dateFrom}
+                                    onChange={(e) => { setDateFrom(e.target.value); setCurrentPage(1); }}
+                                    className="w-full"
+                                />
+                                <span className="text-muted-foreground">-</span>
+                                <Input
+                                    type="date"
+                                    value={dateTo}
+                                    onChange={(e) => { setDateTo(e.target.value); setCurrentPage(1); }}
+                                    className="w-full"
+                                />
+                                {(dateFrom || dateTo) && (
+                                    <Button variant="ghost" size="icon" onClick={() => { setDateFrom(''); setDateTo(''); setCurrentPage(1); }}>
+                                        <XIcon className="h-4 w-4" />
+                                    </Button>
+                                )}
+                            </div>
+                        </div>
+                        <div className="space-y-2">
                             <Label>Completion Status</Label>
                             <Select value={selectedStatus} onValueChange={(v) => { setSelectedStatus(v); setCurrentPage(1); }}>
                                 <SelectTrigger><SelectValue placeholder="All Statuses" /></SelectTrigger>
@@ -536,6 +601,8 @@ export default function UserCompletionReport() {
                             setSelectedLanguage('all');
                             setSelectedStatus('all');
                             setMinCompletedCount(0);
+                            setDateFrom('');
+                            setDateTo('');
                             setCurrentPage(1); 
                         }}>
                             Reset Filters
