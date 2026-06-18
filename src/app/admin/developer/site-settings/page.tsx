@@ -55,6 +55,11 @@ const formSchema = z.object({
     feature3Description: z.string().min(10, "Feature 3 description is required."),
     favicon: z.any(),
     homepageBackgroundImage: z.any(),
+    homepageMenuLinks: z.array(z.object({
+        title: z.string().min(1, "Link title is required"),
+        url: z.string().min(1, "Link URL is required"),
+        order: z.number(),
+    })),
 });
 
 const ICON_NAMES = Object.keys(icons);
@@ -92,6 +97,13 @@ export default function SiteSettingsPage() {
             feature3Icon: "Video",
             feature3Title: "On-Demand Video",
             feature3Description: "Access our extensive library of video resources anytime, anywhere.",
+            homepageMenuLinks: [
+                { title: "Courses", url: "/courses", order: 1 },
+                { title: "Live", url: "/live", order: 2 },
+                { title: "Music", url: "/music", order: 3 },
+                { title: "Community", url: "/community", order: 4 },
+                { title: "My Certificates", url: "/my-certificates", order: 5 },
+            ],
         },
     });
 
@@ -545,9 +557,90 @@ export default function SiteSettingsPage() {
                             <FormField control={form.control} name="feature3Description" render={({ field }) => (<FormItem><FormLabel>Description</FormLabel><FormControl><Textarea {...field} /></FormControl><FormMessage /></FormItem>)} />
                         </CardContent>
                     </Card>
+
+                    <Card className="lg:col-span-1">
+                        <CardHeader>
+                            <CardTitle>Homepage Menu</CardTitle>
+                            <CardDescription>Manage the navigation links shown on the homepage header. Custom links here override defaults.</CardDescription>
+                        </CardHeader>
+                        <CardContent className="space-y-4">
+                            <HomepageMenuEditor control={control} setValue={setValue} watch={watch} />
+                        </CardContent>
+                    </Card>
                 </div>
 
             </form>
         </Form>
+    );
+}
+
+function HomepageMenuEditor({ control, setValue, watch }: { control: any; setValue: any; watch: any }) {
+    const links = watch('homepageMenuLinks') || [];
+
+    const addItem = () => {
+        const newLinks = [...links, { title: '', url: '', order: links.length + 1 }];
+        setValue('homepageMenuLinks', newLinks, { shouldDirty: true });
+    };
+
+    const removeItem = (index: number) => {
+        const newLinks = links.filter((_: any, i: number) => i !== index).map((l: any, i: number) => ({ ...l, order: i + 1 }));
+        setValue('homepageMenuLinks', newLinks, { shouldDirty: true });
+    };
+
+    const moveItem = (index: number, direction: 'up' | 'down') => {
+        const newLinks = [...links];
+        const target = direction === 'up' ? index - 1 : index + 1;
+        if (target < 0 || target >= newLinks.length) return;
+        [newLinks[index], newLinks[target]] = [newLinks[target], newLinks[index]];
+        newLinks.forEach((l, i) => (l.order = i + 1));
+        setValue('homepageMenuLinks', newLinks, { shouldDirty: true });
+    };
+
+    return (
+        <div className="space-y-3">
+            {links.length === 0 && (
+                <p className="text-sm text-muted-foreground">No menu items configured. Add one below.</p>
+            )}
+            {links.map((link: any, index: number) => (
+                <div key={index} className="flex items-start gap-2 p-3 rounded-lg border bg-muted/30">
+                    <div className="flex flex-col gap-1 pt-1">
+                        <button type="button" onClick={() => moveItem(index, 'up')} disabled={index === 0}
+                            className="h-5 w-5 flex items-center justify-center rounded hover:bg-muted-foreground/20 disabled:opacity-30 text-xs" aria-label="Move up">▲</button>
+                        <button type="button" onClick={() => moveItem(index, 'down')} disabled={index === links.length - 1}
+                            className="h-5 w-5 flex items-center justify-center rounded hover:bg-muted-foreground/20 disabled:opacity-30 text-xs" aria-label="Move down">▼</button>
+                    </div>
+                    <div className="flex-1 space-y-2">
+                        <Input
+                            placeholder="Link title (e.g. Courses)"
+                            value={link.title}
+                            onChange={(e) => {
+                                const newLinks = [...links];
+                                newLinks[index] = { ...newLinks[index], title: e.target.value };
+                                setValue('homepageMenuLinks', newLinks, { shouldDirty: true });
+                            }}
+                            className="h-8 text-sm"
+                        />
+                        <Input
+                            placeholder="URL path (e.g. /courses)"
+                            value={link.url}
+                            onChange={(e) => {
+                                const newLinks = [...links];
+                                newLinks[index] = { ...newLinks[index], url: e.target.value };
+                                setValue('homepageMenuLinks', newLinks, { shouldDirty: true });
+                            }}
+                            className="h-8 text-sm"
+                        />
+                    </div>
+                    <button type="button" onClick={() => removeItem(index)}
+                        className="h-8 w-8 flex items-center justify-center rounded-full hover:bg-red-100 hover:text-red-600 text-muted-foreground transition-colors mt-1" aria-label="Remove link">
+                        <X className="h-4 w-4" />
+                    </button>
+                </div>
+            ))}
+            <Button type="button" variant="outline" size="sm" onClick={addItem} className="w-full">
+                Add Menu Item
+            </Button>
+            <p className="text-xs text-muted-foreground">These links appear in the homepage header. Add, remove, or reorder them as needed.</p>
+        </div>
     );
 }

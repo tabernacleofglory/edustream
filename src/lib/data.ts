@@ -1,5 +1,5 @@
 
-import type { Course, User, UserProgress, SiteSettings as SiteSettingsType, EmailLayoutSettings } from "@/lib/types";
+import type { Course, User, UserProgress, SiteSettings as SiteSettingsType, EmailLayoutSettings, HomepageMenuLink } from "@/lib/types";
 import { getFirebaseFirestore } from "./firebase";
 import { doc, getDoc } from "firebase/firestore";
 
@@ -88,6 +88,13 @@ const DEFAULT_SITE_SETTINGS: SiteSettings = {
         enrollmentSyncEnabled: false,
         enrollmentSyncIntervalMinutes: 60,
     },
+    homepageMenuLinks: [
+        { title: 'Courses', url: '/courses', order: 1 },
+        { title: 'Live', url: '/live', order: 2 },
+        { title: 'Music', url: '/music', order: 3 },
+        { title: 'Community', url: '/community', order: 4 },
+        { title: 'My Certificates', url: '/my-certificates', order: 5 },
+    ],
 };
 
 function getCachedSiteSettings(): SiteSettings | null {

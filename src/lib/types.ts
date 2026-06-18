@@ -375,6 +375,12 @@ export interface EmailLayoutSettings {
     buttonUrl?: string;
 }
 
+export interface HomepageMenuLink {
+  title: string;
+  url: string;
+  order: number;
+}
+
 export interface SiteSettings {
     websiteName: string;
     metaDescription: string;
@@ -437,6 +443,7 @@ export interface SiteSettings {
     emailLayout?: EmailLayoutSettings;
     maintenanceModeEnabled?: boolean;
     automation?: AutomationSettings;
+    homepageMenuLinks?: HomepageMenuLink[];
 }
 
 export interface AutomationSettings {

@@ -20,6 +20,8 @@ function buildCsp(nonce: string): string {
     "'self'",
     `'nonce-${nonce}'`,
     "'strict-dynamic'",
+    // Hash for Tawk.to inline loader script and other known inline scripts
+    "'sha256-eMuh8xiwcX72rRYNAGENurQBAcH7kLlAUQcoOri3BIo='",
     // Fallback domain allowlists for older browsers that don't support strict-dynamic
     "https://challenges.cloudflare.com",
     "https://*.googletagmanager.com",
