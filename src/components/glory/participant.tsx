@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback, useEffect } from "react";
+import { useState, useCallback, useEffect, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import {
@@ -40,6 +40,7 @@ export function GloryParticipant({
   const [mics, setMics] = useState<MediaDeviceInfo[]>([]);
   const [isCameraOn, setIsCameraOn] = useState(true);
   const [isMicOn, setIsMicOn] = useState(true);
+  const iframeRef = useRef<HTMLIFrameElement>(null);
 
   useEffect(() => {
     const enumerateDevices = async () => {
@@ -54,7 +55,7 @@ export function GloryParticipant({
           setSelectedMic(devices.filter((d) => d.kind === "audioinput")[0].deviceId);
         }
       } catch {
-        // Permissions not granted yet — handled by button click
+        // Permissions not granted yet
       }
     };
     enumerateDevices();
@@ -63,11 +64,10 @@ export function GloryParticipant({
   const handleJoin = useCallback(async () => {
     setStep("connecting");
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({
+      await navigator.mediaDevices.getUserMedia({
         video: selectedCamera ? { deviceId: selectedCamera } : true,
         audio: selectedMic ? { deviceId: selectedMic } : true,
       });
-      stream.getTracks().forEach((t) => t.stop());
       setStep("connected");
     } catch {
       setStep("connected");
@@ -75,12 +75,27 @@ export function GloryParticipant({
   }, [selectedCamera, selectedMic]);
 
   const handleLeave = useCallback(() => {
+    iframeRef.current?.contentWindow?.postMessage({ close: true }, "*");
     setStep("join");
     onLeave();
   }, [onLeave]);
 
+  // Vdo.Ninja URL with all native UI hidden
   const participateSrc = roomId && password
-    ? `https://vdo.ninja/?director=${roomId}&password=${password}`
+    ? [
+        `https://vdo.ninja/?director=${roomId}`,
+        `&password=${password}`,
+        "&cleanoutput",
+        "&nocontrols",
+        "&nosettings",
+        "&transparent",
+        "&hideheader",
+        "&nopreview",
+        "&nohangupbutton",
+        "&nomicbutton",
+        "&novideobutton",
+        "&tallyoff",
+      ].join("")
     : "";
 
   if (step === "join") {
@@ -163,7 +178,10 @@ export function GloryParticipant({
         </div>
         <div className="flex items-center gap-2">
           <button
-            onClick={() => setIsCameraOn((prev) => !prev)}
+            onClick={() => {
+              setIsCameraOn((prev) => !prev);
+              iframeRef.current?.contentWindow?.postMessage({ camera: "toggle" }, "*");
+            }}
             className={`flex items-center justify-center w-9 h-9 rounded-full transition-all ${
               isCameraOn ? "bg-white/20 text-white" : "bg-red-600/80 text-white"
             }`}
@@ -172,7 +190,10 @@ export function GloryParticipant({
             {isCameraOn ? <Camera className="h-4 w-4" /> : <CameraOff className="h-4 w-4" />}
           </button>
           <button
-            onClick={() => setIsMicOn((prev) => !prev)}
+            onClick={() => {
+              setIsMicOn((prev) => !prev);
+              iframeRef.current?.contentWindow?.postMessage({ mic: "toggle" }, "*");
+            }}
             className={`flex items-center justify-center w-9 h-9 rounded-full transition-all ${
               isMicOn ? "bg-white/20 text-white" : "bg-red-600/80 text-white"
             }`}
@@ -191,11 +212,13 @@ export function GloryParticipant({
         </div>
       </header>
 
-      <div className="flex-1">
+      <div className="flex-1 relative">
         <iframe
+          ref={iframeRef}
           src={participateSrc}
           allow="camera;microphone;display-capture;autoplay;clipboard-write;"
-          className="w-full h-full border-0"
+          className="absolute inset-0 w-full h-full border-0"
+          style={{ opacity: 0, pointerEvents: "none" }}
           allowFullScreen
         />
       </div>

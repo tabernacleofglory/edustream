@@ -31,8 +31,22 @@ export function GloryViewer({
   const [isMuted, setIsMuted] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const containerRef = useRef<HTMLDivElement>(null);
+  const iframeRef = useRef<HTMLIFrameElement>(null);
 
-  const watchSrc = `https://vdo.ninja/?view=${roomId}&solo&room=${roomId}&password=${password}`;
+  // Vdo.Ninja URL with all native UI hidden
+  const watchSrc = [
+    `https://vdo.ninja/?view=${roomId}`,
+    `&solo&room=${roomId}`,
+    `&password=${password}`,
+    "&cleanoutput",
+    "&cleanviewer",
+    "&nocontrols",
+    "&nosettings",
+    "&transparent",
+    "&nohangupbutton",
+    "&tallyoff",
+    "&obsoff",
+  ].join("");
 
   useEffect(() => {
     const timer = setTimeout(() => setIsLoading(false), 2500);
@@ -55,6 +69,11 @@ export function GloryViewer({
     } else {
       document.exitFullscreen();
     }
+  }, []);
+
+  const handleToggleMute = useCallback(() => {
+    setIsMuted((prev) => !prev);
+    iframeRef.current?.contentWindow?.postMessage({ speaker: "toggle" }, "*");
   }, []);
 
   return (
@@ -108,17 +127,20 @@ export function GloryViewer({
           </div>
         )}
 
+        {/* Vdo.Ninja iframe — completely invisible to the user */}
         <iframe
+          ref={iframeRef}
           src={watchSrc}
           allow="autoplay;clipboard-write;"
-          className="w-full h-full border-0"
+          className="absolute inset-0 w-full h-full border-0"
+          style={{ opacity: 0, pointerEvents: "none" }}
           allowFullScreen
         />
 
-        {/* Bottom overlay */}
+        {/* Bottom overlay — mute toggle */}
         <div className="absolute bottom-0 left-0 right-0 p-4 bg-gradient-to-t from-black/60 to-transparent">
           <button
-            onClick={() => setIsMuted((prev) => !prev)}
+            onClick={handleToggleMute}
             className="flex items-center justify-center w-10 h-10 rounded-full bg-white/20 hover:bg-white/30 text-white transition-all"
             aria-label={isMuted ? "Unmute" : "Mute"}
           >

@@ -14,7 +14,6 @@ import {
   Tv,
   ArrowLeft,
   Loader2,
-  Radio,
   RadioTower,
 } from "lucide-react";
 
@@ -38,11 +37,44 @@ export function GloryBroadcaster({
   const [isScreenSharing, setIsScreenSharing] = useState(false);
   const [isLive, setIsLive] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
-  const [participantCount, setParticipantCount] = useState(1);
+  const [participantCount, setParticipantCount] = useState(0);
   const iframeRef = useRef<HTMLIFrameElement>(null);
 
-  const vdoNinjaSrc = `https://vdo.ninja/?director=${roomId}&password=${password}&showdirector`;
+  // Vdo.Ninja URL with all native UI hidden
+  const vdoNinjaSrc = [
+    `https://vdo.ninja/?director=${roomId}`,
+    `&password=${password}`,
+    "&cleanoutput",      // Hides most UI elements
+    "&nocontrols",       // Hides video control bar
+    "&nosettings",       // Hides settings button
+    "&transparent",      // Transparent background
+    "&hideheader",       // Hides top header
+    "&nopreview",        // Disables self-preview (we have our own)
+    "&nohangupbutton",   // Hides hangup button
+    "&nomicbutton",      // Hides native mic button
+    "&novideobutton",    // Hides native camera button
+    "&tallyoff",         // Disables tally light
+    "&nocursor",         // Hides mouse cursor
+    "&autostart",        // Auto-start camera/mic
+  ].join("");
 
+  // Listen for messages from Vdo.Ninja iframe
+  useEffect(() => {
+    const handleMessage = (event: MessageEvent) => {
+      if (event.data?.action === "push-connection") {
+        setParticipantCount((prev) =>
+          event.data.value === true ? prev + 1 : Math.max(0, prev - 1)
+        );
+      }
+      if (event.data?.action === "guest-connected") {
+        setParticipantCount((prev) => prev + 1);
+      }
+    };
+    window.addEventListener("message", handleMessage);
+    return () => window.removeEventListener("message", handleMessage);
+  }, []);
+
+  // Loading timeout
   useEffect(() => {
     const timer = setTimeout(() => {
       setIsLoading(false);
@@ -51,41 +83,34 @@ export function GloryBroadcaster({
     return () => clearTimeout(timer);
   }, []);
 
+  const postToVdo = useCallback((msg: Record<string, unknown>) => {
+    iframeRef.current?.contentWindow?.postMessage(msg, "*");
+  }, []);
+
   const handleToggleMic = useCallback(() => {
     setIsMicOn((prev) => !prev);
-    iframeRef.current?.contentWindow?.postMessage(
-      { event: "toggleMic" },
-      "*"
-    );
-  }, []);
+    postToVdo({ mic: "toggle" });
+  }, [postToVdo]);
 
   const handleToggleCamera = useCallback(() => {
     setIsCameraOn((prev) => !prev);
-    iframeRef.current?.contentWindow?.postMessage(
-      { event: "toggleVideo" },
-      "*"
-    );
-  }, []);
+    postToVdo({ camera: "toggle" });
+  }, [postToVdo]);
 
-  const handleToggleScreenShare = useCallback(async () => {
-    if (isScreenSharing) {
-      setIsScreenSharing(false);
-    } else {
-      try {
-        await navigator.mediaDevices.getDisplayMedia({ video: true });
-        setIsScreenSharing(true);
-      } catch {
-        setIsScreenSharing(false);
-      }
+  const handleToggleScreenShare = useCallback(() => {
+    if (!isScreenSharing) {
+      postToVdo({ function: "publishScreen" });
+      setIsScreenSharing(true);
     }
-  }, [isScreenSharing]);
+  }, [isScreenSharing, postToVdo]);
 
   const handleEndStream = useCallback(() => {
     if (confirm("Are you sure you want to end this live stream?")) {
+      postToVdo({ close: true });
       setIsLive(false);
       onEndStream();
     }
-  }, [onEndStream]);
+  }, [onEndStream, postToVdo]);
 
   return (
     <div className="flex flex-col h-screen bg-background text-foreground">
@@ -111,7 +136,9 @@ export function GloryBroadcaster({
             {isLive ? "LIVE" : "OFFLINE"}
           </Badge>
           <span className="text-xs text-muted-foreground hidden sm:block">
-            {participantCount} viewer{participantCount !== 1 ? "s" : ""}
+            {participantCount > 0
+              ? `${participantCount} viewer${participantCount !== 1 ? "s" : ""}`
+              : "No viewers"}
           </span>
         </div>
       </header>
@@ -128,16 +155,17 @@ export function GloryBroadcaster({
           </div>
         )}
 
-        {/* Vdo.Ninja iframe (hidden engine) */}
+        {/* Vdo.Ninja iframe — completely invisible to the user */}
         <iframe
           ref={iframeRef}
           src={vdoNinjaSrc}
           allow="camera;microphone;display-capture;autoplay;clipboard-write;"
-          className="w-full h-full border-0"
+          className="absolute inset-0 w-full h-full border-0"
+          style={{ opacity: 0, pointerEvents: "none" }}
           allowFullScreen
         />
 
-        {/* Bottom overlay controls */}
+        {/* Bottom overlay controls — fully custom */}
         <div className="absolute bottom-0 left-0 right-0 p-4 bg-gradient-to-t from-black/80 to-transparent">
           <div className="flex items-center justify-center gap-3 max-w-lg mx-auto">
             <button
