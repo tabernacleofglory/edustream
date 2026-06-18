@@ -213,12 +213,13 @@ export function GloryParticipant({
       </header>
 
       <div className="flex-1 relative">
+        {/* Vdo.Ninja iframe — video visible, controls hidden */}
         <iframe
           ref={iframeRef}
           src={participateSrc}
           allow="camera;microphone;display-capture;autoplay;clipboard-write;"
           className="absolute inset-0 w-full h-full border-0"
-          style={{ opacity: 0, pointerEvents: "none" }}
+          style={{ pointerEvents: "none" }}
           allowFullScreen
         />
       </div>

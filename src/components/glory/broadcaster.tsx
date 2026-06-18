@@ -39,24 +39,47 @@ export function GloryBroadcaster({
   const [isLoading, setIsLoading] = useState(true);
   const [participantCount, setParticipantCount] = useState(0);
   const iframeRef = useRef<HTMLIFrameElement>(null);
+  const localVideoRef = useRef<HTMLVideoElement>(null);
+  const localStreamRef = useRef<MediaStream | null>(null);
 
   // Vdo.Ninja URL with all native UI hidden
   const vdoNinjaSrc = [
     `https://vdo.ninja/?director=${roomId}`,
     `&password=${password}`,
-    "&cleanoutput",      // Hides most UI elements
-    "&nocontrols",       // Hides video control bar
-    "&nosettings",       // Hides settings button
-    "&transparent",      // Transparent background
-    "&hideheader",       // Hides top header
-    "&nopreview",        // Disables self-preview (we have our own)
-    "&nohangupbutton",   // Hides hangup button
-    "&nomicbutton",      // Hides native mic button
-    "&novideobutton",    // Hides native camera button
-    "&tallyoff",         // Disables tally light
-    "&nocursor",         // Hides mouse cursor
-    "&autostart",        // Auto-start camera/mic
+    "&cleanoutput",
+    "&nocontrols",
+    "&nosettings",
+    "&transparent",
+    "&hideheader",
+    "&nopreview",
+    "&nohangupbutton",
+    "&nomicbutton",
+    "&novideobutton",
+    "&tallyoff",
+    "&nocursor",
+    "&autostart",
   ].join("");
+
+  // Start local camera preview for self-view
+  useEffect(() => {
+    navigator.mediaDevices
+      .getUserMedia({ video: true, audio: false })
+      .then((stream) => {
+        localStreamRef.current = stream;
+        if (localVideoRef.current) {
+          localVideoRef.current.srcObject = stream;
+        }
+      })
+      .catch(() => {
+        // Camera access handled by Vdo.Ninja
+      });
+    return () => {
+      if (localStreamRef.current) {
+        localStreamRef.current.getTracks().forEach((t) => t.stop());
+        localStreamRef.current = null;
+      }
+    };
+  }, []);
 
   // Listen for messages from Vdo.Ninja iframe
   useEffect(() => {
@@ -95,6 +118,12 @@ export function GloryBroadcaster({
   const handleToggleCamera = useCallback(() => {
     setIsCameraOn((prev) => !prev);
     postToVdo({ camera: "toggle" });
+    // Toggle local preview
+    if (localStreamRef.current) {
+      localStreamRef.current.getVideoTracks().forEach((t) => {
+        t.enabled = !t.enabled;
+      });
+    }
   }, [postToVdo]);
 
   const handleToggleScreenShare = useCallback(() => {
@@ -155,18 +184,41 @@ export function GloryBroadcaster({
           </div>
         )}
 
-        {/* Vdo.Ninja iframe — completely invisible to the user */}
+        {/* Vdo.Ninja iframe — video visible, controls hidden */}
         <iframe
           ref={iframeRef}
           src={vdoNinjaSrc}
           allow="camera;microphone;display-capture;autoplay;clipboard-write;"
           className="absolute inset-0 w-full h-full border-0"
-          style={{ opacity: 0, pointerEvents: "none" }}
+          style={{ pointerEvents: "none" }}
           allowFullScreen
         />
 
+        {/* Self-preview — local camera PIP */}
+        <div className="absolute bottom-24 right-4 w-44 aspect-video rounded-lg overflow-hidden border-2 border-white/20 shadow-xl z-20 bg-black">
+          <video
+            ref={localVideoRef}
+            autoPlay
+            muted
+            playsInline
+            className="w-full h-full object-cover"
+          />
+          <div className="absolute top-1 left-1 flex gap-1">
+            {!isMicOn && (
+              <span className="bg-red-600 text-white text-[10px] px-1.5 py-0.5 rounded font-bold">
+                MUTE
+              </span>
+            )}
+            {isScreenSharing && (
+              <span className="bg-blue-600 text-white text-[10px] px-1.5 py-0.5 rounded font-bold">
+                SCREEN
+              </span>
+            )}
+          </div>
+        </div>
+
         {/* Bottom overlay controls — fully custom */}
-        <div className="absolute bottom-0 left-0 right-0 p-4 bg-gradient-to-t from-black/80 to-transparent">
+        <div className="absolute bottom-0 left-0 right-0 p-4 bg-gradient-to-t from-black/80 to-transparent z-20">
           <div className="flex items-center justify-center gap-3 max-w-lg mx-auto">
             <button
               onClick={handleToggleMic}

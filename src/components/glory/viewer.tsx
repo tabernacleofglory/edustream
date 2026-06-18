@@ -127,13 +127,13 @@ export function GloryViewer({
           </div>
         )}
 
-        {/* Vdo.Ninja iframe — completely invisible to the user */}
+        {/* Vdo.Ninja iframe — video visible, controls hidden */}
         <iframe
           ref={iframeRef}
           src={watchSrc}
           allow="autoplay;clipboard-write;"
           className="absolute inset-0 w-full h-full border-0"
-          style={{ opacity: 0, pointerEvents: "none" }}
+          style={{ pointerEvents: "none" }}
           allowFullScreen
         />
 

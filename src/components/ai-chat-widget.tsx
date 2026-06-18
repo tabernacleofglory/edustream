@@ -41,7 +41,10 @@ export default function AiChatWidget() {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
-  const [hasInteracted, setHasInteracted] = useState(false);
+  const [isDismissed, setIsDismissed] = useState(() => {
+    if (typeof window === "undefined") return false;
+    return localStorage.getItem("glory_chat_dismissed") === "true";
+  });
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
@@ -83,7 +86,6 @@ export default function AiChatWidget() {
     if (!text || isLoading) return;
 
     setInput("");
-    setHasInteracted(true);
 
     const userMsg: ChatMessage = { role: "user", content: text };
     const updatedMessages = [...messages, userMsg];
@@ -138,19 +140,58 @@ export default function AiChatWidget() {
 
   return (
     <>
+      {/* Reactivate link when dismissed */}
+      {isDismissed && !isOpen && (
+        <button
+          onClick={() => {
+            setIsDismissed(false);
+            localStorage.removeItem("glory_chat_dismissed");
+          }}
+          className="fixed bottom-20 right-6 z-50 flex items-center gap-1.5 text-xs text-muted-foreground hover:text-primary transition-colors"
+          aria-label="Show Glory AI Chat"
+        >
+          <MessageCircle className="h-3.5 w-3.5" />
+          AI Chat
+        </button>
+      )}
+
       {/* Floating button */}
       <AnimatePresence>
-        {!isOpen && (
+        {!isOpen && !isDismissed && (
           <motion.button
             initial={{ scale: 0, opacity: 0 }}
             animate={{ scale: 1, opacity: 1 }}
             exit={{ scale: 0, opacity: 0 }}
             transition={{ type: "spring", stiffness: 300, damping: 25 }}
-            onClick={() => setIsOpen(true)}
-            className="fixed bottom-6 right-6 z-50 flex h-14 w-14 items-center justify-center rounded-full bg-gradient-to-br from-blue-600 to-blue-800 text-white shadow-lg hover:shadow-xl hover:scale-105 transition-all cursor-pointer"
-            aria-label="Open Glory AI Chat"
+            onMouseEnter={(e) => {
+              const el = e.currentTarget.querySelector(".dismiss-btn") as HTMLElement;
+              if (el) el.style.opacity = "1";
+            }}
+            onMouseLeave={(e) => {
+              const el = e.currentTarget.querySelector(".dismiss-btn") as HTMLElement;
+              if (el) el.style.opacity = "0";
+            }}
+            className="group relative"
           >
-            <MessageCircle className="h-6 w-6" />
+            <button
+              onClick={() => setIsOpen(true)}
+              className="fixed bottom-20 right-6 z-50 flex h-12 w-12 items-center justify-center rounded-full bg-gradient-to-br from-blue-600 to-blue-800 text-white shadow-lg hover:shadow-xl hover:scale-105 transition-all cursor-pointer"
+              aria-label="Open Glory AI Chat"
+            >
+              <MessageCircle className="h-5 w-5" />
+            </button>
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                setIsDismissed(true);
+                localStorage.setItem("glory_chat_dismissed", "true");
+              }}
+              className="dismiss-btn absolute -top-1 -right-1 z-50 flex h-5 w-5 items-center justify-center rounded-full bg-red-600 text-white text-[10px] opacity-0 hover:opacity-100 transition-opacity cursor-pointer"
+              aria-label="Hide chat button"
+              title="Hide"
+            >
+              <X className="h-3 w-3" />
+            </button>
           </motion.button>
         )}
       </AnimatePresence>
@@ -164,7 +205,7 @@ export default function AiChatWidget() {
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: 20, scale: 0.95 }}
             transition={{ type: "spring", stiffness: 300, damping: 25 }}
-            className="fixed bottom-6 right-6 z-50 flex w-[380px] max-w-[calc(100vw-2rem)] flex-col rounded-2xl border border-border bg-background shadow-2xl"
+            className="fixed bottom-20 right-6 z-50 flex w-[380px] max-w-[calc(100vw-2rem)] flex-col rounded-2xl border border-border bg-background shadow-2xl"
             style={{ maxHeight: "70vh" }}
           >
             {/* Header */}

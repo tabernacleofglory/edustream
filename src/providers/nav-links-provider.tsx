@@ -7,14 +7,22 @@ import type { NavLink } from "@/lib/types";
 
 const NAV_LINKS_CACHE_KEY = "gloryhub_nav_links";
 
+const DEFAULT_NAV_LINKS: NavLink[] = [
+  { id: "default-courses", title: "Courses", url: "/courses", order: 1 },
+  { id: "default-live", title: "Live", url: "/live", order: 2 },
+  { id: "default-music", title: "Music", url: "/music", order: 3 },
+  { id: "default-community", title: "Community", url: "/community", order: 4 },
+  { id: "default-certificates", title: "My Certificates", url: "/my-certificates", order: 5 },
+];
+
 interface NavLinksContextType {
   navLinks: NavLink[];
   loading: boolean;
 }
 
 const NavLinksContext = createContext<NavLinksContextType>({
-  navLinks: [],
-  loading: true,
+  navLinks: DEFAULT_NAV_LINKS,
+  loading: false,
 });
 
 function getCachedNavLinks(): NavLink[] | null {
@@ -39,7 +47,7 @@ function setCachedNavLinks(links: NavLink[]): void {
 
 export function NavLinksProvider({ children }: { children: React.ReactNode }) {
   const [navLinks, setNavLinks] = useState<NavLink[]>(() => {
-    return getCachedNavLinks() ?? [];
+    return getCachedNavLinks() ?? DEFAULT_NAV_LINKS;
   });
   const [loading, setLoading] = useState(() => {
     return getCachedNavLinks() === null;
@@ -57,10 +65,14 @@ export function NavLinksProvider({ children }: { children: React.ReactNode }) {
       const q = query(collection(db, "navLinks"), orderBy("order"), limit(10));
       const querySnapshot = await getDocs(q);
       const links = querySnapshot.docs.map((doc) => doc.data() as NavLink);
-      setNavLinks(links);
-      setCachedNavLinks(links);
+      if (links.length > 0) {
+        setNavLinks(links);
+        setCachedNavLinks(links);
+      }
+      // If Firestore returns empty, keep DEFAULT_NAV_LINKS
     } catch (error) {
       console.error("Error fetching nav links: ", error);
+      // Keep defaults on error
     } finally {
       setLoading(false);
     }
