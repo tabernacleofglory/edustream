@@ -2,11 +2,9 @@
 'use client';
 
 import { useSearchParams, useParams, useRouter } from 'next/navigation';
-import { FC, Suspense } from 'react';
-import { Logo } from '@/components/logo';
-import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
-import { ArrowLeft, Tv } from 'lucide-react';
+import { FC, Suspense, useCallback } from 'react';
+import { updateLiveEvent } from '@/lib/live-events';
+import { GloryBroadcaster } from '@/components/glory/broadcaster';
 
 interface GloryLiveAdminViewProps {}
 
@@ -17,6 +15,19 @@ const GloryLiveAdminViewContent: FC<GloryLiveAdminViewProps> = () => {
   const searchParams = useSearchParams();
   const password = searchParams.get('password');
 
+  const handleEndStream = useCallback(async () => {
+    try {
+      await updateLiveEvent(roomId, { status: 'ended' });
+    } catch {
+      // Error already handled by live-events.ts
+    }
+    router.push('/admin/live');
+  }, [roomId, router]);
+
+  const handleBack = useCallback(() => {
+    router.push('/admin/live');
+  }, [router]);
+
   if (!roomId) {
     return (
       <div className="flex items-center justify-center h-full">
@@ -25,40 +36,19 @@ const GloryLiveAdminViewContent: FC<GloryLiveAdminViewProps> = () => {
     );
   }
 
-  const src = `https://vdo.ninja/?director=${roomId}&password=${password}&showdirector`;
-
   return (
-    <div className="flex flex-col h-screen bg-background text-foreground">
-        <header className="flex items-center justify-between p-4 border-b flex-shrink-0">
-            <div className="flex items-center gap-2">
-                <Button variant="outline" onClick={() => router.back()}>
-                    <ArrowLeft className="mr-2 h-4 w-4" />
-                    Back to Events
-                </Button>
-                <Logo />
-            </div>
-            <div className="flex items-center gap-4">
-                <h1 className="text-lg font-semibold hidden sm:block">Director Console</h1>
-                <Badge variant="destructive" className="animate-pulse">
-                    <Tv className="mr-2 h-4 w-4" />
-                    LIVE
-                </Badge>
-            </div>
-        </header>
-        <main className="flex-1 bg-black">
-            <iframe
-                src={src}
-                allow="camera;microphone;display-capture;autoplay;clipboard-write;"
-                className="w-full h-full border-0"
-                allowFullScreen
-            ></iframe>
-        </main>
-    </div>
+    <GloryBroadcaster
+      roomId={roomId}
+      password={password || ''}
+      eventTitle="Director Console"
+      onEndStream={handleEndStream}
+      onBack={handleBack}
+    />
   );
 };
 
 const GloryLiveAdminView: FC<GloryLiveAdminViewProps> = (props) => (
-  <Suspense fallback={<div>Loading...</div>}>
+  <Suspense fallback={<div className="flex items-center justify-center h-screen bg-background"><p className="text-muted-foreground">Loading...</p></div>}>
     <GloryLiveAdminViewContent {...props} />
   </Suspense>
 );
