@@ -54,6 +54,48 @@ function RecommendationsLoading() {
   );
 }
 
+const COURSE_META_CACHE_TTL = 5 * 60 * 1000; // 5 minutes
+
+interface CourseMetaCache {
+    [courseId: string]: {
+        videos: { id: string; title: string }[];
+        quizzes: { id: string; title: string }[];
+        formTitle: string;
+        timestamp: number;
+    }
+}
+
+function getCourseMetaCache(): CourseMetaCache {
+    if (typeof window === 'undefined') return {};
+    try {
+        const cached = sessionStorage.getItem('gloryhub_course_meta');
+        if (!cached) return {};
+        const data = JSON.parse(cached) as CourseMetaCache;
+        // Prune expired entries
+        const now = Date.now();
+        const pruned: CourseMetaCache = {};
+        for (const [id, meta] of Object.entries(data)) {
+            if (now - meta.timestamp < COURSE_META_CACHE_TTL) {
+                pruned[id] = meta;
+            }
+        }
+        return pruned;
+    } catch {
+        return {};
+    }
+}
+
+function setCourseMetaCache(courseId: string, meta: Omit<CourseMetaCache[string], 'timestamp'>): void {
+    if (typeof window === 'undefined') return;
+    try {
+        const cache = getCourseMetaCache();
+        cache[courseId] = { ...meta, timestamp: Date.now() };
+        sessionStorage.setItem('gloryhub_course_meta', JSON.stringify(cache));
+    } catch {
+        // sessionStorage full — ignore
+    }
+}
+
 const RequiredStepsCard = ({ coursesInProgress }: { coursesInProgress: any[] }) => {
     const { user } = useAuth();
     const { t } = useI18n();
@@ -93,9 +135,19 @@ const RequiredStepsCard = ({ coursesInProgress }: { coursesInProgress: any[] }) 
 
                     const allItems: { type: string, title: string, id: string, isCompleted: boolean }[] = [];
 
+                    // Check cache for course metadata
+                    const metaCache = getCourseMetaCache();
+                    const cachedMeta = metaCache[course.id];
+                    const useCache = cachedMeta && (Date.now() - cachedMeta.timestamp < COURSE_META_CACHE_TTL);
+
                     if (videoIds.length > 0) {
-                        const vSnap = await getDocs(query(collection(db, 'Contents'), where(documentId(), 'in', videoIds.slice(0, 30))));
-                        const vMap = new Map(vSnap.docs.map(d => [d.id, d.data().title]));
+                        let vMap: Map<string, string>;
+                        if (useCache) {
+                            vMap = new Map(cachedMeta.videos.map(v => [v.id, v.title]));
+                        } else {
+                            const vSnap = await getDocs(query(collection(db, 'Contents'), where(documentId(), 'in', videoIds.slice(0, 30))));
+                            vMap = new Map(vSnap.docs.map(d => [d.id, d.data().title]));
+                        }
                         videoIds.forEach(id => {
                             allItems.push({ 
                                 type: 'video', 
@@ -107,8 +159,13 @@ const RequiredStepsCard = ({ coursesInProgress }: { coursesInProgress: any[] }) 
                     }
 
                     if (quizIds.length > 0) {
-                        const qSnap = await getDocs(query(collection(db, 'quizzes'), where(documentId(), 'in', quizIds.slice(0, 30))));
-                        const qMap = new Map(qSnap.docs.map(d => [d.id, d.data().title]));
+                        let qMap: Map<string, string>;
+                        if (useCache) {
+                            qMap = new Map(cachedMeta.quizzes.map(q => [q.id, q.title]));
+                        } else {
+                            const qSnap = await getDocs(query(collection(db, 'quizzes'), where(documentId(), 'in', quizIds.slice(0, 30))));
+                            qMap = new Map(qSnap.docs.map(d => [d.id, d.data().title]));
+                        }
                         quizIds.forEach(id => {
                             allItems.push({ 
                                 type: 'quiz', 
@@ -120,15 +177,28 @@ const RequiredStepsCard = ({ coursesInProgress }: { coursesInProgress: any[] }) 
                     }
 
                     if (formId) {
-                        const fSnap = await getDoc(doc(db, 'forms', formId));
-                        if (fSnap.exists()) {
-                            allItems.push({ 
-                                type: 'form', 
-                                title: fSnap.data().title, 
-                                id: fSnap.id, 
-                                isCompleted: globalDone.has(formId)
-                            });
+                        let formTitle: string;
+                        if (useCache) {
+                            formTitle = cachedMeta.formTitle;
+                        } else {
+                            const fSnap = await getDoc(doc(db, 'forms', formId));
+                            formTitle = fSnap.exists() ? fSnap.data().title : 'Form';
                         }
+                        allItems.push({ 
+                            type: 'form', 
+                            title: formTitle, 
+                            id: formId, 
+                            isCompleted: globalDone.has(formId)
+                        });
+                    }
+
+                    // Cache metadata if it wasn't cached
+                    if (!useCache) {
+                        setCourseMetaCache(course.id, {
+                            videos: videoIds.map(id => ({ id, title: allItems.find(i => i.id === id && i.type === 'video')?.title || 'Video' })),
+                            quizzes: quizIds.map(id => ({ id, title: allItems.find(i => i.id === id && i.type === 'quiz')?.title || 'Quiz' })),
+                            formTitle: allItems.find(i => i.type === 'form')?.title || 'Form',
+                        });
                     }
 
                     if (allItems.some(item => !item.isCompleted)) {
