@@ -9,7 +9,7 @@ import {
   suggestCourseTags,
   type SuggestCourseTagsInput,
   type SuggestCourseTagsOutput,
-} from "@/ai/flows/smart-tagging";
+} from "@/lib/ai/flows/smart-tagging";
 import {
   Card,
   CardContent,

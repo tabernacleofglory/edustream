@@ -8,7 +8,7 @@ import {
   generateCourseIdeas,
   type GenerateCourseIdeasInput,
   type GenerateCourseIdeasOutput,
-} from "@/ai/flows/course-ideas";
+} from "@/lib/ai/flows/course-ideas";
 import {
   Card,
   CardContent,
