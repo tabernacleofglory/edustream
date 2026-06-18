@@ -31,6 +31,28 @@ import {
 } from "@/components/ui/alert-dialog"
 
 
+const DeleteEventAlert = ({ eventId, isProcessing, onDelete }: { eventId: string; isProcessing: boolean; onDelete: (id: string) => void }) => (
+  <AlertDialog>
+    <AlertDialogTrigger asChild>
+      <Button variant="outline" size="icon" disabled={isProcessing}>
+          <Trash2 className="h-4 w-4" />
+      </Button>
+    </AlertDialogTrigger>
+    <AlertDialogContent>
+      <AlertDialogHeader>
+        <AlertDialogTitle>Are you sure?</AlertDialogTitle>
+        <AlertDialogDescription>
+          This action cannot be undone. This will permanently delete the event.
+        </AlertDialogDescription>
+      </AlertDialogHeader>
+      <AlertDialogFooter>
+        <AlertDialogCancel>Cancel</AlertDialogCancel>
+        <AlertDialogAction onClick={() => onDelete(eventId)}>Delete</AlertDialogAction>
+      </AlertDialogFooter>
+    </AlertDialogContent>
+  </AlertDialog>
+);
+
 interface LiveEventsListProps {
   events: LiveEvent[];
   loading: boolean;
@@ -135,25 +157,7 @@ export default function LiveEventsList({ events, loading, isAdmin, onGoLive, onE
             <Button key="edit" variant="outline" size="icon" onClick={() => onEdit(event)} disabled={isThisEventProcessing}>
                 <Edit className="h-4 w-4" />
             </Button>,
-            <AlertDialog key="delete-alert">
-              <AlertDialogTrigger asChild>
-                <Button variant="outline" size="icon" disabled={isThisEventProcessing}>
-                    <Trash2 className="h-4 w-4" />
-                </Button>
-              </AlertDialogTrigger>
-              <AlertDialogContent>
-                <AlertDialogHeader>
-                  <AlertDialogTitle>Are you sure?</AlertDialogTitle>
-                  <AlertDialogDescription>
-                    This action cannot be undone. This will permanently delete the event.
-                  </AlertDialogDescription>
-                </AlertDialogHeader>
-                <AlertDialogFooter>
-                  <AlertDialogCancel>Cancel</AlertDialogCancel>
-                  <AlertDialogAction onClick={() => handleDeleteClick(event.id)}>Delete</AlertDialogAction>
-                </AlertDialogFooter>
-              </AlertDialogContent>
-            </AlertDialog>
+            <DeleteEventAlert key="delete-alert" eventId={event.id} isProcessing={isThisEventProcessing} onDelete={handleDeleteClick} />
         );
         break;
       case 'ended':
@@ -163,29 +167,9 @@ export default function LiveEventsList({ events, loading, isAdmin, onGoLive, onE
             </Button>,
             <Button key="duplicate" variant="outline" size="icon" onClick={() => onDuplicate(event)} disabled={isThisEventProcessing}>
                 <Copy className="h-4 w-4" />
-            </Button>
+            </Button>,
+            <DeleteEventAlert key="delete-alert-ended" eventId={event.id} isProcessing={isThisEventProcessing} onDelete={handleDeleteClick} />
         );
-         utilityButtons.push(
-            <AlertDialog key="delete-alert-ended">
-              <AlertDialogTrigger asChild>
-                <Button variant="outline" size="icon" disabled={isThisEventProcessing}>
-                    <Trash2 className="h-4 w-4" />
-                </Button>
-              </AlertDialogTrigger>
-              <AlertDialogContent>
-                <AlertDialogHeader>
-                  <AlertDialogTitle>Are you sure?</AlertDialogTitle>
-                  <AlertDialogDescription>
-                    This action cannot be undone. This will permanently delete the event.
-                  </AlertDialogDescription>
-                </AlertDialogHeader>
-                <AlertDialogFooter>
-                  <AlertDialogCancel>Cancel</AlertDialogCancel>
-                  <AlertDialogAction onClick={() => handleDeleteClick(event.id)}>Delete</AlertDialogAction>
-                </AlertDialogFooter>
-              </AlertDialogContent>
-            </AlertDialog>
-         );
         break;
       default:
         return null;
