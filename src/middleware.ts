@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from 'next/server';
-import crypto from 'node:crypto';
 
 function buildCsp(nonce: string): string {
   const isDev = process.env.NODE_ENV === 'development';
