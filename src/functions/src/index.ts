@@ -657,7 +657,7 @@ export const processFormSubmission = functions
                   const footer = layout.footerText || "";
                   const preHeader = layout.preHeaderText || "";
                   const btnText = layout.buttonText || "Continue Courses";
-                  const btnUrl = layout.buttonUrl || "https://gloryhub.net/dashboard";
+                  const btnUrl = layout.buttonUrl || "https://glorytgtraining.com/dashboard";
 
                   finalHtml = `
 <!DOCTYPE html>

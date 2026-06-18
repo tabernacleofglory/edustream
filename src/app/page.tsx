@@ -111,11 +111,17 @@ export default function Home() {
                             <DialogDescription className="sr-only">Main navigation menu</DialogDescription>
                         </SheetHeader>
                          <div className="flex flex-col space-y-4 mt-8">
-                            {navLinks.map((link) => (
-                                <ConditionalLink key={link.url} href={link.url} className="text-lg font-medium text-foreground hover:text-primary transition-colors">
-                                    {link.title}
-                                </ConditionalLink>
-                            ))}
+                             {linksLoading ? (
+                                 Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-6 w-20" />)
+                             ) : navLinks.length > 0 ? (
+                                 navLinks.map((link) => (
+                                     <ConditionalLink key={link.url} href={link.url} className="text-lg font-medium text-foreground hover:text-primary transition-colors">
+                                         {link.title}
+                                     </ConditionalLink>
+                                 ))
+                             ) : (
+                                 <p className="text-sm text-muted-foreground">No menu items available.</p>
+                             )}
                          </div>
                     </SheetContent>
                 </Sheet>

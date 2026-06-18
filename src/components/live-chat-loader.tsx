@@ -15,20 +15,14 @@ s1.setAttribute('crossorigin','*');
 s0.parentNode.insertBefore(s1,s0);
 })();`;
 
-/**
- * Loads the live chat script from Firestore siteSettings/liveChat.
- * Falls back to the default Tawk.to script if none is set in the DB.
- */
-export default function LiveChatLoader() {
+export default function LiveChatLoader({ nonce = '' }: { nonce?: string }) {
   const [scriptContent, setScriptContent] = useState<string | null>(null);
 
   useEffect(() => {
-    // Listen for real-time updates to the live chat script
     const unsubscribe = onSnapshot(doc(db, 'siteSettings', 'liveChat'), (snap) => {
       if (snap.exists() && snap.data().script) {
         setScriptContent(snap.data().script);
       } else {
-        // Use the default script if the document or script field is missing
         setScriptContent(DEFAULT_SCRIPT);
       }
     });
@@ -39,7 +33,7 @@ export default function LiveChatLoader() {
   if (!scriptContent) return null;
 
   return (
-    <Script id="dynamic-live-chat" strategy="afterInteractive">
+    <Script id="dynamic-live-chat" nonce={nonce} strategy="afterInteractive">
       {scriptContent}
     </Script>
   );

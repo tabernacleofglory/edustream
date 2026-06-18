@@ -1,10 +1,11 @@
 import type { Metadata } from "next";
-import { Inter, Space_Grotesk, Dancing_Script, Great_Vibes, Source_Serif_4 } from "next/font/google";
+import { Inter, Space_Grotesk, Source_Serif_4 } from "next/font/google";
 import "./globals.css";
 import { getSiteSettings } from "@/lib/data";
 import { Providers } from "@/components/providers";
 import LiveChatLoader from "@/components/live-chat-loader";
 import AiChatWidget from "@/components/ai-chat-widget";
+import { headers } from "next/headers";
 
 const inter = Inter({
   subsets: ["latin"],
@@ -16,19 +17,6 @@ const spaceGrotesk = Space_Grotesk({
   subsets: ["latin"],
   display: "swap",
   variable: "--font-space-grotesk",
-});
-
-const dancingScript = Dancing_Script({
-  subsets: ["latin"],
-  display: "swap",
-  variable: "--font-dancing-script",
-});
-
-const greatVibes = Great_Vibes({
-  subsets: ["latin"],
-  display: "swap",
-  weight: "400",
-  variable: "--font-great-vibes",
 });
 
 const sourceSerif = Source_Serif_4({
@@ -47,7 +35,6 @@ export async function generateMetadata(): Promise<Metadata> {
     icons: {
       icon: settings?.faviconUrl || '/favicon.ico',
     },
-    // Security: Prevent browser translation tools from modifying the DOM, which causes React crashes
     other: {
       google: 'notranslate',
     },
@@ -59,21 +46,24 @@ export default function RootLayout({
 }: {
   children: React.ReactNode;
 }) {
+  const nonce = headers().get('x-nonce') || '';
+
   return (
     <html
       lang="en"
-      className={`${inter.variable} ${spaceGrotesk.variable} ${dancingScript.variable} ${greatVibes.variable} ${sourceSerif.variable}`}
+      className={`${inter.variable} ${spaceGrotesk.variable} ${sourceSerif.variable}`}
       suppressHydrationWarning
       translate="no"
     >
       <head>
         <meta name="google" content="notranslate" />
+        {nonce && <meta name="csp-nonce" content={nonce} />}
       </head>
       <body>
         <Providers>
           {children}
         </Providers>
-        <LiveChatLoader />
+        <LiveChatLoader nonce={nonce} />
         <AiChatWidget />
       </body>
     </html>

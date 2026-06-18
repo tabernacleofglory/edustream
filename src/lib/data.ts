@@ -21,7 +21,7 @@ const DEFAULT_EMAIL_LAYOUT: EmailLayoutSettings = {
     cardBgColor: '#ffffff',
     preHeaderText: 'Glory Training Hub - Grow in faith and leadership.',
     buttonText: 'Visit Dashboard',
-    buttonUrl: 'https://gloryhub.net/dashboard',
+    buttonUrl: 'https://glorytgtraining.com/dashboard',
 };
 
 const DEFAULT_SITE_SETTINGS: SiteSettings = {

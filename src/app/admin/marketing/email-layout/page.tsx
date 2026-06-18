@@ -57,7 +57,7 @@ export default function EmailLayoutPage() {
             cardBgColor: "#ffffff",
             preHeaderText: "ENGLISH VERSION",
             buttonText: "Continue Courses",
-            buttonUrl: "https://gloryhub.net/dashboard",
+            buttonUrl: "https://glorytgtraining.com/dashboard",
         }
     });
 
