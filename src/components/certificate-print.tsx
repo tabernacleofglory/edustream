@@ -1,16 +1,17 @@
-
 "use client";
 
-import { useRef, useState } from "react";
+import { useState, useCallback } from "react";
 import Certificate from "@/components/certificate";
 import type { Course, SiteSettings } from "@/lib/types";
 import { Button } from "./ui/button";
-import { Printer, Download, Mail, Loader2 } from "lucide-react";
+import { Printer, Download, FileDown, Mail, Loader2, CheckCircle2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import html2canvas from 'html2canvas';
+import html2canvas from "html2canvas";
+import jsPDF from "jspdf";
 import { useAuth } from "@/hooks/use-auth";
-import { getFirebaseFirestore } from "@/lib/firebase";
-import { collection, addDoc } from "firebase/firestore";
+import { getFirebaseStorage, getFirebaseFirestore } from "@/lib/firebase";
+import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
+import { collection, addDoc, serverTimestamp } from "firebase/firestore";
 import {
   Dialog,
   DialogContent,
@@ -22,7 +23,6 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "./ui/input";
 import { Label } from "./ui/label";
-
 
 interface CertificatePrintProps {
     userName: string;
@@ -36,71 +36,169 @@ interface CertificatePrintProps {
 export default function CertificatePrint({ userName, course, completionDate, templateUrl, logoUrl, settings }: CertificatePrintProps) {
     const { toast } = useToast();
     const { user } = useAuth();
+    const [isGenerating, setIsGenerating] = useState(false);
     const [isEmailing, setIsEmailing] = useState(false);
-    const [email, setEmail] = useState(user?.email || '');
+    const [email, setEmail] = useState(user?.email || "");
     const [isEmailDialogOpen, setIsEmailDialogOpen] = useState(false);
+    const [pdfUrl, setPdfUrl] = useState<string | null>(null);
+    const [hasPdf, setHasPdf] = useState(false);
     const db = getFirebaseFirestore();
+    const storage = getFirebaseStorage();
 
-    const handlePrint = () => {
-        window.print();
-    };
-    
-     const handleDownload = async () => {
-        const certificateElement = document.querySelector('.certificate-print-area') as HTMLElement;
-        if (!certificateElement) return;
+    const captureCertificate = useCallback(async (): Promise<HTMLCanvasElement> => {
+        const element = document.querySelector(".certificate-print-area") as HTMLElement;
+        if (!element) throw new Error("Certificate element not found");
+        return html2canvas(element, {
+            allowTaint: true,
+            useCORS: true,
+            scale: 2,
+        });
+    }, []);
 
+    const generatePdfBlob = useCallback(async (): Promise<Blob> => {
+        const canvas = await captureCertificate();
+        const imgData = canvas.toDataURL("image/png");
+        const pdf = new jsPDF("l", "mm", [297, 210]);
+        pdf.addImage(imgData, "PNG", 0, 0, 297, 210);
+        return pdf.output("blob");
+    }, [captureCertificate]);
+
+    const uploadPdfToStorage = useCallback(async (pdfBlob: Blob): Promise<string> => {
+        if (!user) throw new Error("User not authenticated");
+        const path = `certificates/${user.uid}/${course.id}.pdf`;
+        const storageRef = ref(storage, path);
+        await uploadBytes(storageRef, pdfBlob);
+        return getDownloadURL(storageRef);
+    }, [user, course.id, storage]);
+
+    const saveCertificateRecord = useCallback(async (pdfUrl: string) => {
+        await addDoc(collection(db, "certificates"), {
+            userId: user?.uid || "",
+            userName,
+            courseId: course.id,
+            courseTitle: course.title,
+            pdfUrl,
+            completionDate,
+            createdAt: serverTimestamp(),
+        });
+    }, [user?.uid, userName, course.id, course.title, completionDate, db]);
+
+    const handleGenerateAndDownloadPdf = useCallback(async () => {
+        setIsGenerating(true);
         try {
-            const canvas = await html2canvas(certificateElement, { 
-                allowTaint: true,
-                useCORS: true,
-                scale: 2, // Higher scale for better quality
-            });
-            const dataUrl = canvas.toDataURL('image/png');
-            const link = document.createElement('a');
+            const pdfBlob = await generatePdfBlob();
+            const url = URL.createObjectURL(pdfBlob);
+            const link = document.createElement("a");
+            link.download = `${userName}-${course.title}-certificate.pdf`;
+            link.href = url;
+            link.click();
+            URL.revokeObjectURL(url);
+            toast({ title: "PDF downloaded!", description: "Your certificate has been saved as a PDF." });
+        } catch (error) {
+            console.error("Error generating PDF:", error);
+            toast({ variant: "destructive", title: "Failed to generate PDF." });
+        } finally {
+            setIsGenerating(false);
+        }
+    }, [generatePdfBlob, userName, course.title, toast]);
+
+    const handleSavePdf = useCallback(async () => {
+        setIsGenerating(true);
+        try {
+            const pdfBlob = await generatePdfBlob();
+            const url = await uploadPdfToStorage(pdfBlob);
+            setPdfUrl(url);
+            setHasPdf(true);
+            await saveCertificateRecord(url);
+            toast({ title: "Certificate saved!", description: "Your PDF is now available in your certificates." });
+        } catch (error) {
+            console.error("Error saving PDF:", error);
+            toast({ variant: "destructive", title: "Failed to save certificate." });
+        } finally {
+            setIsGenerating(false);
+        }
+    }, [generatePdfBlob, uploadPdfToStorage, saveCertificateRecord, toast]);
+
+    const handleDownloadPdf = useCallback(async () => {
+        if (hasPdf && pdfUrl) {
+            window.open(pdfUrl, "_blank");
+        } else {
+            await handleGenerateAndDownloadPdf();
+        }
+    }, [hasPdf, pdfUrl, handleGenerateAndDownloadPdf]);
+
+    const handleDownloadImage = useCallback(async () => {
+        setIsGenerating(true);
+        try {
+            const canvas = await captureCertificate();
+            const dataUrl = canvas.toDataURL("image/png");
+            const link = document.createElement("a");
             link.download = `${userName}-${course.title}-certificate.png`;
             link.href = dataUrl;
             link.click();
         } catch (error) {
             console.error("Error generating image:", error);
-            toast({ variant: 'destructive', title: 'Failed to download certificate image.' });
+            toast({ variant: "destructive", title: "Failed to download image." });
+        } finally {
+            setIsGenerating(false);
         }
-    };
-    
-    const handleEmailCertificate = async () => {
+    }, [captureCertificate, userName, course.title, toast]);
+
+    const handleEmailCertificate = useCallback(async () => {
         if (!email) {
-            toast({ variant: 'destructive', title: 'Please enter a valid email address.' });
+            toast({ variant: "destructive", title: "Please enter a valid email address." });
             return;
         }
         setIsEmailing(true);
         try {
+            // Generate PDF + upload if not already saved
+            let finalPdfUrl = pdfUrl;
+            if (!finalPdfUrl) {
+                const pdfBlob = await generatePdfBlob();
+                finalPdfUrl = await uploadPdfToStorage(pdfBlob);
+                setPdfUrl(finalPdfUrl);
+                setHasPdf(true);
+                await saveCertificateRecord(finalPdfUrl);
+            }
+
+            // Capture canvas for email embed
+            const canvas = await captureCertificate();
+            const imgData = canvas.toDataURL("image/png");
+
             const certificateUrl = `${window.location.origin}/certificate/${course.id}`;
-            
-            // Write to the 'mail' collection to trigger the extension
-            await addDoc(collection(db, 'mail'), {
+
+            await addDoc(collection(db, "mail"), {
                 to: [email],
                 message: {
                     subject: `Your Certificate for ${course.title}`,
                     html: `
-                        <h1>Congratulations, ${userName}!</h1>
-                        <p>You have successfully completed the course: <strong>${course.title}</strong>.</p>
-                        <p>You can view and download your certificate of completion here:</p>
-                        <a href="${certificateUrl}" style="padding: 10px 15px; background-color: #007bff; color: white; text-decoration: none; border-radius: 5px;">View Certificate</a>
-                        <br/><br/>
-                        <p>Thank you for your dedication and hard work!</p>
-                    `
-                }
+                        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+                            <h1 style="color: #1e40af;">Congratulations, ${userName}!</h1>
+                            <p style="font-size: 16px; color: #333;">
+                                You have successfully completed the course: <strong>${course.title}</strong>.
+                            </p>
+                            <div style="margin: 20px 0; text-align: center;">
+                                <img src="${imgData}" alt="Certificate" style="max-width: 100%; height: auto; border: 1px solid #ddd; border-radius: 4px;" />
+                            </div>
+                            <p style="margin: 20px 0;">
+                                <a href="${finalPdfUrl}" style="display: inline-block; padding: 12px 24px; background-color: #1e40af; color: white; text-decoration: none; border-radius: 6px; font-weight: bold; margin-right: 10px;">Download PDF</a>
+                                <a href="${certificateUrl}" style="display: inline-block; padding: 12px 24px; background-color: #6b7280; color: white; text-decoration: none; border-radius: 6px; font-weight: bold;">View Online</a>
+                            </p>
+                            <p style="color: #666; font-size: 14px;">Thank you for your dedication and hard work!</p>
+                        </div>
+                    `,
+                },
             });
 
-            toast({ title: 'Email Queued!', description: `Certificate has been added to the email queue for ${email}.` });
+            toast({ title: "Email sent!", description: `Certificate PDF has been sent to ${email}.` });
             setIsEmailDialogOpen(false);
         } catch (error) {
-            console.error('Error queueing certificate email:', error);
-            toast({ variant: 'destructive', title: 'Failed to queue email.' });
+            console.error("Error sending certificate email:", error);
+            toast({ variant: "destructive", title: "Failed to send email." });
         } finally {
             setIsEmailing(false);
         }
-    };
-
+    }, [email, toast, pdfUrl, generatePdfBlob, uploadPdfToStorage, saveCertificateRecord, captureCertificate, course.id, course.title, db, userName]);
 
     return (
         <div className="flex flex-col items-center justify-center p-4">
@@ -115,17 +213,39 @@ export default function CertificatePrint({ userName, course, completionDate, tem
                 />
             </div>
             <div className="mt-4 flex flex-wrap items-center justify-center gap-2">
-                <Button onClick={handlePrint}>
-                    <Printer className="mr-2 h-4 w-4" />
-                    Print / Save as PDF
+                <Button onClick={handleDownloadPdf} disabled={isGenerating} size="lg">
+                    {isGenerating ? (
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    ) : (
+                        <FileDown className="mr-2 h-4 w-4" />
+                    )}
+                    {hasPdf ? "Open PDF" : "Download PDF"}
                 </Button>
-                <Button onClick={handleDownload} variant="outline">
+
+                {!hasPdf && (
+                    <Button onClick={handleSavePdf} disabled={isGenerating} variant="outline">
+                        {isGenerating ? (
+                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        ) : (
+                            <CheckCircle2 className="mr-2 h-4 w-4" />
+                        )}
+                        Save to My Certificates
+                    </Button>
+                )}
+
+                <Button onClick={handleDownloadImage} variant="outline" disabled={isGenerating}>
                     <Download className="mr-2 h-4 w-4" />
                     Download as Image
                 </Button>
-                 <Dialog open={isEmailDialogOpen} onOpenChange={setIsEmailDialogOpen}>
+
+                <Button onClick={handlePrint} variant="outline">
+                    <Printer className="mr-2 h-4 w-4" />
+                    Print
+                </Button>
+
+                <Dialog open={isEmailDialogOpen} onOpenChange={setIsEmailDialogOpen}>
                     <DialogTrigger asChild>
-                         <Button variant="outline">
+                        <Button variant="outline">
                             <Mail className="mr-2 h-4 w-4" />
                             Email Certificate
                         </Button>
@@ -134,7 +254,7 @@ export default function CertificatePrint({ userName, course, completionDate, tem
                         <DialogHeader>
                             <DialogTitle>Email Your Certificate</DialogTitle>
                             <DialogDescription>
-                                Enter the email address you'd like to send this certificate to.
+                                Your certificate PDF will be attached. Enter the email address to send it to.
                             </DialogDescription>
                         </DialogHeader>
                         <div className="py-4 space-y-2">

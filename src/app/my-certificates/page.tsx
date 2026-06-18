@@ -6,7 +6,7 @@ import { useProcessedCourses } from '@/hooks/useProcessedCourses';
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Award, Eye, Linkedin, Share2, Link as LinkIcon, Lock, ArrowRight } from 'lucide-react';
+import { Award, Eye, Linkedin, Share2, Link as LinkIcon, FileDown, Lock, ArrowRight } from 'lucide-react';
 import Image from 'next/image';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import CertificatePrint from '@/components/certificate-print';
@@ -16,7 +16,7 @@ import { useToast } from '@/hooks/use-toast';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import Link from 'next/link';
 import { db } from '@/lib/firebase';
-import { collection, getDocs } from 'firebase/firestore';
+import { collection, getDocs, query, where } from 'firebase/firestore';
 import type { CourseGroup, Course, SiteSettings } from '@/lib/types';
 import { Badge } from '@/components/ui/badge';
 import { getSiteSettings } from '@/lib/data';
@@ -27,7 +27,7 @@ interface GroupedCertificate extends CourseGroup {
     completedAt?: string;
 }
 
-const CertificateCard = ({ item, settings }: { item: GroupedCertificate | CourseWithStatus, settings: SiteSettings | null }) => {
+const CertificateCard = ({ item, settings, savedPdfUrl }: { item: GroupedCertificate | CourseWithStatus, settings: SiteSettings | null, savedPdfUrl?: string | null }) => {
     const { user } = useAuth();
     const { toast } = useToast();
     const isGroup = 'courseIds' in item;
@@ -88,6 +88,11 @@ const CertificateCard = ({ item, settings }: { item: GroupedCertificate | Course
                         />
                     </DialogContent>
                 </Dialog>
+                {savedPdfUrl && (
+                    <Button variant="outline" className="w-full" onClick={() => window.open(savedPdfUrl, '_blank')}>
+                        <FileDown className="mr-2 h-4 w-4" /> PDF
+                    </Button>
+                )}
                 <DropdownMenu>
                     <DropdownMenuTrigger asChild>
                         <Button variant="outline" className="w-full">
@@ -138,6 +143,7 @@ export default function MyCertificatesPage() {
     const [individualCertCourses, setIndividualCertCourses] = useState<CourseWithStatus[]>([]);
     const [loadingGroups, setLoadingGroups] = useState(true);
     const [siteSettings, setSiteSettings] = useState<SiteSettings | null>(null);
+    const [savedPdfUrls, setSavedPdfUrls] = useState<Record<string, string>>({});
 
 
     const canViewPage = hasPermission('viewDashboard');
@@ -145,6 +151,25 @@ export default function MyCertificatesPage() {
 
     useEffect(() => {
         getSiteSettings().then(setSiteSettings);
+
+        // Fetch saved PDF URLs from storage
+        const fetchSavedPdfs = async () => {
+            if (!user) return;
+            try {
+                const q = query(collection(db, "certificates"), where("userId", "==", user.uid));
+                const snap = await getDocs(q);
+                const urls: Record<string, string> = {};
+                snap.docs.forEach(d => {
+                    const data = d.data();
+                    urls[data.courseId] = data.pdfUrl;
+                });
+                setSavedPdfUrls(urls);
+            } catch {
+                // Collection may not exist yet — that's fine
+            }
+        };
+        fetchSavedPdfs();
+
         const fetchCourseGroups = async () => {
             if (coursesLoading || !user) {
                 setLoadingGroups(false);
@@ -217,7 +242,7 @@ export default function MyCertificatesPage() {
             ) : allCertificates.length > 0 ? (
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
                     {allCertificates.map(item => (
-                        <CertificateCard key={item.id} item={item} settings={siteSettings} />
+                        <CertificateCard key={item.id} item={item} settings={siteSettings} savedPdfUrl={savedPdfUrls[item.id]} />
                     ))}
                 </div>
             ) : (
