@@ -113,7 +113,7 @@ export function GloryParticipant({
           </p>
         </div>
 
-        {cameras.length > 0 && (
+        {cameras.length > 0 && selectedCamera && (
           <div className="w-full max-w-xs space-y-2 text-left">
             <Label htmlFor="camera-select">Camera</Label>
             <Select value={selectedCamera} onValueChange={setSelectedCamera}>
@@ -132,7 +132,7 @@ export function GloryParticipant({
           </div>
         )}
 
-        {mics.length > 0 && (
+        {mics.length > 0 && selectedMic && (
           <div className="w-full max-w-xs space-y-2 text-left">
             <Label htmlFor="mic-select">Microphone</Label>
             <Select value={selectedMic} onValueChange={setSelectedMic}>
