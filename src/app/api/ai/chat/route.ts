@@ -1,10 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { askGroq } from "@/lib/ai/groq";
-import { GLORY_AI_SYSTEM_PROMPT } from "@/lib/ai/chat-config";
+import { buildSystemPrompt } from "@/lib/ai/chat-config";
 
 export async function POST(request: NextRequest) {
   try {
-    const { question, history } = await request.json();
+    const { question, history, role, canViewAdmin } = await request.json();
 
     if (!question || typeof question !== "string" || !question.trim()) {
       return NextResponse.json(
@@ -13,8 +13,13 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    const systemPrompt = buildSystemPrompt({
+      role: role || "unauthenticated",
+      canViewAdmin: canViewAdmin === true,
+    });
+
     const messages = [
-      { role: "system", content: GLORY_AI_SYSTEM_PROMPT },
+      { role: "system", content: systemPrompt },
       ...(Array.isArray(history) ? history.slice(-10) : []),
       { role: "user", content: question.trim() },
     ];

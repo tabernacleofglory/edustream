@@ -5,6 +5,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { X, MessageCircle, Send, Bot, User } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+import { useAuth } from "@/hooks/use-auth";
 
 interface ChatMessage {
   role: "user" | "assistant";
@@ -37,6 +38,7 @@ function saveHistory(messages: ChatMessage[]) {
 }
 
 export default function AiChatWidget() {
+  const { user } = useAuth();
   const [isOpen, setIsOpen] = useState(false);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
@@ -98,12 +100,17 @@ export default function AiChatWidget() {
         content: m.content,
       }));
 
+      const role = user?.role || "unauthenticated";
+      const canViewAdmin = user?.role === "admin" || user?.role === "developer";
+
       const res = await fetch("/api/ai/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           question: text,
           history: historyForApi.slice(0, -1),
+          role,
+          canViewAdmin,
         }),
       });
 
