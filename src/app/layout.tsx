@@ -4,6 +4,7 @@ import "./globals.css";
 import { getSiteSettings } from "@/lib/data";
 import { Providers } from "@/components/providers";
 import LiveChatLoader from "@/components/live-chat-loader";
+import AiChatWidget from "@/components/ai-chat-widget";
 
 const inter = Inter({
   subsets: ["latin"],
@@ -73,6 +74,7 @@ export default function RootLayout({
           {children}
         </Providers>
         <LiveChatLoader />
+        <AiChatWidget />
       </body>
     </html>
   );
