@@ -127,6 +127,10 @@ export default function CertificatePrint({ userName, course, completionDate, tem
         }
     }, [hasPdf, pdfUrl, handleGenerateAndDownloadPdf]);
 
+    const handlePrint = useCallback(() => {
+        window.print();
+    }, []);
+
     const handleDownloadImage = useCallback(async () => {
         setIsGenerating(true);
         try {
