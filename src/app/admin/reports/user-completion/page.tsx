@@ -149,7 +149,7 @@ export default function UserCompletionReport() {
   const fetchData = useCallback(async () => {
     setIsLoading(true);
     try {
-      const [usersSnap, coursesSnap, laddersSnap, progressSnap, campusesSnap, enrollSnap, onsiteSnap, videoProgressSnap, quizResultsSnap, languagesSnap, formSubmissionsSnap] = await Promise.all([
+      const [usersSnap, coursesSnap, laddersSnap, progressSnap, campusesSnap, enrollSnap, onsiteSnap, videoProgressSnap, quizResultsSnap, languagesSnap] = await Promise.all([
         getDocs(collection(db, 'users')),
         getDocs(query(collection(db, 'courses'), where('status', '==', 'published'))),
         getDocs(query(collection(db, 'courseLevels'), orderBy('order'))),
@@ -160,7 +160,6 @@ export default function UserCompletionReport() {
         getDocs(collection(db, 'userVideoProgress')),
         getDocs(query(collection(db, 'userQuizResults'), where('passed', '==', true))),
         getDocs(query(collection(db, 'languages'), where('status', '==', 'published'))),
-        getDocs(collectionGroup(db, 'submissions'))
       ]);
 
       const cmap = new Map<string, Set<string>>();
@@ -200,7 +199,7 @@ export default function UserCompletionReport() {
           trackDate(d.data().userId, d.data().courseId, ts);
       });
 
-      // 3. Fallback verification
+      // 3. Fallback verification (video + quiz completion check)
       const passedQuizzes = new Map<string, Set<string>>();
       quizResultsSnap.forEach(d => {
           const r = d.data();
@@ -216,29 +215,18 @@ export default function UserCompletionReport() {
           data.videoProgress?.forEach((vp: any) => { if(vp.completed) videoDone.get(uid)!.add(vp.videoId); });
       });
 
-      const formDone = new Map<string, Set<string>>();
-      formSubmissionsSnap.forEach(d => {
-          const data = d.data();
-          if (data.userId && data.formId) {
-              if(!formDone.has(data.userId)) formDone.set(data.userId, new Set());
-              formDone.get(data.userId)!.add(data.formId);
-          }
-      });
-
       const coursesList = coursesSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Course));
 
       usersSnap.docs.forEach(uDoc => {
           const uid = uDoc.id;
           const myPassedQuizzes = passedQuizzes.get(uid) || new Set();
           const myVideoDone = videoDone.get(uid) || new Set();
-          const myFormDone = formDone.get(uid) || new Set();
 
           coursesList.forEach(c => {
               if(cmap.get(uid)?.has(c.id)) return;
               const vOk = (c.videos || []).every(id => myVideoDone.has(id));
               const qOk = (c.quizIds || []).every(id => myPassedQuizzes.has(id));
-              const fOk = !c.formId || myFormDone.has(c.formId);
-              if(vOk && qOk && fOk && ((c.videos?.length || 0) > 0 || (c.quizIds?.length || 0) > 0 || !!c.formId)) {
+              if(vOk && qOk && ((c.videos?.length || 0) > 0 || (c.quizIds?.length || 0) > 0)) {
                   addComp(uid, c.id);
               }
           });
