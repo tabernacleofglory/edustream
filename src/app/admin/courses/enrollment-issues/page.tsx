@@ -40,16 +40,22 @@ export default function EnrollmentIssuesPage() {
     const { toast } = useToast();
     const [syncingCourseId, setSyncingCourseId] = useState<string | null>(null);
     const [viewingDiscrepancyCourse, setViewingDiscrepancyCourse] = useState<DiscrepancyData | null>(null);
-    const { hasPermission } = useAuth();
+    const { user: currentUser, canViewAllCampuses, hasPermission } = useAuth();
     
     const canManageCourses = hasPermission('manageCourses');
 
     const calculateDiscrepancies = useCallback(async () => {
         setLoading(true);
         try {
+            // Campus filtering: non-admin users only see users from their campus
+            let usersQuery = collection(db, 'users');
+            if (!canViewAllCampuses && currentUser?.campus && currentUser.campus !== 'All Campuses') {
+                usersQuery = query(usersQuery, where('campus', '==', currentUser.campus));
+            }
+
             const [coursesSnap, usersSnap, enrollmentsSnap, progressSnap, quizzesSnap, courseGroupsSnap] = await Promise.all([
                 getDocs(query(collection(db, 'courses'), where('status', '==', 'published'))),
-                getDocs(collection(db, 'users')),
+                getDocs(usersQuery),
                 getDocs(collection(db, 'enrollments')),
                 getDocs(collection(db, 'userVideoProgress')),
                 getDocs(collection(db, 'userQuizResults')),
@@ -128,7 +134,7 @@ export default function EnrollmentIssuesPage() {
         } finally {
             setLoading(false);
         }
-    }, [toast, db]);
+    }, [toast, db, canViewAllCampuses, currentUser]);
 
     const groupedDiscrepancyData = useMemo(() => {
         const groups: { [key: string]: DiscrepancyData[] } = {};

@@ -166,9 +166,15 @@ export default function EnrollmentsPage() {
     else setLoading(true);
     
     try {
+      // Campus filtering: non-admin users only see users from their campus
+      let usersQuery = collection(db, "users");
+      if (!canViewAllCampuses && currentUser?.campus && currentUser.campus !== 'All Campuses') {
+          usersQuery = query(usersQuery, where('campus', '==', currentUser.campus));
+      }
+
       const [enrollSnap, usersSnap, coursesSnap, campusesSnap] = await Promise.all([
         getDocs(query(collection(db, "enrollments"), orderBy("enrolledAt", "desc"))),
-        getDocs(collection(db, "users")),
+        getDocs(usersQuery),
         getDocs(collection(db, "courses")),
         getDocs(query(collection(db, "Campus"), orderBy("Campus Name"))),
       ]);
@@ -199,7 +205,7 @@ export default function EnrollmentsPage() {
       setLoading(false);
       setIsRefreshing(false);
     }
-  }, [db, toast, syncingId]);
+  }, [db, toast, syncingId, canViewAllCampuses, currentUser]);
 
   useEffect(() => {
     if (canManage) {
