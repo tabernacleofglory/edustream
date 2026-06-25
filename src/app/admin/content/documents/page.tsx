@@ -279,9 +279,11 @@ export default function DocumentsPage() {
                                 <Button size="icon" className="text-white bg-gradient-to-r from-pink-500 to-orange-400 hover:from-pink-600 hover:to-orange-500" onClick={(e) => handleActionClick(e, () => setEditingDocument(docItem))}>
                                     <Edit className="h-4 w-4" />
                                 </Button>
+                                {user?.role === 'developer' && (
                                 <Button size="icon" variant="destructive" onClick={(e) => handleActionClick(e, () => handleDelete(docItem))}>
                                     <Trash className="h-4 w-4" />
                                 </Button>
+                                )}
                             </div>
                            <p className="absolute bottom-0 left-0 right-0 bg-black/60 text-white text-xs p-1 truncate">{docItem.title}</p>
                        </Card>

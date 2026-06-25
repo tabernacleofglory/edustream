@@ -3,6 +3,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/hooks/use-auth";
 import { db } from "@/lib/firebase";
 import { collection, addDoc, serverTimestamp, getDocs, query, doc, updateDoc, deleteDoc, orderBy, where } from "firebase/firestore";
 import type { Course, CourseGroup } from "@/lib/types";
@@ -133,6 +134,7 @@ const GroupForm = ({ group, onSave, closeDialog }: { group?: CourseGroup | null;
 
 
 export default function CourseGroupsPage() {
+    const { user: currentUser } = useAuth();
     const { toast } = useToast();
     const [groups, setGroups] = useState<CourseGroup[]>([]);
     const [loading, setLoading] = useState(true);
@@ -227,6 +229,7 @@ export default function CourseGroupsPage() {
                                             </div>
                                             <div className="flex items-center gap-1">
                                                 <Button size="icon" variant="ghost" onClick={() => { setEditingGroup(group); setIsDialogOpen(true); }}><Edit className="h-4 w-4" /></Button>
+                                                {currentUser?.role === 'developer' && (
                                                 <AlertDialog>
                                                     <AlertDialogTrigger asChild><Button size="icon" variant="destructive"><Trash2 className="h-4 w-4" /></Button></AlertDialogTrigger>
                                                     <AlertDialogContent>
@@ -240,6 +243,7 @@ export default function CourseGroupsPage() {
                                                         </AlertDialogFooter>
                                                     </AlertDialogContent>
                                                 </AlertDialog>
+                                                )}
                                             </div>
                                         </div>
                                     </div>

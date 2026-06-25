@@ -22,6 +22,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Edit, Plus, Trash, Loader2, Eye, Users as UsersIcon, Download, Award, Shield } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/hooks/use-auth";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -54,6 +55,7 @@ export default function LadderManagementPage() {
     const [ladders, setLadders] = useState<Ladder[]>([]);
     const [users, setUsers] = useState<User[]>([]);
     const [loading, setLoading] = useState(true);
+    const { user: currentUser } = useAuth();
     const { toast } = useToast();
     const [isDialogOpen, setIsDialogOpen] = useState(false);
     const [isViewDialogOpen, setIsViewDialogOpen] = useState(false);
@@ -289,9 +291,11 @@ export default function LadderManagementPage() {
                                                 <Button variant="ghost" size="icon" onClick={() => openEditDialog(ladder)}>
                                                     <Edit className="h-4 w-4" />
                                                 </Button>
-                                                <Button variant="destructive" size="icon" onClick={() => handleDeleteLadder(ladder.id)}>
-                                                    <Trash className="h-4 w-4" />
-                                                </Button>
+                                                {currentUser?.role === 'developer' && (
+                                                    <Button variant="destructive" size="icon" onClick={() => handleDeleteLadder(ladder.id)}>
+                                                        <Trash className="h-4 w-4" />
+                                                    </Button>
+                                                )}
                                             </TableCell>
                                         </TableRow>
                                     )

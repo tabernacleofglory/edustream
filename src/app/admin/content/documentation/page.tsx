@@ -227,6 +227,7 @@ export default function DocumentationPage() {
                       >
                         <Edit className="h-4 w-4" />
                       </Button>
+                      {user?.role === 'developer' && (
                       <AlertDialog>
                         <AlertDialogTrigger asChild>
                           <Button
@@ -258,6 +259,7 @@ export default function DocumentationPage() {
                           </AlertDialogFooter>
                         </AlertDialogContent>
                       </AlertDialog>
+                      )}
                     </div>
                   </div>
                 ))}

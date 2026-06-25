@@ -739,7 +739,7 @@ export default function ManageCompletionsPage() {
            <div className="flex items-center gap-2 mb-4">
               <Checkbox id="select-all" checked={selectAllOnPage} onCheckedChange={toggleSelectAllOnPage} />
               <label htmlFor="select-all" className="text-sm font-medium">Select all on page</label>
-              {selectedLogIds.size > 0 && (
+              {selectedLogIds.size > 0 && adminUser?.role === 'developer' && (
                 <Button variant="destructive" size="sm" onClick={handleDeleteSelected}>
                   <Trash2 className="h-4 w-4 mr-2" /> Delete selected ({selectedLogIds.size})
                 </Button>

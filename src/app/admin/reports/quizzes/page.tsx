@@ -321,7 +321,7 @@ export default function QuizReportsPage() {
               <CardDescription>User scores and pass / fail status for all quiz attempts.</CardDescription>
             </div>
             <div className="flex flex-wrap gap-2">
-              {selectedQuizResults.length > 0 && (
+              {selectedQuizResults.length > 0 && currentUser?.role === 'developer' && (
                   <Button variant="destructive" onClick={handleDeleteSelectedQuizResults}>
                     <Trash2 className="mr-2 h-4 w-4" />
                     Delete Selected ({selectedQuizResults.length})

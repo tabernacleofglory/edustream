@@ -314,9 +314,11 @@ export default function MusicPage() {
                                 <Button size="icon" className="text-white bg-gradient-to-r from-pink-500 to-orange-400 hover:from-pink-600 hover:to-orange-500" onClick={() => setEditingAudio(audio)}>
                                     <Edit className="h-4 w-4" />
                                 </Button>
+                                {user?.role === 'developer' && (
                                 <Button size="icon" variant="destructive" onClick={() => handleDelete(audio)}>
                                     <Trash className="h-4 w-4" />
                                 </Button>
+                                )}
                            </div>
                         </div>
                     ))
