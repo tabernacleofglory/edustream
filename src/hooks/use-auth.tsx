@@ -80,11 +80,13 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   const user = impersonatedUser ?? realUser;
   const isImpersonating = !!impersonatedUser;
 
-  const isCurrentUserAdmin = realUser?.role === 'admin' || realUser?.role === 'developer';
-  const canViewAllCampuses = isCurrentUserAdmin || realUser?.campus === 'All Campuses';
+  // When impersonating, reflect the impersonated user's permissions and status
+  const activeUser = impersonatedUser || realUser;
+  const isCurrentUserAdmin = (impersonatedUser || realUser)?.role === 'admin' || (impersonatedUser || realUser)?.role === 'developer';
+  const canViewAllCampuses = isCurrentUserAdmin || (impersonatedUser || realUser)?.campus === 'All Campuses';
   
-  // Profile completion is checked against the ACTIVE user (so admin sees if student is restricted)
-  const isProfileComplete = !!user?.isInHpGroup && !!user?.language && validLanguages.includes(user.language || '') && !!user?.locationPreference;
+  // Profile completion is checked against the ACTIVE impersonated user
+  const isProfileComplete = !!activeUser?.isInHpGroup && !!activeUser?.language && validLanguages.includes(activeUser?.language || '') && !!activeUser?.locationPreference;
 
   useEffect(() => {
     const fetchValidLanguages = async () => {
@@ -287,8 +289,9 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   }, [auth, fetchUserDocument]);
 
   useEffect(() => {
-    // Navigation guards run against the real user, not the impersonated one
-    if (loading || validLanguages.length === 0) return;
+    // When impersonating, the active user is already authenticated.
+    // Skip auth guards to avoid redirecting the admin away.
+    if (loading || validLanguages.length === 0 || isImpersonating) return;
 
     const authPages = ['/login', '/signup'];
     const isAuthPage = authPages.some(path => pathname.startsWith(path));
@@ -308,7 +311,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
         router.push('/login');
       }
     }
-  }, [realUser, loading, pathname, router, isProfileComplete, validLanguages]);
+  }, [realUser, loading, pathname, router, isProfileComplete, validLanguages, isImpersonating]);
 
 
   const hasPermission = useCallback((permission: string) => {
