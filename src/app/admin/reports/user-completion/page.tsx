@@ -149,8 +149,15 @@ export default function UserCompletionReport() {
   const fetchData = useCallback(async () => {
     setIsLoading(true);
     try {
+      // Campus filtering: if user doesn't have view-all permission and has a campus (not All Campuses),
+      // only load users from their campus (same logic as user management page)
+      let usersQuery = collection(db, 'users');
+      if (!canViewAllCampuses && currentUser?.campus && currentUser.campus !== 'All Campuses') {
+          usersQuery = query(usersQuery, where('campus', '==', currentUser.campus));
+      }
+
       const [usersSnap, coursesSnap, laddersSnap, progressSnap, campusesSnap, enrollSnap, onsiteSnap, videoProgressSnap, quizResultsSnap, languagesSnap] = await Promise.all([
-        getDocs(collection(db, 'users')),
+        getDocs(usersQuery),
         getDocs(query(collection(db, 'courses'), where('status', '==', 'published'))),
         getDocs(query(collection(db, 'courseLevels'), orderBy('order'))),
         getDocs(collection(db, 'userContentProgress')),
@@ -259,7 +266,7 @@ export default function UserCompletionReport() {
       toast({ title: 'Error', description: 'Failed to fetch report data.', variant: 'destructive' });
       setIsLoading(false);
     }
-  }, [db, toast]);
+  }, [db, toast, canViewAllCampuses, currentUser]);
 
   useEffect(() => {
     fetchData();
