@@ -165,20 +165,19 @@ export default function AiChatWidget() {
       {/* Floating button */}
       <AnimatePresence>
         {!isOpen && !isDismissed && (
-          <motion.button
+          <motion.div
             initial={{ scale: 0, opacity: 0 }}
             animate={{ scale: 1, opacity: 1 }}
             exit={{ scale: 0, opacity: 0 }}
             transition={{ type: "spring", stiffness: 300, damping: 25 }}
-            onMouseEnter={(e) => {
-              const el = e.currentTarget.querySelector(".dismiss-btn") as HTMLElement;
+            onMouseEnter={() => {
+              const el = document.querySelector(".dismiss-btn") as HTMLElement;
               if (el) el.style.opacity = "1";
             }}
-            onMouseLeave={(e) => {
-              const el = e.currentTarget.querySelector(".dismiss-btn") as HTMLElement;
+            onMouseLeave={() => {
+              const el = document.querySelector(".dismiss-btn") as HTMLElement;
               if (el) el.style.opacity = "0";
             }}
-            className="group relative"
           >
             <button
               onClick={() => setIsOpen(true)}
@@ -193,13 +192,13 @@ export default function AiChatWidget() {
                 setIsDismissed(true);
                 localStorage.setItem("glory_chat_dismissed", "true");
               }}
-              className="dismiss-btn absolute -top-1 -right-1 z-50 flex h-5 w-5 items-center justify-center rounded-full bg-red-600 text-white text-[10px] opacity-0 hover:opacity-100 transition-opacity cursor-pointer"
+              className="dismiss-btn fixed bottom-[88px] right-2 z-[51] flex h-5 w-5 items-center justify-center rounded-full bg-red-600 text-white text-[10px] opacity-0 hover:opacity-100 transition-opacity cursor-pointer"
               aria-label="Hide chat button"
               title="Hide"
             >
               <X className="h-3 w-3" />
             </button>
-          </motion.button>
+          </motion.div>
         )}
       </AnimatePresence>
 
