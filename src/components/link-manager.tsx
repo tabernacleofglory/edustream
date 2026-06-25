@@ -2,6 +2,7 @@
 "use client";
 
 import { useState, useEffect, FormEvent, useCallback } from "react";
+import { useAuth } from "@/hooks/use-auth";
 import { useToast } from "@/hooks/use-toast";
 import { getFirebaseFirestore } from "@/lib/firebase";
 import { collection, addDoc, serverTimestamp, getDocs, query, doc, deleteDoc, orderBy, updateDoc, where } from "firebase/firestore";
@@ -61,6 +62,7 @@ const EditLinkForm = ({ link, onUpdateSuccess, closeDialog }: { link: NavLink, o
 }
 
 export default function LinkManager() {
+    const { user: currentUser } = useAuth();
     const [links, setLinks] = useState<NavLink[]>([]);
     const [newLink, setNewLink] = useState({ title: '', url: '' });
     const [isLoading, setIsLoading] = useState(true);
@@ -199,7 +201,7 @@ export default function LinkManager() {
                                 <Button variant="ghost" size="icon" onClick={() => setEditingLink(link)}>
                                     <Edit className="h-4 w-4" />
                                 </Button>
-                                <AlertDialog>
+                                {currentUser?.role === 'developer' && <AlertDialog>
                                     <AlertDialogTrigger asChild>
                                         <Button variant="ghost" size="icon"><Trash className="h-4 w-4 text-destructive" /></Button>
                                     </AlertDialogTrigger>
@@ -213,7 +215,7 @@ export default function LinkManager() {
                                             <AlertDialogAction onClick={() => handleDeleteLink(link.id)}>Continue</AlertDialogAction>
                                         </AlertDialogFooter>
                                     </AlertDialogContent>
-                                </AlertDialog>
+                                </AlertDialog>}
                             </div>
                         </div>
                     ))}

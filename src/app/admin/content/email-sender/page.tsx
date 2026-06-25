@@ -101,7 +101,7 @@ const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
 export default function EmailSenderPage() {
   const { toast } = useToast();
-  const { hasPermission } = useAuth();
+  const { user: currentUser, hasPermission } = useAuth();
   const [users, setUsers] = useState<AppUser[]>([]);
   const [templates, setTemplates] = useState<EmailTemplate[]>([]);
   const [ladders, setLadders] = useState<Ladder[]>([]);
@@ -901,7 +901,7 @@ export default function EmailSenderPage() {
                 </SheetFooter>
               </SheetContent>
             </Sheet>
-            {sentEmails.length > 0 && (
+            {sentEmails.length > 0 && currentUser?.role === 'developer' && (
               <Button variant="outline" size="sm" onClick={handleClearLog} disabled={isDeletingLog}>
                 {isDeletingLog ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Trash2 className="h-4 w-4 mr-2" />}
                 Clear Log

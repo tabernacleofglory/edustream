@@ -4,6 +4,7 @@
 import { useState, useEffect, FormEvent } from "react";
 import { getFirebaseFirestore } from "@/lib/firebase";
 import { collection, addDoc, getDocs, doc, deleteDoc, serverTimestamp, query, orderBy, updateDoc } from "firebase/firestore";
+import { useAuth } from "@/hooks/use-auth";
 import { useToast } from "@/hooks/use-toast";
 import {
   Card,
@@ -118,7 +119,8 @@ const CampusEditForm = ({ campus, onUpdateSuccess, closeDialog }: { campus: Camp
 }
 
 export default function CampusManagement() {
-  const [campuses, setCampuses] = useState<Campus[]>([]);
+    const { user: currentUser } = useAuth();
+    const [campuses, setCampuses] = useState<Campus[]>([]);
   const [newCampus, setNewCampus] = useState({ name: "", address: "", email: "", phone: "" });
   const [isLoading, setIsLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -290,7 +292,7 @@ export default function CampusManagement() {
                         <Button type="button" variant="ghost" size="icon" onClick={() => setEditingCampus(campus)}>
                             <Edit className="h-4 w-4" />
                         </Button>
-                        <AlertDialog>
+                        {currentUser?.role === 'developer' && <AlertDialog>
                             <AlertDialogTrigger asChild>
                                 <Button variant="ghost" size="icon" disabled={campus["Campus Name"] === 'All Campuses'}>
                                     <Trash className="h-4 w-4 text-destructive" />
@@ -311,7 +313,7 @@ export default function CampusManagement() {
                                 </AlertDialogAction>
                                 </AlertDialogFooter>
                             </AlertDialogContent>
-                        </AlertDialog>
+                        </AlertDialog>}
                     </div>
                 </div>
                 ))

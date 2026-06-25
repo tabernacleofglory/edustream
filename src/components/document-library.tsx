@@ -200,7 +200,7 @@ export default function DocumentLibrary({ onSelectDocuments, initialSelectedDocs
                                 </CardContent>
                                 <div className="absolute top-1 right-1 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                                     <Button size="icon" variant="ghost" className="h-6 w-6" onClick={() => handleEdit(docItem)}><Edit className="h-4 w-4" /></Button>
-                                    <Button size="icon" variant="ghost" className="h-6 w-6" onClick={() => handleDelete(docItem.id)}><Trash2 className="h-4 w-4 text-destructive" /></Button>
+                                    {user?.role === 'developer' && <Button size="icon" variant="ghost" className="h-6 w-6" onClick={() => handleDelete(docItem.id)}><Trash2 className="h-4 w-4 text-destructive" /></Button>}
                                 </div>
                                 {isSelected && (
                                     <div className="absolute top-2 left-2 bg-primary text-primary-foreground rounded-full p-1">

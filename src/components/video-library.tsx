@@ -93,7 +93,7 @@ export default function VideoLibrary({ videos: initialVideos = [], isLoading: in
     const { toast } = useToast();
     const [selectedVideos, setSelectedVideos] = useState<Video[]>([]);
     const [previewingVideo, setPreviewingVideo] = useState<Video | null>(null);
-    const { user } = useAuth();
+    const { user: currentUser } = useAuth();
     
     // State for the edit form
     const [title, setTitle] = useState('');
@@ -322,7 +322,7 @@ export default function VideoLibrary({ videos: initialVideos = [], isLoading: in
                  <Button variant="outline" size="sm" className="w-full" onClick={(e) => {e.stopPropagation(); setEditingVideo(video)}}>
                     <Edit className="mr-2 h-3 w-3" /> Edit
                 </Button>
-                <AlertDialog>
+                {currentUser?.role === 'developer' && <AlertDialog>
                     <AlertDialogTrigger asChild>
                         <Button variant="outline" size="sm" className="w-full" onClick={e => e.stopPropagation()}>
                             <Trash2 className="mr-2 h-3 w-3" /> Remove
@@ -338,7 +338,7 @@ export default function VideoLibrary({ videos: initialVideos = [], isLoading: in
                             <AlertDialogAction onClick={() => handleRemove(video)}>Remove</AlertDialogAction>
                         </AlertDialogFooter>
                     </AlertDialogContent>
-                </AlertDialog>
+                </AlertDialog>}
                  {video.type === 'youtube' && (
                     <Button variant="outline" size="sm" className="w-full" onClick={(e) => {e.stopPropagation(); handleRefetch(video);}}>
                         {isUpdating ? <Loader2 className="mr-2 h-3 w-3 animate-spin" /> : <RefreshCw className="mr-2 h-3 w-3" />}

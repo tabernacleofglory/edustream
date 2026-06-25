@@ -4,6 +4,7 @@
 import { useState, useEffect, FormEvent, useCallback } from "react";
 import { getFirebaseFirestore } from "@/lib/firebase";
 import { collection, addDoc, getDocs, doc, deleteDoc, serverTimestamp, query, orderBy, updateDoc } from "firebase/firestore";
+import { useAuth } from "@/hooks/use-auth";
 import { useToast } from "@/hooks/use-toast";
 import {
   Card,
@@ -117,9 +118,9 @@ const SubFieldManager = ({ field, onUpdate }: { field: CustomField, onUpdate: ()
                         subFields.map(sf => (
                             <div key={sf.id} className="flex items-center justify-between p-2 hover:bg-muted/50 rounded-md">
                                 <p className="font-medium text-sm">{sf.name}</p>
-                                <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => handleDeleteSubField(sf.id)}>
+                                {currentUser?.role === 'developer' && <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => handleDeleteSubField(sf.id)}>
                                     <Trash className="h-4 w-4 text-destructive" />
-                                </Button>
+                                </Button>}
                             </div>
                         ))
                     ) : (
@@ -132,7 +133,8 @@ const SubFieldManager = ({ field, onUpdate }: { field: CustomField, onUpdate: ()
 }
 
 export default function CustomFieldManagement() {
-  const [fields, setFields] = useState<CustomField[]>([]);
+    const { user: currentUser } = useAuth();
+    const [fields, setFields] = useState<CustomField[]>([]);
   const [newFieldName, setNewFieldName] = useState("");
   const [isLoading, setIsLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -246,10 +248,10 @@ export default function CustomFieldManagement() {
                              <Button type="button" variant="ghost" size="icon" onClick={() => setEditingField(field)}>
                                 <Edit className="h-4 w-4" />
                             </Button>
-                            <AlertDialog>
-                                <AlertDialogTrigger asChild>
-                                    <Button variant="ghost" size="icon"><Trash className="h-4 w-4 text-destructive" /></Button>
-                                </AlertDialogTrigger>
+                                    {currentUser?.role === 'developer' && <AlertDialog>
+                                        <AlertDialogTrigger asChild>
+                                            <Button variant="ghost" size="icon"><Trash className="h-4 w-4 text-destructive" /></Button>
+                                        </AlertDialogTrigger>
                                 <AlertDialogContent>
                                     <AlertDialogHeader>
                                     <AlertDialogTitle>Are you sure?</AlertDialogTitle>
@@ -262,7 +264,7 @@ export default function CustomFieldManagement() {
                                     <AlertDialogAction onClick={() => handleDeleteField(field.id)}>Delete</AlertDialogAction>
                                     </AlertDialogFooter>
                                 </AlertDialogContent>
-                            </AlertDialog>
+                             </AlertDialog>}
                         </div>
                     </div>
                     ))
