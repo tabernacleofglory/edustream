@@ -91,6 +91,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Progress } from "./ui/progress";
 import { format } from "date-fns";
 import {
+  ALL_ROLES,
   getAssignableRoles,
   isHigherOrEqualRank,
 } from "@/lib/role-hierarchy";
