@@ -2,7 +2,7 @@
 "use client";
 
 import { useState, useEffect, useMemo, useCallback } from 'react';
-import { collection, getDocs, query, where, orderBy, collectionGroup, doc, getDoc } from 'firebase/firestore';
+import { collection, getDocs, query, where, orderBy, collectionGroup, doc, getDoc, Timestamp } from 'firebase/firestore';
 import { getFirebaseFirestore } from '@/lib/firebase';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -182,7 +182,7 @@ export default function UserCompletionReport() {
           const items = doc.data().completedItems || {};
           Object.entries(items).forEach(([cid, val]) => {
               addComp(doc.id, cid);
-              const ts = val?.toDate ? val.toDate() : null;
+              const ts = (val as Timestamp)?.toDate ? (val as Timestamp).toDate() : null;
               trackDate(doc.id, cid, ts);
           });
       });

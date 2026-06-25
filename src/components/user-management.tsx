@@ -554,7 +554,7 @@ export default function UserManagement() {
                             <div className="space-y-2">
                                 <Label>Roles</Label>
                                 <div className="border rounded-md p-3 space-y-2 max-h-40 overflow-y-auto bg-background">
-                                    {allRoles.map(r => (
+                                    {ALL_ROLES.map(r => (
                                         <div key={r.id} className="flex items-center gap-2">
                                             <Checkbox id={`r-${r.id}`} checked={filterRoles.includes(r.id)} onCheckedChange={(c) => { setFilterRoles(p => c ? [...p, r.id] : p.filter(x => x !== r.id)); setCurrentPage(1); }} />
                                             <Label htmlFor={`r-${r.id}`}>{r.name}</Label>
