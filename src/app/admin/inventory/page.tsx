@@ -246,9 +246,11 @@ const SubCategoryManager = ({
                                             <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => handleMove(i, 'down')} disabled={i === subCategories.length - 1 || !!editingId}>
                                                 <ArrowDown className="h-3.5 w-3.5" />
                                             </Button>
-                                            <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive" onClick={() => handleDelete(sub.id)} disabled={!!editingId}>
-                                                <Trash2 className="h-3.5 w-3.5" />
-                                            </Button>
+                                            {user?.role === 'developer' && (
+                                                <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive" onClick={() => handleDelete(sub.id)} disabled={!!editingId}>
+                                                    <Trash2 className="h-3.5 w-3.5" />
+                                                </Button>
+                                            )}
                                         </>
                                     )}
                                 </div>
