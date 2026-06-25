@@ -106,6 +106,7 @@ export default function AddUserForm({ onUserAdded, ladders }: AddUserFormProps) 
   const [availableLanguages, setAvailableLanguages] = useState<StoredItem[]>([]);
   const [isCampusDialogOpen, setIsCampusDialogOpen] = useState(false);
   const [newCampusName, setNewCampusName] = useState("");
+  const [charges, setCharges] = useState<StoredItem[]>([]);
   const [isChargeDialogOpen, setIsChargeDialogOpen] = useState(false);
   const [newChargeName, setNewChargeName] = useState("");
   const db = getFirebaseFirestore();
