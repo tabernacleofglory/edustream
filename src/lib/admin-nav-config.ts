@@ -143,7 +143,7 @@ export const navLinks: NavGroup[] = [
     items: [
       { href: "/admin/reports/courses", label: "Course Reports", i18nKey: "admin.nav.reports.courses", icon: BarChart2 },
       { href: "/admin/reports/quizzes", label: "Quiz Reports", i18nKey: "admin.nav.reports.quizzes", icon: BarChart2 },
-      { href: "/admin/reports/user-completion", label: "User Completion", i18nKey: "admin.nav.reports.user_completion", icon: BarChart2 },
+      { href: "/admin/reports/user-completion", label: "Completions", i18nKey: "admin.nav.reports.user_completion", icon: BarChart2 },
     ],
   },
   {

@@ -199,7 +199,7 @@ export default function UserCompletionReport() {
           trackDate(d.data().userId, d.data().courseId, ts);
       });
 
-      // 3. Fallback verification (video + quiz completion check)
+      // 3. Fallback data preparation (deferred execution to avoid blocking render)
       const passedQuizzes = new Map<string, Set<string>>();
       quizResultsSnap.forEach(d => {
           const r = d.data();
@@ -217,34 +217,48 @@ export default function UserCompletionReport() {
 
       const coursesList = coursesSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Course));
 
-      usersSnap.docs.forEach(uDoc => {
-          const uid = uDoc.id;
-          const myPassedQuizzes = passedQuizzes.get(uid) || new Set();
-          const myVideoDone = videoDone.get(uid) || new Set();
-
-          coursesList.forEach(c => {
-              if(cmap.get(uid)?.has(c.id)) return;
-              const vOk = (c.videos || []).every(id => myVideoDone.has(id));
-              const qOk = (c.quizIds || []).every(id => myPassedQuizzes.has(id));
-              if(vOk && qOk && ((c.videos?.length || 0) > 0 || (c.quizIds?.length || 0) > 0)) {
-                  addComp(uid, c.id);
-              }
-          });
-      });
-
       setUsers(usersSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as User)));
       setCourses(coursesList);
       setLadders(laddersSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Ladder)));
       setCampuses(campusesSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Campus)));
       setPublishedLanguages(languagesSnap.docs.map(doc => ({ id: doc.id, name: doc.data().name })));
+
+      // Set primary completion data immediately so the UI can render
       setUserCompletionsMap(cmap);
       setCompletionDatesMap(dateMap);
+      setIsLoading(false);
+
+      // Deferred fallback verification - runs after render to avoid blocking
+      setTimeout(() => {
+          const fallbackMap = new Map<string, Set<string>>();
+          cmap.forEach((v, k) => fallbackMap.set(k, new Set(v)));
+
+          usersSnap.docs.forEach(uDoc => {
+              const uid = uDoc.id;
+              const myPassedQuizzes = passedQuizzes.get(uid) || new Set();
+              const myVideoDone = videoDone.get(uid) || new Set();
+
+              coursesList.forEach(c => {
+                  if(fallbackMap.get(uid)?.has(c.id)) return;
+                  const vOk = (c.videos || []).every(id => myVideoDone.has(id));
+                  const qOk = (c.quizIds || []).every(id => myPassedQuizzes.has(id));
+                  if(vOk && qOk && ((c.videos?.length || 0) > 0 || (c.quizIds?.length || 0) > 0)) {
+                      if(!fallbackMap.has(uid)) fallbackMap.set(uid, new Set());
+                      fallbackMap.get(uid)!.add(c.id);
+                  }
+              });
+          });
+          // Only update if fallback found additional completions
+          if (fallbackMap.size > cmap.size) {
+              setUserCompletionsMap(fallbackMap);
+          }
+      }, 100);
 
     } catch (error) {
       console.error('Error fetching report data:', error);
       toast({ title: 'Error', description: 'Failed to fetch report data.', variant: 'destructive' });
+      setIsLoading(false);
     }
-    setIsLoading(false);
   }, [db, toast]);
 
   useEffect(() => {
@@ -442,9 +456,9 @@ export default function UserCompletionReport() {
       <CardHeader>
         <div className="flex flex-col sm:flex-row justify-between items-start gap-4">
             <div>
-                <CardTitle>{t('reports.user_completion.title', "User Completion Report")}</CardTitle>
+                <CardTitle>{t('reports.user_completion.title', "Completions")}</CardTitle>
                 <CardDescription>
-                    {t('reports.user_completion.description', "Comprehensive tracking of student progress based on completed curriculum items.")}
+                    {t('reports.user_completion.description', "Track student completion across courses and ladders.")}
                     {" "}
                     ({reportData.length} students matching current filters)
                 </CardDescription>
