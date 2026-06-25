@@ -1,8 +1,17 @@
-
 [
   {
-    "origin": ["*"],
-    "method": ["GET"],
+    "origin": [
+      "https://app.glorytgtraining.com",
+      "https://glorytgtraining.com",
+      "http://localhost:9002"
+    ],
+    "method": ["GET", "HEAD", "PUT", "POST", "DELETE"],
+    "responseHeader": [
+      "Content-Type",
+      "Content-Disposition",
+      "Cache-Control",
+      "x-goog-meta-uploaderid"
+    ],
     "maxAgeSeconds": 3600
   }
 ]
