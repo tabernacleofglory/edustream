@@ -62,7 +62,8 @@ import {
 } from "@/components/ui/sheet";
 import { Avatar, AvatarImage, AvatarFallback } from "./ui/avatar";
 import { Button } from "./ui/button";
-import { 
+import { Badge } from "./ui/badge";
+import {
   Edit, Eye, Loader2, Plus, Trash, Download, 
   ChevronLeft, ChevronRight, ListFilter, 
   X, CheckCircle2, Shield, Phone, MapPin, Calendar, 
@@ -79,7 +80,6 @@ import {
 } from "lucide-react";
 import { Skeleton } from "./ui/skeleton";
 import AddUserForm from "./add-user-form";
-import { Badge } from "./ui/badge";
 import Papa from "papaparse";
 import { Input } from "./ui/input";
 import { Label } from "./ui/label";
@@ -90,6 +90,10 @@ import { useToast } from "@/hooks/use-toast";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Progress } from "./ui/progress";
 import { format } from "date-fns";
+import {
+  getAssignableRoles,
+  isHigherOrEqualRank,
+} from "@/lib/role-hierarchy";
 
 const PAGE_SIZE_DEFAULT = 10;
 
@@ -148,26 +152,7 @@ export default function UserManagement() {
   const [currentPage, setCurrentPage] = useState(1);
   const [usersPerPage, setUsersPerPage] = useState(PAGE_SIZE_DEFAULT);
 
-  const allRoles = useMemo(() => [
-      { id: 'developer', name: 'Developer' },
-      { id: 'admin', name: 'Admin' },
-      { id: 'moderator', name: 'Moderator' },
-      { id: 'team', name: 'Team' },
-      { id: 'user', name: 'User' },
-  ], []);
-
-  const assignableRoles = useMemo(() => {
-      const roleHierarchy: Record<string, string[]> = {
-          developer: ['developer', 'admin', 'moderator', 'team', 'user'],
-          admin: ['admin', 'moderator', 'team', 'user'],
-          moderator: ['moderator', 'team', 'user'],
-          team: ['team', 'user'],
-          user: ['user']
-      };
-      const currentUserRole = currentUser?.role || 'user';
-      const allowedRoleIds = roleHierarchy[currentUserRole] || ['user'];
-      return allRoles.filter(role => allowedRoleIds.includes(role.id));
-  }, [currentUser?.role, allRoles]);
+  const assignableRoles = useMemo(() => getAssignableRoles(currentUser?.role || 'user'), [currentUser?.role]);
 
   const graduationOptions = ['Empty (Not Set)', 'Not Started', 'In Progress', 'Eligible', 'Graduated'];
 
@@ -303,15 +288,8 @@ export default function UserManagement() {
     return filteredUsersList.slice((currentPage - 1) * usersPerPage, currentPage * usersPerPage);
   }, [filteredUsersList, currentPage, usersPerPage]);
 
-  const handleRoleChange = async (userId: string, newRole: string) => {
-    try {
-        await updateDoc(doc(db, "users", userId), { role: newRole });
-        setAllUsersMetadata(prev => prev.map(u => u.id === userId ? { ...u, role: newRole as any } : u));
-        toast({ title: "Role Updated Successfully" });
-    } catch (e) { 
-        toast({ variant: "destructive", title: "Error Updating Role" }); 
-    }
-  };
+  // Role changes are now only done through the Edit User dialog
+  // Inline role editing has been removed for security - use the Edit button instead
 
   const handleViewDetails = async (user: User) => {
     setViewingUser(user);
@@ -661,12 +639,13 @@ export default function UserManagement() {
                         </TableCell>
                         <TableCell className="text-xs">{u.campus || 'N/A'}</TableCell>
                         <TableCell>
-                            <Select value={u.role} onValueChange={(v) => handleRoleChange(u.id, v)}>
-                                <SelectTrigger className="w-[110px] h-8 text-xs"><SelectValue /></SelectTrigger>
-                                <SelectContent>
-                                    {assignableRoles.map(r => <SelectItem key={r.id} value={r.id}>{r.name}</SelectItem>)}
-                                </SelectContent>
-                            </Select>
+                            {isHigherOrEqualRank(currentUser?.role || 'user', u.role || 'user') ? (
+                              <span className="text-muted-foreground text-xs">
+                                <Badge variant="outline" className="text-xs">{u.role || 'User'}</Badge>
+                              </span>
+                            ) : (
+                              <Badge variant="outline" className="text-xs">{u.role || 'User'}</Badge>
+                            )}
                         </TableCell>
                         <TableCell className="text-xs">{getUserLadderName(u.classLadderId)}</TableCell>
                         <TableCell className="text-center">
