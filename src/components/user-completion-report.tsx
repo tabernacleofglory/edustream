@@ -262,7 +262,7 @@ export default function UserCompletionReport() {
       <CardHeader>
         <div className="flex flex-col sm:flex-row justify-between items-start gap-4">
             <div>
-                <CardTitle>User Completion Report</CardTitle>
+                <CardTitle>Completions</CardTitle>
                 <CardDescription>Comprehensive tracking of student progress based on completed curriculum items.</CardDescription>
             </div>
             <div className="flex gap-2">

@@ -443,7 +443,7 @@ export default function UserCompletionReport() {
     const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
     const link = document.createElement('a');
     link.href = URL.createObjectURL(blob);
-    link.download = `user_completion_export_${format(new Date(), 'yyyy-MM-dd')}.csv`;
+    link.download = `completions_export_${format(new Date(), 'yyyy-MM-dd')}.csv`;
     link.click();
     setIsExportDialogOpen(false);
   };
