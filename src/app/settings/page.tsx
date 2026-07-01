@@ -181,6 +181,7 @@ export default function SettingsPage() {
     reset,
     watch,
     setValue,
+    getValues,
   } = useForm<SettingsFormValues>({
     resolver: zodResolver(settingsSchema),
     defaultValues: {
@@ -332,8 +333,8 @@ export default function SettingsPage() {
         
         hpNumber: data.isInHpGroup ? data.hpNumber : null,
         facilitatorName: data.isInHpGroup ? data.facilitatorName : null,
-        bio: data.isInHpGroup ? data.bio : null,
-        charge: data.isInHpGroup ? data.charge : null,
+        bio: data.bio ?? null,
+        charge: data.charge ?? null,
         classLadderId: data.isInHpGroup ? data.classLadderId : user.classLadderId,
         classLadder: data.isInHpGroup ? (selectedLadder ? selectedLadder.name : '') : user.classLadder,
         hpAvailabilityDay: !data.isInHpGroup ? data.hpAvailabilityDay : null,
@@ -378,6 +379,35 @@ export default function SettingsPage() {
       console.error(error);
     } finally {
       setIsSubmitting(false);
+    }
+  };
+
+  const handleSaveNotifications = async () => {
+    if (!user) return;
+    setIsSubmitting(true);
+    try {
+        const values = getValues();
+        const userDocRef = doc(db, "users", user.uid);
+        await updateDoc(userDocRef, {
+            notificationSettings: {
+                communityReplies: values.notificationCommunityReplies,
+                communityMentions: values.notificationCommunityMentions,
+            }
+        });
+        await refreshUser();
+        toast({
+            title: t('settings.button.save', 'Preferences Saved'),
+            description: "Your notification preferences have been updated.",
+        });
+    } catch (error) {
+        toast({
+            variant: "destructive",
+            title: "Error",
+            description: "Could not save notification preferences.",
+        });
+        console.error(error);
+    } finally {
+        setIsSubmitting(false);
     }
   };
 
@@ -707,7 +737,7 @@ export default function SettingsPage() {
                     {user && <AchievementsTab userId={user.uid} />}
                 </TabsContent>
                 <TabsContent value="notifications">
-                    <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
+                    <div className="space-y-6">
                         <div className="space-y-4">
                             <div className="flex items-center justify-between p-4 border rounded-lg bg-card">
                                 <div className="space-y-0.5">
@@ -743,12 +773,12 @@ export default function SettingsPage() {
                             </div>
                         </div>
                         <div className="flex justify-end gap-2">
-                             <Button type="submit" disabled={isSubmitting}>
+                             <Button type="button" onClick={handleSaveNotifications} disabled={isSubmitting}>
                                 {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                                 <span>{t('settings.button.save', 'Save Preferences')}</span>
                             </Button>
                         </div>
-                    </form>
+                    </div>
                 </TabsContent>
             </Tabs>
         </CardContent>
